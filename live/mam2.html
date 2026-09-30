@@ -1235,6 +1235,15 @@
   .lingue-ris{display:inline-flex;gap:3px;margin-left:6px;vertical-align:1px;}
   .lingue-ris a{font:700 9px/1 ui-monospace,Menlo,monospace;letter-spacing:.05em;padding:2px 4px;border-radius:3px;border:1px solid rgba(201,162,75,.6);color:var(--oro2);text-decoration:none;}
   .lingue-ris a:hover{background:var(--oro);color:var(--navy);}
+  /* IL MATERIALE DEL CLUB (30/09/2026) */
+  .club-testa{font-size:11px;color:var(--fumo);margin:2px 0 8px;line-height:1.4;}
+  .club-testa b{color:var(--ivory);font-size:12px;}
+  #clubElenco details{border-top:1px solid var(--riga);} #clubElenco details:first-child{border-top:0;}
+  #clubElenco summary{cursor:pointer;padding:6px 2px;font:600 11px/1.3 'Mazzard',sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--oro2);display:flex;justify-content:space-between;gap:8px;}
+  #clubElenco summary i{font-style:normal;color:var(--fumo);font-weight:400;}
+  #clubElenco .cf{display:flex;justify-content:space-between;gap:8px;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:11.5px;color:var(--ivory);}
+  #clubElenco .cf:hover{background:rgba(201,162,75,.14);} #clubElenco .cf.ora{background:rgba(201,162,75,.24);}
+  #clubElenco .cf span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} #clubElenco .cf small{color:var(--fumo);flex:none;}
   .ed-lingua{position:absolute;top:2px;right:4px;z-index:5;background:#1F6FB2;color:#fff;font:700 9px/12px ui-monospace,Menlo,monospace;padding:0 4px;border-radius:3px;pointer-events:none;letter-spacing:.06em;}
   .ed-pezzo .cima .ed-sync{position:static;display:inline-block;margin-right:4px;vertical-align:1px;}
   .ed-sync:hover{background:#ff6b70;}
@@ -1656,7 +1665,7 @@
       <div class="ed-maniglia" id="edManiglia" title="trascina per dare piu’ o meno spazio alla timeline"><span></span></div>
       <div class="ws-giu">
         <section class="pan" data-pan="progetto">
-          <header class="pan-schede"><button class="linguetta on" data-scheda="progetto">Progetto</button><button class="linguetta" data-scheda="browser">Browser media</button><button class="linguetta" data-scheda="materiale">Materiale di casa</button><button class="linguetta" data-scheda="esporta">Esporta</button><button class="linguetta" data-scheda="cronologia">Cronologia</button><button class="linguetta" data-scheda="marcatori">Marcatori</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
+          <header class="pan-schede"><button class="linguetta on" data-scheda="progetto">Progetto</button><button class="linguetta" data-scheda="browser">Browser media</button><button class="linguetta" data-scheda="materiale">Materiale di casa</button><button class="linguetta" data-scheda="club" id="linguettaClub">Materiale del club</button><button class="linguetta" data-scheda="esporta">Esporta</button><button class="linguetta" data-scheda="cronologia">Cronologia</button><button class="linguetta" data-scheda="marcatori">Marcatori</button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
           <div class="pan-corpo ed-bin" data-corpo="progetto"><div class="capo">Pezzi <span id="binConto"></span></div><div class="corpo" id="bin" tabindex="0"></div></div>
           <div class="pan-corpo" data-corpo="materiale" hidden>
           <div id="tendaMedia" class="tenda-scheda">
@@ -1669,6 +1678,7 @@
           <div class="elenco" id="mediaElenco"></div>
           </div>
           </div>
+          <div class="pan-corpo" data-corpo="club" hidden><div class="tenda-scheda"><div class="club-testa" id="clubTesta"></div><div class="elenco" id="clubElenco"></div></div></div>
           <div class="pan-corpo pan-browser" data-corpo="browser" hidden>
             <div class="ts-barra"><input id="bmCerca" type="search" placeholder="Cerca nell&#8217;archivio: partita, competizione&#8230;" autocomplete="off"><span class="conto" id="bmConto"></span></div>
             <div class="bm-elenco" id="bmElenco" tabindex="0"></div>
@@ -2629,8 +2639,10 @@
   // ITA · ENG · INT sotto una partita del Como: ognuna apre l'Editing con quell'audio
   function lingueRis(x, link, t){
     var ls = x.lingue || (x.rec && LINGUE_INFO[x.rec] ? ["eng", "int"].filter(function(k){ return LINGUE_INFO[x.rec][k]; }) : []);
-    if (!ls || !ls.length) return "";
-    return '<span class="lingue-ris">' + ["ita"].concat(ls).map(function(k){ return '<a data-apri-lingua="' + esc(link(x, t, k === "ita" ? "" : k)) + '" title="' + ({ ita: "con il commento ITA di Como TV", eng: "con il commento inglese del club", int: "con il suono internazionale" })[k] + '">' + k.toUpperCase() + '</a>'; }).join("") + '</span>';
+    var club = +x.club || 0;
+    if ((!ls || !ls.length) && !club) return "";
+    return '<span class="lingue-ris">' + (ls && ls.length ? ["ita"].concat(ls) : []).map(function(k){ return '<a data-apri-lingua="' + esc(link(x, t, k === "ita" ? "" : k)) + '" title="' + ({ ita: "con il commento ITA di Como TV", eng: "con il commento inglese del club", int: "con il suono internazionale" })[k] + '">' + k.toUpperCase() + '</a>'; }).join("") +
+      (club ? '<a data-apri-lingua="' + esc(link(x, t) + "&club=1") + '" title="il materiale del club di questa giornata: HL, interviste, conferenza, camere">CLUB ' + club + '</a>' : '') + '</span>';
   }
   document.addEventListener("click", function(e){
     var a = e.target.closest && e.target.closest("[data-apri-lingua]"); if (!a) return;
@@ -3580,6 +3592,51 @@
   var LIN_ASSET = PlayerLingua(function(){ return el("video"); }, "lingueAsset");
   var LIN_SRG = PlayerLingua(function(){ return el("videoS"); }, "lingueSrg");
   function linguaPer(o){ return o && o.l !== "ita" ? o.l : undefined; }
+  // ── IL MATERIALE DEL CLUB (30/09/2026). La partita del Como che sta nella
+  //    Sorgente (o quella della sequenza) porta con se' la cartella della
+  //    giornata sulla NAS del 1907: HL ITA/ENG/INT, interviste, conferenza,
+  //    camere, Gionni's Cam. Un clic apre il file nella Sorgente, per { } e ,
+  var CLUB_REC = null, CLUB_DATI = {}, CLUB_ORA = "";
+  function recPerClub(){
+    var r = SRG && SRG.r; if (r && r.arch && r.arch.rec && !/^f1907:/.test(r.arch.rec)) return r.arch.rec;
+    if (CLUB_REC) return CLUB_REC;
+    return REGE && REGE.arch && REGE.arch.rec && !/^f1907:/.test(REGE.arch.rec) ? REGE.arch.rec : null;
+  }
+  function datiClub(rec){
+    if (!rec) return Promise.resolve(null);
+    if (CLUB_DATI.hasOwnProperty(rec)) return Promise.resolve(CLUB_DATI[rec]);
+    return post({ tipo:"clip-club-materiale", rec: rec }).then(function(d){ return (CLUB_DATI[rec] = d.club || null); }).catch(function(){ return null; });
+  }
+  function segnaClub(){
+    var rec = recPerClub(); if (!rec) return;
+    datiClub(rec).then(function(c){ if (c && c.n) CLUB_REC = rec; var t = el("linguettaClub"); if (t) t.textContent = "Materiale del club" + (c && c.n && CLUB_REC === rec ? " · " + c.n : ""); var cb = document.querySelector('[data-corpo="club"]'); if (cb && !cb.hidden) disegnaClub(); });
+  }
+  function disegnaClub(){
+    var rec = recPerClub(), testa = el("clubTesta"), box = el("clubElenco"); if (!box) return;
+    if (!rec) { testa.innerHTML = ""; box.innerHTML = '<div class="nota">Apri nella Sorgente una partita della prima squadra del Como: qui compare il materiale del club di quella giornata.</div>'; return; }
+    box.innerHTML = '<div class="nota">Cerco nella cartella del club…</div>';
+    datiClub(rec).then(function(c){
+      if (!c || !c.n) { testa.innerHTML = ""; box.innerHTML = '<div class="nota">Per questa partita il club non ha materiale sulla NAS del 1907 (o non e’ una partita della prima squadra).</div>'; return; }
+      CLUB_REC = rec;
+      testa.innerHTML = '<b>' + esc(c.cartella.split("/").pop()) + '</b><br>' + c.n + ' file del club · la partita intera (ITA/ENG/INT) sta nella Sorgente';
+      box.innerHTML = c.gruppi.map(function(g, i){
+        return '<details' + (i < 4 ? ' open' : '') + '><summary><span>' + esc(g.nome) + '</span><i>' + g.file.length + '</i></summary>' +
+          g.file.map(function(f){ return '<div class="cf' + (f.via === CLUB_ORA ? " ora" : "") + '" data-club="' + esc(f.via) + '" title="' + esc(f.nome) + ' — apri nella Sorgente"><span>' + esc(f.nome) + '</span><small>' + mb(f.peso || 0) + '</small></div>'; }).join("") + '</details>';
+      }).join("");
+    });
+  }
+  document.addEventListener("click", function(e){
+    var x = e.target.closest && e.target.closest("#clubElenco [data-club]"); if (!x) return;
+    var via = x.dataset.club; CLUB_ORA = via;
+    Array.prototype.forEach.call(document.querySelectorAll("#clubElenco .cf.ora"), function(n){ n.classList.remove("ora"); }); x.classList.add("ora");
+    avviso("ok", "Apro nella Sorgente: " + esc(via.split("/").pop()) + "…");
+    post({ tipo:"clip-1907-apri", via: via }).then(function(d){
+      var r = d.reg; if (!r) throw new Error("non si apre");
+      REGS[r.id] = r;
+      if (r.copia1907 && !r.via) return avviso("err", "Questo file il browser non lo legge: ne sto facendo una copia leggera, riprova fra qualche minuto.");
+      apriSorgente(r.arch.rec, 0, r);
+    }).catch(function(er){ avviso("err", esc(er.message)); });
+  });
   function apriAsset(rec, regId, t){
     vai("asset"); V = el("video"); mostraPer();
     var apri = regId ? Promise.resolve({ reg: REGS[regId] || null }) : Promise.resolve({ reg: null });
@@ -4812,6 +4869,7 @@
       vc("Programma", "", function(){ mostraScheda("programma"); }),
       vc("Progetto", "", function(){ mostraScheda("progetto"); }),
       vc("Materiale di casa", "", function(){ mostraScheda("materiale"); }),
+      vc("Materiale del club", "", function(){ mostraScheda("club"); }),
       vc("Esporta", "cmd M", function(){ mostraScheda("esporta"); }),
       vc("Timeline", "", function(){ mostraScheda("timeline"); }),
       { riga: 1 },
@@ -6997,6 +7055,7 @@
     radice: "ws", vista: "editor", chiave: "mam2-ws", primo: "timeline", primeSchede: ["srg", "progetto"],
     allaScheda: function(k){
       if (k === "materiale") caricaMateriale();
+      if (k === "club") disegnaClub();
       if (k === "metadati") disegnaMetadati();
       if (k === "cronologia") disegnaStoria();
       if (k === "grafiche") disegnaDestGrafica();
@@ -7600,6 +7659,8 @@
       var linUrl = new URLSearchParams(location.search).get("lingua");
       LIN_SRG.carica(r.arch && r.arch.rec, !LIN_SRG.giaUrl && linUrl ? linUrl : (LIN_SRG.l !== "ita" ? LIN_SRG.l : null));
       LIN_SRG.giaUrl = true;
+      segnaClub();
+      if (!LIN_SRG.giaClub && new URLSearchParams(location.search).get("club")) { LIN_SRG.giaClub = true; setTimeout(function(){ mostraScheda("club"); }, 300); }
       var v = el("videoS"), dove = (t !== null && t !== undefined) ? Math.max(0, t) : null;
       el("srgNome").textContent = r.titolo || "partita"; el("srgTitolo").textContent = r.titolo || "partita";
       el("srgMeta").textContent = [r.competizione, r.durata ? durata(r.durata) : ""].filter(Boolean).join(" · ");

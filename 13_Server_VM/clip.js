@@ -14339,6 +14339,68 @@ async function allineaLingua(recIta, l) {
   console.log("[clip] lingue: " + (a.partita || recIta) + " " + l.toUpperCase() + " → " + v.stato + " (1° tempo " + t1.o + " s, 2° tempo " + t2.o + " s)");
   return v;
 }
+// IL MATERIALE DEL CLUB DI UNA PARTITA (30/09/2026, Goffredo: "e gli altri
+// contenuti associati alla partita?"). La cartella della giornata sulla NAS del
+// 1907 ha, oltre ai LIVE, gli HL ITA/ENG/INT, le interviste, i camera offloads,
+// la raw cam, la conferenza stampa, Gionni's Cam... L'elenco non si scandisce:
+// lo tiene gia' il MAM 1907 (/var/lib/comotv-1907/pub/file.json, la notte),
+// con la data di ogni file. Una giornata della prima squadra = una data.
+const FILE_1907 = process.env.COMOTV_1907_INDICE || "/var/lib/comotv-1907/pub/file.json";
+let CLUB = { mt: -1, perGiorno: new Map() };
+const CLUB_ORDINE = [/HL.*ITA/i, /HL.*ENG/i, /HL.*INT/i, /INTERVIEW|INTERVIST/i, /PRESS|CONFERENZA/i, /CAMERA OFFLOAD|SCARICHI/i, /RAW CAM/i, /GIONNI/i, /PHONE/i, /EXPORT/i, /CLIPS/i];
+function materialeClub() {
+  let mt = 0; try { mt = fs.statSync(FILE_1907).mtimeMs; } catch (e) { return CLUB.perGiorno; }
+  if (mt === CLUB.mt) return CLUB.perGiorno;
+  const per = new Map();
+  try {
+    const L = JSON.parse(fs.readFileSync(FILE_1907, "utf8"));
+    // la data della giornata: quella della maggior parte dei suoi file (Gionni's
+    // Cam e la conferenza stampa spesso non la portano), o quella nel nome
+    const dataG = new Map();
+    L.forEach(([cartella, files]) => {
+      const pz = String(cartella || "").split("/"), iT = pz.findIndex((x) => /first team/i.test(x)); if (iT < 0) return;
+      const iG = pz.findIndex((x, i) => i > iT && /^G\d+[\s_-]/i.test(x)); if (iG < 0) return;
+      const k = pz.slice(0, iG + 1).join("/"); if (!dataG.has(k)) dataG.set(k, {});
+      const c = dataG.get(k); (files || []).forEach((f) => { if (/^20\d{6}$/.test(String(f[3] || ""))) c[f[3]] = (c[f[3]] || 0) + 1; });
+    });
+    const giornoDi = (k) => { const c = dataG.get(k) || {}; const m = Object.keys(c).sort((x, y) => c[y] - c[x])[0]; return m || (/(20\d{6})/.exec(k.split("/").pop()) || [])[1] || ""; };
+    L.forEach(([cartella, files]) => {
+      const pz = String(cartella || "").split("/");
+      const iT = pz.findIndex((x) => /first team/i.test(x)); if (iT < 0) return;
+      const iG = pz.findIndex((x, i) => i > iT && /^G\d+[\s_-]/i.test(x)); if (iG < 0) return;
+      const sotto = pz.slice(iG + 1).filter((x) => !/^BROADCAST/i.test(x));
+      // i LIVE sono la partita intera: stanno gia' nelle lingue (ITA/ENG/INT)
+      if (sotto.some((x) => /^LIVE\b/i.test(x))) return;
+      const gruppo = sotto.join(" › ") || "Cartella della partita";
+      (files || []).forEach((f) => {
+        if (!F1907_VIDEO.test(f[0])) return;
+        const g = String(giornoDi(pz.slice(0, iG + 1).join("/")));
+        if (!/^20\d{6}$/.test(g)) return;
+        if (!per.has(g)) per.set(g, { cartella: pz.slice(0, iG + 1).join("/"), gruppi: new Map() });
+        const x = per.get(g); if (!x.gruppi.has(gruppo)) x.gruppi.set(gruppo, []);
+        x.gruppi.get(gruppo).push({ via: cartella + "/" + f[0], nome: f[0], peso: f[1] || 0 });
+      });
+    });
+  } catch (e) { console.log("[clip] materiale del club: " + e.message); }
+  CLUB = { mt, perGiorno: per };
+  return per;
+}
+function clubDi(recIta) {
+  const a = ARCHIVIO[recIta]; if (!primaSquadraComo(a)) return null;
+  const g = a.giorno || (Date.parse(a.quando) ? giornoRoma(Date.parse(a.quando)) : "");
+  const x = materialeClub().get(String(g)); if (!x) return null;
+  const voto = (n) => { const i = CLUB_ORDINE.findIndex((re) => re.test(n)); return i < 0 ? 99 : i; };
+  const gruppi = [...x.gruppi.entries()].map(([nome, file]) => ({ nome, file: file.sort((u, v) => u.nome.localeCompare(v.nome)) }))
+    .sort((u, v) => voto(u.nome) - voto(v.nome) || u.nome.localeCompare(v.nome));
+  return { cartella: x.cartella, giorno: g, gruppi, n: gruppi.reduce((t, y) => t + y.file.length, 0) };
+}
+// quanti file del club ha una partita (per il tasto CLUB nei risultati)
+const CLUB_N = { mt: -2, n: new Map() };
+function clubN(rec) {
+  if (CLUB_N.mt !== CLUB.mt) { materialeClub(); CLUB_N.mt = CLUB.mt; CLUB_N.n = new Map(); }
+  if (!CLUB_N.n.has(rec)) { const c = clubDi(rec); CLUB_N.n.set(rec, c ? c.n : 0); }
+  return CLUB_N.n.get(rec);
+}
 // il file si serve da /clip/_lingue/<rec>_<l>.mp4: un collegamento al file sulla NAS
 function viaLingua(recIta, l) { return "/clip/_lingue/" + recIta + "_" + l + ".mp4"; }
 function collegaLingua(recIta, l) {
@@ -16818,7 +16880,7 @@ const AZIONI = {
         fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
                      tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
                      gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo: x.ruolo || "", ruoloDa: x.ruoloDa || "", rating: x.rating || 0, boato: x.boato || 0,
-                     lingue: r.arch && r.arch.rec ? lingueDi(r.arch.rec) : [] });
+                     lingue: r.arch && r.arch.rec ? lingueDi(r.arch.rec) : [], club: r.arch && r.arch.rec ? clubN(r.arch.rec) : 0 });
       });
     });
     // LO STESSO FILE APERTO DUE VOLTE (26/09/2026): due registrazioni sulla
@@ -17326,7 +17388,7 @@ const AZIONI = {
                forse: f ? { nome: f.nome, voto: f.voto, perche: f.perche || [] } : undefined,
                competizione: a.competizione || "", soloS3: !!a.soloS3,
                dataSospetta: !!a.soloS3 && ms > domani,
-               pezzi: pz.length || 1, sicuro: !!a.sicuro, intera: intera, minuti: Math.round(minuti), lingue: lingueDi(rec),
+               pezzi: pz.length || 1, sicuro: !!a.sicuro, intera: intera, minuti: Math.round(minuti), lingue: lingueDi(rec), club: clubN(rec),
                kickoff: a.kickoff === undefined ? null : a.kickoff };
     }).sort((x, y) => (x.dataSospetta - y.dataSospetta) || ((Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0)));
     return { ok: true, quante: fuori.length, partite: fuori.slice(0, quante) };
@@ -17651,6 +17713,8 @@ const AZIONI = {
     return { ok: true, versione: await allineaLingua(rec, l) };
   },
   "clip-lingue-giro": () => { giroLingue(); return { ok: true }; },
+  // il materiale del club di una partita del Como, per gruppi
+  "clip-club-materiale": (p) => ({ ok: true, club: clubDi(String(p.rec || "")) }),
   // per i player della pagina: dove sta, in ENG e INT, ogni secondo della ITA
   "clip-lingue-di": (p) => {
     const rec = String(p.rec || ""), e = lingue()[rec];
