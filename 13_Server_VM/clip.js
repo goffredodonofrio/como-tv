@@ -4388,6 +4388,8 @@ function hlNuova(p) {
     titolo: String(p.titolo || "").slice(0, 160) || ("HL " + r.titolo),
     pezzi: [], pre: HL_PRE, post: HL_POST, scarto: 0, avvisi: [],
     creata: Date.now(), chi: String(p.__chi || p.chi || "").slice(0, 40), export: null };
+  // nata nell'editor del Como 1907 (mam2.html?ambito=1907, 30/09/2026): resta nel suo cestino
+  if (p.origine === "1907") q.origine = "1907";
   // nata dentro un progetto: la sequenza lo sa, e il progetto impara la partita
   if (p.prog && R.prog[String(p.prog)]) { q.prog = String(p.prog); const g = R.prog[q.prog]; g.reg = g.reg || []; if (g.reg.indexOf(r.id) < 0) g.reg.push(r.id); g.tocco = Date.now(); }
   R.seq[q.id] = q;
@@ -17082,6 +17084,57 @@ const AZIONI = {
     scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, buchi: buchiDi(q).length, infilato: fatto.infilato || 0 };
   },
+  // SPOSTARE IN GRUPPO (30/09/2026, il tasto A di Premiere e lo spazio vuoto
+  // che si toglie con Canc). Pezzi su V1 e V2, grafiche e audio staccato
+  // scorrono dello stesso tempo, in UN passo (un solo Cmd+Z). Premiere qui
+  // sovrascriverebbe quello che trova; noi no: se un pezzo finirebbe sopra
+  // uno che resta fermo sulla sua traccia, non si fa e lo si dice.
+  "clip-hl-sposta-gruppo": (p) => {
+    const q = seqMia(p);
+    normalizzaSeq(q);
+    const idP = new Set((p.pezzi || []).map(String)), idG = new Set((p.grafiche || []).map(String)), idA = new Set((p.audio || []).map(String));
+    const P = q.pezzi.filter((x) => idP.has(x.id)), G = (q.grafiche || []).filter((g) => idG.has(g.id)), A = (q.audio || []).filter((a) => idA.has(a.id) && !a.legato);
+    if (!P.length && !G.length && !A.length) throw new Error("niente da spostare");
+    const tr = tracceDi(q), bloccata = (n) => !!(tr[n] || {}).bloccata;
+    P.forEach((x) => { if (bloccata(x.traccia || "V1")) throw new Error("la traccia " + (x.traccia || "V1") + " e' bloccata"); });
+    if (G.length && bloccata("G")) throw new Error("la traccia delle grafiche e' bloccata");
+    A.forEach((a) => { if (bloccata(a.traccia || "A1")) throw new Error("la traccia " + (a.traccia || "A1") + " e' bloccata"); });
+    let d = Math.round(num(p.d, -86400, 86400, 0) * 1000) / 1000;
+    // niente sotto lo zero
+    const inizio = Math.min(...P.map((x) => x.t0 || 0), ...G.map((g) => g.dentro || 0), ...A.map((a) => a.t0 || 0));
+    if (inizio + d < 0) d = -inizio;
+    if (Math.abs(d) < 0.001) return { ok: true, seq: q, d: 0 };
+    const dur = (x) => Math.max(0, (x.fuori || 0) - (x.dentro || 0));
+    const cozza = (a1, b1, a2, b2) => a1 < b2 - 0.02 && b1 > a2 + 0.02;
+    for (const x of P) {
+      const a = (x.t0 || 0) + d, b = a + dur(x), n = x.traccia || "V1";
+      const f = q.pezzi.find((y) => !idP.has(y.id) && (y.traccia || "V1") === n && cozza(a, b, y.t0 || 0, (y.t0 || 0) + dur(y)));
+      if (f) throw new Error("un pezzo finirebbe sopra un altro su " + n + ": sposta di meno");
+    }
+    // l'audio che si muove: quello scelto e quello legato ai pezzi scelti
+    const legati = (q.audio || []).filter((a) => a.legato && idP.has(a.legato));
+    const muove = new Set(A.concat(legati));
+    for (const a0 of muove) {
+      const a = (a0.t0 || 0) + d, b = a + dur(a0), n = a0.traccia || "A1";
+      const f = (q.audio || []).find((y) => !muove.has(y) && (y.traccia || "A1") === n && cozza(a, b, y.t0 || 0, (y.t0 || 0) + dur(y)));
+      if (f) throw new Error("un audio finirebbe sopra un altro su " + n + ": sposta di meno");
+    }
+    toccataAMano(q);
+    const r3 = (v) => Math.round(Math.max(0, v) * 1000) / 1000;
+    P.forEach((x) => { x.t0 = r3((x.t0 || 0) + d); });
+    muove.forEach((a) => { a.t0 = r3((a.t0 || 0) + d); });
+    G.forEach((g) => { g.dentro = r3((g.dentro || 0) + d); g.fuori = r3((g.fuori || 0) + d); });
+    // attaccata o libera: se dopo lo spostamento su V1 e V2 non ci sono
+    // buchi (lo spazio chiuso con Canc) la sequenza resta com'era
+    const eraLibera = !!q.libera;
+    q.libera = true;
+    q.pezzi.sort((a, b) => (a.t0 || 0) - (b.t0 || 0));
+    const conBuchi = ["V1", "V2"].some((n) => { let t = 0; return q.pezzi.filter((x) => (x.traccia || "V1") === n).some((x) => { const s = (x.t0 || 0) > t + 0.04; t = Math.max(t, (x.t0 || 0) + dur(x)); return s; }); });
+    if (!eraLibera && !conBuchi) delete q.libera;
+    riallinea(q);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, d, spostati: P.length + G.length + A.length };
+  },
   // e la via del ritorno: si richiudono i buchi e si torna attaccati
   "clip-hl-attacca": (p) => {
     const q = seqMia(p);
@@ -17293,7 +17346,7 @@ function nomeDelPasso(p) {
     return { scollega: "Scollega", collega: "Collega", traccia: "Traccia", gain: "Guadagno audio",
              volume: "Volume", muto: "Disattiva audio clip", togli: "Elimina audio", sposta: "Sposta audio" }[a] || "Audio";
   }
-  return ({ "clip-hl-inserisci": "Inserisci", "clip-hl-dividi": "Taglierino", "clip-hl-sposta": "Sposta",
+  return ({ "clip-hl-inserisci": "Inserisci", "clip-hl-dividi": "Taglierino", "clip-hl-sposta": "Sposta", "clip-hl-sposta-gruppo": "Sposta in gruppo",
             "clip-hl-ordina": "Riordina", "clip-hl-attacca": "Chiudi gli spazi vuoti", "clip-hl-aggiungi": "Aggiungi clip",
             "clip-hl-metti-media": "Importa materiale", "clip-hl-imposta": "Impostazioni sequenza",
             "clip-hl-titolo": "Testo", "clip-hl-grafica": "Grafica", "clip-hl-inquadra": "Inquadratura" })[t] || "Modifica";

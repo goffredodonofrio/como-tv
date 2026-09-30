@@ -1218,6 +1218,12 @@
   .attrezzi button.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
 
   .ed-pista.lametta,.ed-pista.lametta .ed-pezzo{cursor:crosshair;}
+  /* SELEZIONA IN AVANTI / INDIETRO (A, Shift+A di Premiere): la riga che segue il
+     mouse e, tinte, le cose che il clic prenderebbe */
+  .ed-pista.avanti,.ed-pista.avanti *{cursor:e-resize !important;} .ed-pista.indietro,.ed-pista.indietro *{cursor:w-resize !important;}
+  .ed-ts-linea{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--oro2);pointer-events:none;z-index:7;}
+  .ed-pezzo.ts-prende,.ed-graf.ts-prende,.ed-audio.ts-prende{box-shadow:0 0 0 1px var(--oro2) inset, 0 0 0 999px rgba(201,162,75,.16) inset;}
+  .ed-buco.sel{border:1px solid var(--oro2);background:repeating-linear-gradient(135deg,rgba(201,162,75,.22) 0 6px,rgba(201,162,75,.08) 6px 12px);}
   .ed-rete{position:absolute;z-index:6;background:rgba(201,162,75,.14);border:1px solid var(--oro2);border-radius:3px;pointer-events:none;}
   .ed-magnete{position:absolute;top:0;bottom:0;width:1px;background:#7CD992;box-shadow:0 0 5px #7CD992;pointer-events:none;z-index:4;}
   .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;} .ed-corsia.st{height:var(--h-C,26px);} .ed-corsia.g{height:var(--h-G,28px);} .ed-corsia.v2{height:var(--h-V2,40px);background:rgba(140,120,200,.05);} .ed-corsia.v2.mira{background:rgba(201,162,75,.12);box-shadow:0 0 0 1px var(--oro) inset;}
@@ -1669,6 +1675,8 @@
         <div class="attrezzi" id="attrezzi" title="Strumenti">
           <button data-str="scelta" class="on" title="Scelta (V): prendi, sposta, accorcia" aria-label="Scelta"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 2.2v11.2l2.9-2.8 1.9 4.2 1.9-.9-1.9-4.1h4z" fill="currentColor"/></svg></button>
           <button data-str="lametta" title="Lametta (C): clicca una clip per dividerla li&rsquo;" aria-label="Lametta"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="4.3" cy="11.8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="11.7" cy="11.8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.8 10.2L12 2M10.2 10.2L4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <button data-str="avanti" title="Seleziona in avanti (A): clicca e prendi tutto quello che viene dopo, su tutte le tracce, poi trascinalo. Con Shift: solo quella traccia" aria-label="Seleziona in avanti"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2.5 2.5v11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M5 8h8.2M10.2 5l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button data-str="indietro" title="Seleziona indietro (Shift+A): clicca e prendi tutto quello che viene prima, su tutte le tracce. Con Shift: solo quella traccia" aria-label="Seleziona indietro"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M13.5 2.5v11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M11 8H2.8M5.8 5l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
         <section class="pan" data-pan="timeline">
           <header class="pan-schede"><button class="linguetta on" data-scheda="timeline"><span id="panTlNome">sequenza</span></button><button class="pan-menu" title="menu del pannello">&#8801;</button></header>
@@ -1766,6 +1774,7 @@
   function durata(s){ if(!s) return ""; var m = Math.round(s/60); return m >= 60 ? Math.floor(m/60) + " h " + (m%60) + " min" : m + " min"; }
   function post(c){
     c.token = TOKEN;
+    if (AMBITO && c.tipo === "clip-hl-nuova") c.origine = "1907";   // resta nell'editor del Como 1907
     return fetch(PONTE, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(c) })
       .then(function(r){ return r.json(); })
       .then(function(j){ if(!j.ok && window.ChiaveComoTV && ChiaveComoTV.rifiutata(j.errore, "contributo")){ TOKEN = ChiaveComoTV.valore(); return post(c); } if(!j.ok) throw new Error(j.errore||"il ponte ha detto no"); return j; });
@@ -1789,6 +1798,11 @@
   // S3 E' LASCIATO (29/09/2026): il MAM mostra le partite che stanno sulla NAS
   var EVENTI = [], REGS = {}, ASSET = null;
   function soloNas(v){ return v.filter(function(x){ return !x.s3; }); }
+  // le partite del Como 1907 (tutte le categorie), in italiano e in inglese: niente studio, niente AUDIO ONLY
+  function delComo1907(x){
+    var nomi = (x.squadre || []).map(function(s){ return s.nome; }).join(" ") + " " + (x.partita || "");
+    return !x.studio && /\bcomo\b/i.test(nomi) && !/audio only|\[audio/i.test((x.titolo || "") + " " + (x.partita || "") + " " + (x.via || ""));
+  }
   var VISTA_ORA = "libreria";   // la vista aperta (i menu); VISTA e' della Libreria: anteprime o lista
   // TUTTO SI APRE NELLA SCHEDA DELL'EDITING (29/09/2026, Goffredo: "anche per
   // le partite, per tutto"). Dalla Libreria, dalla ricerca e dalle raccolte una
@@ -4197,7 +4211,8 @@
     corsie.forEach(function(n){ haT[n] = ""; });
     PZ.forEach(function(x, i){
       var d = x.fuori - x.dentro, a = x.t0 || 0, b = a + d;
-      if (TRASC && TRASC.i === i && (TRASC.tipo !== "muovi" || TRASC.mosso)) { a = TRASC.a; b = TRASC.b; }
+      if (TRASC && TRASC.tipo === "gruppo") { if (TRASC.mosso && TRASC.setP[x.id]) { a += TRASC.d; b += TRASC.d; } }
+      else if (TRASC && TRASC.i === i && (TRASC.tipo !== "muovi" || TRASC.mosso)) { a = TRASC.a; b = TRASC.b; }
       else if (TRASC && TRASC.gruppo && TRASC.mosso && TRASC.tipo === "muovi") {
         var g = TRASC.gruppo.filter(function(z){ return z.id === x.id; })[0];
         if (g) { a = Math.max(0, g.t0 + (TRASC.a - TRASC.t00)); b = a + d; }
@@ -4223,13 +4238,14 @@
       righeDi(x).forEach(function(s){ if (s.b <= x.dentro || s.a >= fineX) return; var sa = a + Math.max(0, s.a - x.dentro) / velX, sb = a + Math.min(d, (s.b - x.dentro) / velX); if (sb < LENTE.a || sa > LENTE.b) return; var t2 = testoRiga(s).t; hs += '<div class="ed-st' + (s.m ? " mod" : "") + (TS_SEL === regX + "|" + s.k ? " sel" : "") + '" data-k="' + esc(s.k || "") + '" data-reg="' + esc(regX) + '" data-t="' + sa + '" style="left:' + Math.max(0, X(sa)) + 'px;width:' + Math.max(4, Math.min(w, X(sb)) - Math.max(0, X(sa))) + 'px" title="' + esc(t2) + '">' + esc(t2) + '</div>'; });
     });
     // l'audio staccato: a t0, per la sua durata, dove lo lasci
-    AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, Math.max(6, xb - xa), true); });
+    AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.tipo === "gruppo" && TRASC.mosso && TRASC.setA[au.id]) { a += TRASC.d; b += TRASC.d; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, Math.max(6, xb - xa), true); });
     var hg = "";
-    GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); var fg = formatiDiGrafica(g), manca = FORMATI.filter(function(f){ return fg.indexOf(f) < 0; }); hg += '<div class="ed-graf' + (SELG === g.id || SELGS.indexOf(g.id) >= 0 ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + ' · formati: ' + fg.join(", ") + (manca.length ? " · manca " + manca.join(", ") + ": in uscita verra\u2019 adattata" : "") + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<i class="gf">' + (g.titolo ? "tutti" : fg.join(" ")) + '</i>' + (manca.length ? '<b class="gm">' + esc(manca.join(" ")) + '?</b>' : '') + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
+    GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.tipo === "gruppo" && TRASC.mosso && TRASC.setG[g.id]) { a += TRASC.d; b += TRASC.d; } if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); var fg = formatiDiGrafica(g), manca = FORMATI.filter(function(f){ return fg.indexOf(f) < 0; }); hg += '<div class="ed-graf' + (SELG === g.id || SELGS.indexOf(g.id) >= 0 ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + ' · formati: ' + fg.join(", ") + (manca.length ? " · manca " + manca.join(", ") + ": in uscita verra\u2019 adattata" : "") + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<i class="gf">' + (g.titolo ? "tutti" : fg.join(" ")) + '</i>' + (manca.length ? '<b class="gm">' + esc(manca.join(" ")) + '?</b>' : '') + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
     buchiDiQui().forEach(function(z){
       if (z.b < LENTE.a || z.a > LENTE.b) return;
       var xa = Math.max(0, X(z.a)), xb = Math.min(w, X(z.b));
-      hv += '<div class="ed-buco" style="left:' + xa + 'px;width:' + Math.max(2, xb - xa) + 'px" title="buco di ' + tc(z.b - z.a) + '"></div>';
+      var bSel = BUCO_SEL && Math.abs(BUCO_SEL.a - z.a) < 0.02 && Math.abs(BUCO_SEL.b - z.b) < 0.02;
+      hv += '<div class="ed-buco' + (bSel ? " sel" : "") + '" style="left:' + xa + 'px;width:' + Math.max(2, xb - xa) + 'px" title="spazio vuoto di ' + tc(z.b - z.a) + (bSel ? ": Canc lo chiude" : ": clic per sceglierlo, poi Canc lo chiude") + '"></div>';
     });
     if (AGGANCIO !== null && TRASC) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
     cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; cv2.innerHTML = hv2; cst.innerHTML = hs; cg.innerHTML = hg;
@@ -4811,14 +4827,127 @@
   //  bisognava portarci la testina tre volte.
   var STRUMENTO = "scelta";
   function mettiStrumento(n){
-    STRUMENTO = (n === "lametta") ? "lametta" : "scelta";
+    STRUMENTO = (n === "lametta" || n === "avanti" || n === "indietro") ? n : "scelta";
     Array.prototype.forEach.call(el("attrezzi").querySelectorAll("button[data-str]"),
       function(b){ b.classList.toggle("on", b.dataset.str === STRUMENTO); });
     el("pista").classList.toggle("lametta", STRUMENTO === "lametta");
+    el("pista").classList.toggle("avanti", STRUMENTO === "avanti");
+    el("pista").classList.toggle("indietro", STRUMENTO === "indietro");
+    togliAnteprimaTs();
   }
   el("attrezzi").addEventListener("click", function(e){
     var b = e.target.closest("button[data-str]"); if (b) mettiStrumento(b.dataset.str);
   });
+  // ══════════ SELEZIONA IN AVANTI / INDIETRO (30/09/2026) ══════════
+  //  Il tasto A di Premiere (Track Select Forward) e Shift+A (Backward): un
+  //  clic prende quello che sta sotto il mouse e TUTTO quello che viene dopo
+  //  (o prima), su tutte le tracce; con Shift solo sulla traccia cliccata.
+  //  E' il gesto per fare spazio in mezzo al montato o per richiuderlo: si
+  //  clicca e si trascina tutto insieme, le distanze restano. Il magnete
+  //  lavora sui bordi del gruppo (il primo e l'ultimo); diversamente da
+  //  Premiere non si sovrascrive niente: il gruppo si ferma contro la prima
+  //  clip che resta ferma sulla stessa traccia. Le tracce bloccate non si
+  //  prendono. Un solo passo di Annulla (clip-hl-sposta-gruppo).
+  //  E LO SPAZIO VUOTO: un clic nel buco su V1 lo sceglie, Canc lo chiude
+  //  e quello che viene dopo, su tutte le tracce, scala indietro.
+  var BUCO_SEL = null, TS_RAF = 0;
+  function corsiaSotto(cx, cy){
+    var n = document.elementFromPoint(cx, cy), c = n && n.closest ? n.closest(".ed-corsia") : null;
+    if (!c) return "";
+    if (c.classList.contains("a")) return c.dataset.tr || "A1";
+    if (c.classList.contains("v2")) return "V2";
+    if (c.classList.contains("v")) return "V1";
+    if (c.classList.contains("g")) return "G";
+    return "";
+  }
+  function selezioneTs(t, verso, sola){
+    var eps = 0.02, prende = function(a, b){ return verso > 0 ? b > t + eps : a < t - eps; };
+    var pz = [], g = [], a = [];
+    PZ.forEach(function(x){
+      var tr = x.traccia || "V1", a0 = x.t0 || 0, b0 = a0 + (x.fuori - x.dentro);
+      if (traccaBloccata(tr) || !prende(a0, b0)) return;
+      if (sola && sola !== tr) {
+        // Shift su una traccia audio: il video il cui audio legato sta li'
+        var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
+        if (!(au && (au.traccia || "A1") === sola)) return;
+      }
+      pz.push(x.id);
+    });
+    if ((!sola || sola === "G") && !traccaBloccata("G")) GRAF.forEach(function(z){ if (prende(z.dentro, z.fuori)) g.push(z.id); });
+    AUD.forEach(function(z){
+      if (z.legato) return;
+      var tr = z.traccia || "A1", a0 = z.t0 || 0, b0 = a0 + (z.fuori - z.dentro);
+      if ((!sola || sola === tr) && !traccaBloccata(tr) && prende(a0, b0)) a.push(z.id);
+    });
+    return { pz: pz, g: g, a: a };
+  }
+  // quanto si puo' spostare il gruppo senza finire sopra chi resta fermo, e
+  // dove si attacca il magnete (i bordi di chi resta fermo, la testina, IN/OUT)
+  function limitiTs(sel){
+    var sp = {}, sa = {}, sg = {}, mob = [], fer = [], punti = [0, tSeq()];
+    sel.pz.forEach(function(id){ sp[id] = 1; }); sel.a.forEach(function(id){ sa[id] = 1; }); sel.g.forEach(function(id){ sg[id] = 1; });
+    PZ.forEach(function(x){ var o = { tr: x.traccia || "V1", a: x.t0 || 0, b: (x.t0 || 0) + (x.fuori - x.dentro) }; (sp[x.id] ? mob : fer).push(o); if (!sp[x.id]) punti.push(o.a, o.b); });
+    AUD.forEach(function(z){
+      var pz = z.legato ? PZ.filter(function(y){ return y.id === z.legato; })[0] : null;
+      var a0 = pz ? (pz.t0 || 0) : (z.t0 || 0), o = { tr: z.traccia || "A1", a: a0, b: a0 + (z.fuori - z.dentro) };
+      var muove = sa[z.id] || (z.legato && sp[z.legato]);
+      (muove ? mob : fer).push(o); if (!muove) punti.push(o.a, o.b);
+    });
+    var inizio = Infinity, fine = -Infinity;
+    mob.forEach(function(m){ inizio = Math.min(inizio, m.a); fine = Math.max(fine, m.b); });
+    GRAF.forEach(function(g){ if (sg[g.id]) { inizio = Math.min(inizio, g.dentro); fine = Math.max(fine, g.fuori); } else punti.push(g.dentro, g.fuori); });
+    var dMin = -inizio, dMax = Infinity, eps = 0.02;
+    mob.forEach(function(m){ fer.forEach(function(f){
+      if (f.tr !== m.tr) return;
+      if (f.b <= m.a + eps) dMin = Math.max(dMin, f.b - m.a);
+      else if (f.a >= m.b - eps) dMax = Math.min(dMax, f.a - m.b);
+    }); });
+    if (INS !== null) punti.push(INS); if (OUTS !== null) punti.push(OUTS);
+    return { dMin: dMin, dMax: dMax, inizio: inizio, fine: fine, punti: punti };
+  }
+  function togliAnteprimaTs(){
+    var p = el("pista"); if (!p) return;
+    Array.prototype.forEach.call(p.querySelectorAll(".ts-prende"), function(n){ n.classList.remove("ts-prende"); });
+    var l = el("tsLinea"); if (l) l.hidden = true;
+  }
+  function anteprimaTs(cx, cy, sh){
+    var p = el("pista"), r0 = p.getBoundingClientRect(), t = tDiX(cx - r0.left);
+    var sel = selezioneTs(t, STRUMENTO === "avanti" ? 1 : -1, sh ? corsiaSotto(cx, cy) : "");
+    var sp = {}, sg = {}, sa = {};
+    sel.pz.forEach(function(id){ sp[id] = 1; }); sel.g.forEach(function(id){ sg[id] = 1; }); sel.a.forEach(function(id){ sa[id] = 1; });
+    Array.prototype.forEach.call(p.querySelectorAll(".ed-pezzo[data-i]"), function(n){ var z = PZ[+n.dataset.i]; n.classList.toggle("ts-prende", !!(z && sp[z.id])); });
+    Array.prototype.forEach.call(p.querySelectorAll(".ed-graf[data-g]"), function(n){ n.classList.toggle("ts-prende", !!sg[n.dataset.g]); });
+    Array.prototype.forEach.call(p.querySelectorAll(".ed-audio[data-a]"), function(n){
+      var au = AUD.filter(function(z){ return z.id === n.dataset.a; })[0];
+      n.classList.toggle("ts-prende", !!(au && (sa[au.id] || (au.legato && sp[au.legato]))));
+    });
+    var l = el("tsLinea"); if (!l) { l = document.createElement("div"); l.id = "tsLinea"; l.className = "ed-ts-linea"; p.appendChild(l); }
+    l.hidden = false; l.style.left = (cx - r0.left) + "px";
+  }
+  el("pista").addEventListener("mousemove", function(e){
+    if ((STRUMENTO !== "avanti" && STRUMENTO !== "indietro") || TRASC || RETE) return;
+    var cx = e.clientX, cy = e.clientY, sh = e.shiftKey;
+    cancelAnimationFrame(TS_RAF); TS_RAF = requestAnimationFrame(function(){ anteprimaTs(cx, cy, sh); });
+  });
+  el("pista").addEventListener("mouseleave", function(){ cancelAnimationFrame(TS_RAF); togliAnteprimaTs(); });
+  // Canc sullo spazio vuoto scelto: si chiude, e tutto quello che viene dopo scala indietro
+  function chiudiBuco(){
+    var z = BUCO_SEL; if (!z || !SEQ) return;
+    var eps = 0.02, lung = z.b - z.a, dentro = [];
+    // quello che sta DENTRO lo spazio su un'altra traccia lo tiene aperto: Premiere non lo chiude, e neanche noi
+    PZ.forEach(function(x){ var a = x.t0 || 0, b = a + (x.fuori - x.dentro); if (a < z.b - eps && b > z.a + eps) dentro.push(x.traccia || "V1"); });
+    GRAF.forEach(function(g){ if (g.dentro < z.b - eps && g.fuori > z.a + eps) dentro.push("la traccia delle grafiche"); });
+    AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + (au.fuori - au.dentro); if (a < z.b - eps && b > z.a + eps) dentro.push(au.traccia || "A1"); });
+    if (dentro.length) return avviso("err", "Nello spazio vuoto c\u2019\u00e8 qualcosa su " + dentro.filter(function(v, i){ return dentro.indexOf(v) === i; }).join(", ") + ": spostalo prima (con A prendi tutto quello che viene dopo).");
+    var sel = { pz: [], g: [], a: [] };
+    PZ.forEach(function(x){ if ((x.t0 || 0) >= z.b - eps) sel.pz.push(x.id); });
+    GRAF.forEach(function(g){ if (g.dentro >= z.b - eps) sel.g.push(g.id); });
+    AUD.forEach(function(au){ if (!au.legato && (au.t0 || 0) >= z.b - eps) sel.a.push(au.id); });
+    if (!sel.pz.length && !sel.g.length && !sel.a.length) { BUCO_SEL = null; disegnaTl(); return; }
+    post({ tipo:"clip-hl-sposta-gruppo", seq: SEQ.id, d: -Math.round(lung * 1000) / 1000, pezzi: sel.pz, grafiche: sel.g, audio: sel.a })
+      .then(function(d){ BUCO_SEL = null; ricaricaSeq(d.seq); avviso("ok", "Spazio vuoto chiuso: " + tc(lung) + "."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
   function tagliaQui(pz, e){
     var i = +pz.dataset.i, x = PZ[i]; if (!x || !SEQ) return;
     var t = tDiX(e.clientX - el("pista").getBoundingClientRect().left);
@@ -5210,6 +5339,17 @@
     // (il preventDefault qui sotto lasciava il fuoco su un campo: la tastiera
     // restava muta finche' non si cliccava altrove)
     var ae = document.activeElement; if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) ae.blur();
+    BUCO_SEL = null;
+    if (STRUMENTO === "avanti" || STRUMENTO === "indietro") {
+      var rT = el("pista").getBoundingClientRect(), tT = tDiX(e.clientX - rT.left);
+      var selT = selezioneTs(tT, STRUMENTO === "avanti" ? 1 : -1, e.shiftKey ? corsiaSotto(e.clientX, e.clientY) : "");
+      togliAnteprimaTs(); e.preventDefault();
+      SELS = selT.pz.slice(); SEL = SELS.length ? SELS[SELS.length - 1] : null; SELGS = selT.g.slice(); SELAS = selT.a.slice(); SELG = null; SELA = null;
+      if (!selT.pz.length && !selT.g.length && !selT.a.length) { disegnaEditor(); return; }
+      var setOf = function(l){ var o = {}; l.forEach(function(id){ o[id] = 1; }); return o; };
+      TRASC = { tipo: "gruppo", x0: e.clientX, d: 0, mosso: false, sel: selT, lim: limitiTs(selT), setP: setOf(selT.pz), setG: setOf(selT.g), setA: setOf(selT.a) };
+      disegnaEditor(); return;
+    }
     if (!(e.shiftKey || e.metaKey || e.ctrlKey)) { SELGS = []; SELAS = []; }
     // le due prese della dissolvenza stanno SOPRA la clip audio: vanno
     // guardate per prime, se no si prende la clip e la si sposta invece di
@@ -5285,6 +5425,20 @@
     if (!TRASC) return;
     var ds = (e.clientX - TRASC.x0) / (el("pista").clientWidth || 800) * (LENTE.b - LENTE.a);
     if (Math.abs(e.clientX - TRASC.x0) > 3) TRASC.mosso = true;
+    if (TRASC.tipo === "gruppo") {
+      var L = TRASC.lim, dG = ds, meglio = null;
+      AGGANCIO = null;
+      if (MAGNETE && !ALT_GIU) {
+        var spanG = Math.max(0.001, LENTE.b - LENTE.a), vic = 9 / (el("pista").clientWidth || 800) * spanG;
+        L.punti.forEach(function(q){ [L.inizio, L.fine].forEach(function(bordo){ var dd = q - (bordo + ds); if (Math.abs(dd) < vic) { vic = Math.abs(dd); meglio = { d: ds + dd, q: q }; } }); });
+        if (meglio) { dG = meglio.d; AGGANCIO = meglio.q; }
+      }
+      var d2 = Math.max(L.dMin, Math.min(L.dMax, dG));
+      if (Math.abs(d2 - dG) > 1e-6) AGGANCIO = null;
+      TRASC.d = d2;
+      if (TRASC.mosso) el("pista").style.cursor = "grabbing";
+      disegnaTl(); return;
+    }
     if (TRASC.g_id || TRASC.a_id) {
       var tot2 = durSeq();
       if (TRASC.tipo === "g-sx") { TRASC.a = Math.max(0, Math.min(TRASC.f0 - 0.4, TRASC.d0 + ds)); }
@@ -5334,7 +5488,13 @@
     if (RETE) {
       var re = RETE; RETE = null;
       if (el("reteBox")) el("reteBox").hidden = true;
-      if (!re.mosso) vaiTempo(tDiX(re.x0 - el("pista").getBoundingClientRect().left), false);
+      if (!re.mosso) {
+        // UN CLIC NELLO SPAZIO VUOTO LO SCEGLIE, come in Premiere: poi Canc lo chiude
+        var tq = tDiX(re.x0 - el("pista").getBoundingClientRect().left), bq = null;
+        if (!re.agg && corsiaSotto(re.x0, re.y0) === "V1") bq = buchiDiQui().filter(function(z){ return tq > z.a && tq < z.b; })[0] || null;
+        if (bq) { BUCO_SEL = { a: bq.a, b: bq.b }; SELS = []; SEL = null; SELGS = []; SELAS = []; SELG = null; SELA = null; }
+        else vaiTempo(tq, false);
+      }
       else { var nSel = SELS.length + SELGS.length + SELAS.length; if (nSel > 1) avviso("ok", nSel + " elementi selezionati: Canc li toglie tutti."); }
       disegnaTl();
       return;
@@ -5352,6 +5512,14 @@
       // davvero mosso in orizzontale, e solo se era gia' staccato
       if (!tr.legato && tr.mosso) c2.t0 = Math.round(tr.a * 1000) / 1000;
       post(c2).then(function(d){ ricaricaSeq(d.seq); if (cambiaTraccia) avviso("ok", "Audio su " + tr.trA + "."); })
+        .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
+      return;
+    }
+    if (tr.tipo === "gruppo") {
+      if (!tr.mosso || Math.abs(tr.d) < 0.005) { disegnaEditor(); return; }
+      var n3 = tr.sel.pz.length + tr.sel.g.length + tr.sel.a.length;
+      post({ tipo:"clip-hl-sposta-gruppo", seq: SEQ.id, d: Math.round(tr.d * 1000) / 1000, pezzi: tr.sel.pz, grafiche: tr.sel.g, audio: tr.sel.a })
+        .then(function(d){ ricaricaSeq(d.seq); avviso("ok", n3 + (n3 === 1 ? " elemento spostato" : " elementi spostati") + " di " + (d.d > 0 ? "+" : "") + (+d.d).toFixed(2) + " s."); })
         .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
       return;
     }
@@ -5765,7 +5933,7 @@
     ["Spazio", "riproduci / ferma"], ["J · K · L", "indietro 5 s · fermo · avanti (L di nuovo: più veloce, Shift+L: più piano, Shift+J: 30 s indietro)"], [", (virgola)", "inserisci dalla Sorgente, dopo il pezzo sotto la testina"], ["⌘D", "duplica il pezzo scelto"], ["← →", "un fotogramma (Shift: cinque)"], ["↑ ↓", "punto di montaggio prima / dopo"], ["Home · End", "inizio / fine"],
     ["I · O", "entrata / uscita della sequenza"], ["Shift+I · Shift+O", "vai all'entrata / all'uscita"], ["Alt+I · Alt+O · Alt+X", "togli entrata / uscita / tutte e due"], ["X", "entrata e uscita sul pezzo sotto la testina"],
     ["; · '", "solleva · estrai l'intervallo (qui senza buchi: tutte e due estraggono)"],
-    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["V · C", "strumento: scelta · lametta (poi clicca la clip dove tagliarla)"], ["Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["R", "velocit\u00e0 del pezzo: 50% \u00e8 il rallentatore"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
+    ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["V · C", "strumento: scelta · lametta (poi clicca la clip dove tagliarla)"], ["A · Shift+A", "seleziona in avanti · indietro: clicca e trascina tutto quello che viene dopo (prima), su tutte le tracce; con Shift solo quella traccia"], ["clic sul vuoto · Canc", "chiude lo spazio vuoto: quello che viene dopo scala indietro"], ["Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["R", "velocit\u00e0 del pezzo: 50% \u00e8 il rallentatore"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
     ["Canc", "togli i pezzi scelti"], ["Cmd+A · Cmd+Shift+A", "scegli tutti / nessuno"], ["D", "scegli il pezzo sotto la testina"], ["Shift+clic", "aggiungi alla scelta"],
     ["Cmd+C · Cmd+X · Cmd+V", "copia · taglia · incolla dopo la testina"], ["Cmd+Z · Shift+Cmd+Z", "annulla / ripeti"],
     ["Cmd+L", "lega / stacca l'audio del pezzo scelto"], ["G", "gain dell'audio scelto (dB)"], ["M", "marker sulla partita al punto della testina"], ["F", "match frame: apri la partita a questo secondo"],
@@ -6045,7 +6213,8 @@
     else if (K === "E") { allungaQui(); }
     else if (K === "C") { mettiStrumento("lametta"); }
     else if (K === "V") { mettiStrumento("scelta"); }
-    else if (k === "Delete" || k === "Backspace") { e.preventDefault(); el("eTogli").click(); }
+    else if (K === "A") { mettiStrumento(e.shiftKey ? "indietro" : "avanti"); }
+    else if (k === "Delete" || k === "Backspace") { e.preventDefault(); if (BUCO_SEL && !SELS.length && !SELGS.length && !SELAS.length) chiudiBuco(); else el("eTogli").click(); }
     else if (k === "Escape") { RETE = null; if (el("reteBox")) el("reteBox").hidden = true; SELGS = []; SELAS = []; disegnaTl(); }
     else if (K === "D") { var xd = pezzoQui(); if (xd) { scegli(xd.id, false); disegnaEditor(); } }
     else if (K === "S") { el("eMagnete").click(); }
@@ -6964,14 +7133,13 @@
   function quandoBreve(s){ try { return s ? new Date(s).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" }) : ""; } catch (e) { return ""; } }
   function disegnaBrowser(){
     var c = el("bmElenco"); if (!c) return;
-    if (AMBITO) {
-      c.innerHTML = '<div class="storia"><div class="nota">Qui c’è solo il materiale del Como 1907: si cerca e si sceglie nel <a href="mam-1907.html" style="color:var(--oro2)">MAM Como 1907</a>, con il + e <b>Monta questi</b>.</div></div>';
-      if (el("bmConto")) el("bmConto").textContent = ""; return;
-    }
+    // (30/09/2026, Goffredo: "le partite del Como 1907, di tutte le categorie, italiano e inglese")
+    // nell'editor del Como 1907 il Browser elenca le partite del Como registrate da Como TV, come nel MAM
+    // di Como TV; il resto dell'archivio (calcio internazionale, Football Show, AUDIO ONLY) resta fuori
     var corpo = c.closest(".pan-corpo"); if (corpo && corpo.hidden) return;
     if (!EVENTI.length && !BM.chiesti) {
       BM.chiesti = true; c.innerHTML = '<div class="storia"><div class="nota">Leggo l’archivio…</div></div>';
-      post({ tipo:"clip-qnap-eventi" }).then(function(j){ EVENTI = soloNas((j.eventi || []).filter(function(x){ return x.partita || x.durata; })); disegnaBrowser(); })
+      post({ tipo:"clip-qnap-eventi" }).then(function(j){ EVENTI = soloNas((j.eventi || []).filter(function(x){ return (x.partita || x.durata) && (!AMBITO || delComo1907(x)); })); disegnaBrowser(); })
         .catch(function(er){ BM.chiesti = false; c.innerHTML = '<div class="storia"><div class="nota">Archivio non raggiungibile: ' + esc(er.message) + "</div></div>"; });
       return;
     }

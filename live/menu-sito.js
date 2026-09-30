@@ -41,7 +41,7 @@
     { k: "grafiche", nome: "Grafiche statiche e Social Media", voci: [[OTT, "Grafiche Statiche"], [OTT + "?solo=social", "Social Video e Maschere"], ["uefa-club-channel.html", "UEFA Club Channel"]] },
     { k: "mam", nome: "MAM e Magazzino Como TV", voci: [["live/mam2.html", "MAM Como TV"], ["live/mam2.html?raccolte=1", "Raccolte / Macchie"], ["live/mam2.html?live=1", "MAM Como TV | Live"],
       ["live/mam2.html?montaggio=1", "Editing"], ["live/magazzino.html", "Magazzino"]] },
-    { k: "1907", nome: "MAM e Magazzino Como 1907", voci: [["live/mam-1907.html", "MAM Como 1907"], ["live/mam-1907.html#partite", "Partite del Como"], ["live/mam2.html?montaggio=1&ambito=1907", "Editor 1907"], ["live/mam-1907.html#raccolte", "Raccolte 1907"],
+    { k: "1907", nome: "MAM e Magazzino Como 1907", voci: [["live/mam-1907.html", "MAM Como 1907"], ["live/mam2.html?montaggio=1&ambito=1907", "Editor 1907"], ["live/mam-1907.html#raccolte", "Raccolte 1907"],
       ["live/cartelle-1907.html", "Cartelle 1907"], ["live/doppioni-1907.html", "Doppioni 1907"], [null, "Magazzino 1907", "in arrivo"]] },
     { k: "dipendenti", nome: "Dipendenti e documenti VMIX", voci: [["index.html#presenze-dipendenti", "Presenze Dipendenti"], ["live/turni.html", "Turni"], ["index.html#vmix", "Documenti VMIX"]] },
     { k: "guida", nome: "Guida", voci: [["guida/index.html", "Guida"], ["guida/palestra.html", "Palestra"]] }

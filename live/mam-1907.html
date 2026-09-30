@@ -948,7 +948,7 @@
     Q = h.get("q") || ""; $("cerca").value = Q;
     var r = h.get("r"); if (r) apriRaccolta(r, true);
     if (h.get("apri")) { var av = h.get("apri"), as = +h.get("s") || 0; setTimeout(function () { apriVia(av, as); }, 50); }   // &s= il secondo (i link delle email)
-    if (h.has("partite")) { FX.modo = "ord"; FX.dip = "ft"; FX.sub = "Matchday"; FX.comp = ""; FX.par = ""; fxDisegna(); }   // dal menu' del sito
+    if (h.has("partite")) { var ss = Object.keys(STAGIONI).sort().reverse()[0] || ""; FX.modo = "vere"; FX.via = "\u00a7" + ss.slice(0, 4) + "/partite"; fxDisegna(); }   // le partite della stagione in corso
     else if (h.has("fv")) { FX.modo = "vere"; FX.via = h.get("fv"); fxDisegna(); }
     else if (h.has("fo")) { var fo = h.get("fo").split("|"); FX.modo = "ord"; FX.stag = fo[0] || ""; FX.dip = fo[1] || ""; FX.sub = fo[2] || ""; FX.comp = fo[3] || ""; FX.par = fo[4] || ""; fxDisegna(); }
     disegnaGettoni();
@@ -1058,8 +1058,51 @@
   // LE PARTITE DEL COMO DA COMO TV (29/09/2026): la stessa lista del MAM di Como TV (clip-qnap-eventi,
   // in sola lettura), tenute solo quelle del Como (Prima squadra, Women, Academy) e il Football Show.
   // Il calcio internazionale resta nel MAM di Como TV. Una riga per partita, col materiale del club
-  // di quel giorno dentro; il club non apre la registrazione di Como TV (per ora).
+  // di quel giorno dentro. Dal 30/09/2026 la partita si apre nell'editor del Como 1907 (apriPartitaComoTv).
   var EVC = [];
+  function apriPartitaComoTv(x) {
+    var u = "mam2.html?asset=" + encodeURIComponent(x.rec) + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + "&ambito=1907";
+    var w = window.open(u, "mam2-editing"); if (!w) location.href = u;
+  }
+  // LE PARTITE NELLE STAGIONI (Goffredo, 30/09/2026: "distribuisci le partite nelle stagioni"): dentro ogni
+  // "Stagione 2025/26" c'e' "Partite del Como", divise per categoria (prima squadra, women, Primavera, Under...),
+  // una riga per partita con ITA ed ENG; il clic apre la versione nell'editor del Como 1907.
+  function stagDaVia(via) { var m = /^\u00a7(\d{4})/.exec(via || ""); return m ? m[1] + "/" + String(+m[1] + 1).slice(2) : ""; }
+  function partiteDellaStagione(stag) {
+    var per = {};
+    EVC.filter(function (e) { return e.stag === stag; }).forEach(function (e) {
+      var x = e.x, nomi = (x.squadre || []).map(function (q) { return norm(q.nome); }).sort().join("|"), k = e.dt + "|" + (nomi || norm(versione(x.titolo || x.partita || "").t));
+      var o = per[k] = per[k] || { dt: e.dt, ramo: e.ramo, sotto: e.sotto, x: x, ris: "", v: {} };
+      o.v[e.lingua] = e; o.ris = o.ris || x.ris || e.ris || "";
+    });
+    return Object.keys(per).map(function (k) {
+      var o = per[k], t = (o.x.partita || "") + " " + (o.x.competizione || "") + " " + (o.x.compVista || "");
+      // la Kings League (Zeta Como, il Como Gaming Club) ha la sua categoria: non e' la prima squadra
+      o.cat = /zeta como|kings league/i.test(t) ? "Kings League · Zeta Como" : o.ramo === "Academy" ? (o.sotto || "Academy") : o.ramo;
+      if (Array.isArray(o.ris)) o.ris = o.ris.join("-"); else o.ris = String(o.ris || "").replace(/^(\d+)\s*,\s*(\d+)$/, "$1-$2");
+      return o;
+    });
+  }
+  var CAT_ORD = ["Prima squadra", "Women", "Primavera", "Under 23", "Under 21", "Under 20", "Under 19", "Under 18", "Under 17", "Under 16", "Under 15", "Under 14", "Academy", "Kings League · Zeta Como"];
+  function fxPartiteStagione(via, stag, pz) {
+    fxBc(pz.concat([["Partite del Como", ""]])); fxSide(); $("fxAzioni").hidden = true;
+    FX_ULTIMA = { via: via, cartelle: [], file: [], virtuale: true };
+    var l = partiteDellaStagione(stag), cats = {};
+    l.forEach(function (o) { (cats[o.cat] = cats[o.cat] || []).push(o); });
+    var nomi = Object.keys(cats).sort(function (a, b) { var i = CAT_ORD.indexOf(a), j = CAT_ORD.indexOf(b); return (i < 0 ? 50 : i) - (j < 0 ? 50 : j) || a.localeCompare(b); });
+    var h = '<p class="fx-conta">' + n(l.length) + (l.length === 1 ? " partita" : " partite") + " del Como registrate da Como TV · " + esc(stag) + " · clic su ITA o ENG per aprirla nell’Editor</p>";
+    nomi.forEach(function (c) {
+      var ll = cats[c].sort(function (a, b) { return b.dt - a.dt; });
+      h += '<div class="fx-sez">' + esc(c) + " · " + n(ll.length) + '</div><div style="overflow-x:auto"><table class="el-tab fx-tab"><thead><tr><th>Data</th><th>Partita</th><th>Competizione</th><th>Risultato</th><th>Versioni</th></tr></thead><tbody>' +
+        ll.map(function (o) {
+          var x = o.x, sq = x.squadre && x.squadre.length === 2 ? x.squadre.map(function (q) { return q.nome; }).join(" – ") : versione(x.titolo || x.partita || "").t.replace(/\s+\d+\s*[-–]\s*\d+\s*$/, "");
+          return "<tr><td class=\"n\">" + dataRip(o.dt) + '</td><td class="tit"><b>' + esc(tc(sq)) + "</b></td><td>" + esc(x.compVista || x.competizione || "") + '</td><td class="n">' + esc(o.ris || "") + "</td><td>" +
+            ["ITA", "ENG"].map(function (lg) { var e = o.v[lg]; return e ? '<button type="button" class="mini" data-apripart="' + esc(e.x.rec) + "|" + esc(e.x.reg || "") + '" title="apri nell’Editor la versione ' + lg + '">' + lg + "</button> " : ""; }).join("") + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    });
+    if (!l.length) h += '<div class="vuoto">Nessuna partita del Como registrata da Como TV in questa stagione.</div>';
+    $("fxBody").innerHTML = h;
+  }
   function caricaPartiteComoTv() {
     return post({ tipo: "clip-qnap-eventi" }).then(function (j) {
       EVC = (j.eventi || []).filter(function (x) {
@@ -1293,7 +1336,9 @@
     var r = RIGHE_H[+c.dataset.ri]; if (!r) return;
     // (29/09/2026, sera) niente Editing nel MAM 1907: il servizio si apre come cartella, la giornata col suo
     // materiale, le partite intere di Como TV restano nel MAM di Como TV
-    if (r.ev) { avviso("", "La partita intera di Como TV (" + esc(r.e.lingua) + ") si guarda nel MAM di Como TV. Qui c’è il materiale del club."); return; }
+    // (30/09/2026) la partita di Como TV si apre come nel MAM di Como TV: nell'editor del Como 1907, con la
+    // sorgente, il pannello Partita (azioni, telecronaca, boati, tabellone) e il taglio delle clip
+    if (r.ev) { apriPartitaComoTv(r.e.x); return; }
     if (r.pa) { G = G.filter(function (g) { return g.k === "tipo"; }); metti({ k: "part", v: String(r.pa.g), n: nomeDi("part", String(r.pa.g)) }); window.scrollTo(0, 0); return; }
     FX.modo = "vere"; FX.via = r.x[0]; fxVai();
   });
@@ -1583,12 +1628,11 @@
     // "aggiungi Editor e Partite del Como"); Tutte le stagioni; poi gli Altri progetti
     h += '<div class="fx-g"><h3>Como 1907</h3><a href="cartelle-1907.html"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Organizza le cartelle</span></a>' +
       '<a href="mam2.html?montaggio=1&amp;ambito=1907"><span class="fx-ic"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M1.5 9.5h13M5 9.5v3.5M9 9.5v3.5"/></svg></span><span class="fx-nome">Editor</span></a>' +
-      '<button class="' + (FX.modo === "ord" && FX.dip === "ft" && FX.sub === "Matchday" ? "on" : "") + '" data-fxscorc="partite"><span class="fx-ic"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 4.6l2.6 1.9-1 3H6.4l-1-3z"/></svg></span><span class="fx-nome">Partite del Como</span></button>' +
       '<button class="' + (vere && FX.via === "\u00a7tutte" ? "on" : "") + '" data-fxvia="\u00a7tutte"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Tutte le stagioni</span></button>' +
       gr.stagioni.map(function (g) {
-        var dentro = g.cartelle.indexOf(cur[0]) >= 0 || FX.via === g.via, aperta = FX_APERTE[g.via] !== undefined ? FX_APERTE[g.via] : dentro;
+        var dentro = g.cartelle.indexOf(cur[0]) >= 0 || FX.via === g.via || FX.via.indexOf(g.via + "/") === 0, aperta = FX_APERTE[g.via] !== undefined ? FX_APERTE[g.via] : dentro;
         return '<button class="liv2 stag' + (vere && FX.via === g.via ? " on" : "") + '" data-fxvia="' + g.via + '"><span class="fx-ic" data-fxapri="' + g.via + '" title="' + (aperta ? "chiudi" : "apri") + '">' + (aperta ? "▾" : "▸") + '</span><span class="fx-nome">' + esc(g.nome) + '</span><span class="fx-n">' + n(g.cartelle.reduce(function (t, c) { return t + (top[c] || 0); }, 0)) + "</span></button>" +
-          (aperta ? g.cartelle.map(function (c) { return ramo(c, "liv3 in-stag"); }).join("") : "");
+          (aperta ? (partiteDellaStagione(stagDaVia(g.via)).length ? '<button class="liv3 in-stag' + (vere && FX.via === g.via + "/partite" ? " on" : "") + '" data-fxvia="' + g.via + '/partite"><span class="fx-ic"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 4.6l2.6 1.9-1 3H6.4l-1-3z"/></svg></span><span class="fx-nome">Partite del Como</span><span class="fx-n">' + n(partiteDellaStagione(stagDaVia(g.via)).length) + "</span></button>" : "") + g.cartelle.map(function (c) { return ramo(c, "liv3 in-stag"); }).join("") : "");
       }).join("") + "</div>" +
       (gr.altre.length ? '<div class="fx-g"><hr class="fx-sep" aria-hidden="true"><h3>Altri progetti</h3>' + gr.altre.map(function (c) { return ramo(c, "liv2"); }).join("") + "</div>" : "");
     var dips = dipsDellaStagione(), stg = Object.keys(STAGIONI).sort().reverse().concat(["-", ""]);
@@ -1623,6 +1667,7 @@
     var pz = [["Como 1907", 'data-fxvia=""']]; if (gq || via === "\u00a7tutte") pz.push(["Tutte le stagioni", 'data-fxvia="\u00a7tutte"']); if (gq) pz.push([gq.nome, 'data-fxvia="' + gq.via + '"']);
     if (via && via.charAt(0) !== "\u00a7") via.split("/").forEach(function (p, i, a) { if (i && PASSAGGIO.test(p)) return; pz.push([i ? tc(p) : nomeVista(p), 'data-fxvia="' + esc(a.slice(0, i + 1).join("/")) + '"']); });
     // il nodo "Stagione 2026/27": non e' una cartella della NAS, raccoglie quelle di quella stagione
+    if (/^\u00a7\d{4}\/partite$/.test(via)) { var gp = GS.stagioni.filter(function (g) { return g.via === via.split("/")[0]; })[0]; if (gp) pz.push([gp.nome, 'data-fxvia="' + gp.via + '"']); fxPartiteStagione(via, stagDaVia(via), pz); return; }
     if (via === "\u00a7tutte") {
       fxBc(pz); fxSide(); $("fxAzioni").hidden = true;
       FX_ULTIMA = { via: via, cartelle: [], file: [], virtuale: true };
@@ -1678,7 +1723,7 @@
       return '<div class="ell' + (o.stagione ? " stag" : "") + '" tabindex="0" data-fxvia="' + esc(o.via) + '" title="' + esc(o.nome) + '">' +
         '<div class="ell-foto"' + (foto ? ' data-mini="' + esc(foto) + '"' : "") + '><span class="foto"></span>' + (foto ? "" : '<span class="ell-vuota">' + SVG_CART_G + "</span>") +
         '<span class="ell-tit">' + (o.stagione ? "<i>Stagione</i>" : "") + "<b>" + esc(tc(tit)) + "</b></span></div>" +
-        "<small>" + (o.v + o.f ? n(o.v + o.f) + " elementi" : "vuota") + (o.p ? " · " + gb(o.p) : "") + "</small></div>";
+        "<small>" + (o.partite ? n(o.partite) + " partite · ITA / ENG" : o.v + o.f ? n(o.v + o.f) + " elementi" : "vuota") + (o.p ? " · " + gb(o.p) : "") + "</small></div>";
     }).join("") + "</div>";
   }
   function fxVereDisegna(j) {
@@ -1694,6 +1739,7 @@
     var nodi = (gr ? gr.stagioni : []).map(function (g) { var o = { k: g.via, nome: g.nome, via: g.via, stagione: 1, top: "Stagione", s: [], e: [], v: 0, f: 0, p: 0, dt: 0 }; g.cartelle.forEach(function (c) { conta(c, o); }); o.quante = g.cartelle.length; return o; });
     var voci = (j.cartelle || []).map(function (c) { var p = (via ? via + "/" : "") + (c.sotto ? c.sotto + "/" : "") + c.nome; return conta(p, { k: c.nome, nome: via ? c.nome : nomeVista(c.nome), via: p, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 }); });
     voci = nodi.concat(ordina(voci));
+    if (j.stagione) { var np = partiteDellaStagione(stagDaVia(j.stagione.via)).length; if (np) voci.unshift({ k: "partite", nome: "Partite del Como", via: j.stagione.via + "/partite", s: [], e: [], v: 0, f: 0, p: 0, dt: 0, partite: np }); }
 
     // (30/09/2026) i .log dei download da Frame non sono materiale: non si mostrano; alla prima schermata niente file
     var ff = (!via && !j.stagione ? [] : (j.file || []).filter(function (f) { return !/\.log$/i.test(f.nome); })).slice().sort(FX_ORD === "peso" ? function (a, b) { return b.peso - a.peso; } : function (a, b) { return a.nome.localeCompare(b.nome, "it", { numeric: true }); });
@@ -1769,6 +1815,7 @@
       if (FX.stag === t.dataset.fxfreccia) { FX_CHIUSA = !FX_CHIUSA; fxSide(); return; }
       FX_CHIUSA = false; FX.modo = "ord"; FX.stag = t.dataset.fxfreccia; FX.dip = ""; FX.sub = ""; fxVai(); return;
     }
+    if ((t = e.target.closest("[data-apripart]"))) { var pp = t.dataset.apripart.split("|"); apriPartitaComoTv({ rec: pp[0], reg: pp[1] }); return; }
     if ((t = e.target.closest("[data-fxstag]"))) { FX_CHIUSA = false; FX.modo = "ord"; FX.stag = t.dataset.fxstag; FX.dip = ""; FX.sub = ""; FX.comp = ""; FX.par = ""; fxVai(); return; }
     if ((t = e.target.closest("[data-fxcomp]"))) { FX.modo = "ord"; FX.comp = t.dataset.fxcomp; FX.par = ""; fxVai(); return; }
     if ((t = e.target.closest("[data-fxpar]"))) { FX.modo = "ord"; FX.par = t.dataset.fxpar; fxVai(); return; }
@@ -2232,7 +2279,7 @@
     if (mos.length) h += '<div class="sg-gruppo"><i>Momenti</i>' + mos.map(function (m) { return chip("mo", m, m, mo[m]); }).join("") + "</div>";
     var cs = Object.keys(cam).sort(function (a, b) { return cam[b] - cam[a]; });
     if (cs.length) h += '<div class="sg-gruppo"><i>Chi ha girato</i>' + cs.map(function (c) { return chip("cam", c, c, cam[c]); }).join("") + "</div>";
-    if (pa.mam && pa.mam.length) h += '<div class="sg-gruppo"><i>MAM Como TV</i>' + pa.mam.map(function (m) { return '<a class="sg-c" href="mam2.html?asset=' + encodeURIComponent(m[0]) + '" target="_blank" rel="noopener" title="la stessa partita nel MAM di Como TV">' + esc(m[1]) + " ↗</a>"; }).join("") + "</div>";
+    if (pa.mam && pa.mam.length) h += '<div class="sg-gruppo"><i>MAM Como TV</i>' + pa.mam.map(function (m) { return '<a class="sg-c" href="mam2.html?asset=' + encodeURIComponent(m[0]) + '&amp;ambito=1907" target="mam2-editing" rel="noopener" title="la stessa partita nel MAM di Como TV">' + esc(m[1]) + " ↗</a>"; }).join("") + "</div>";
     return h;
   }
   function cercaDaScheda(p) {
