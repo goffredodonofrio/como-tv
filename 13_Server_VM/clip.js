@@ -11392,7 +11392,12 @@ function giraOrologi() {
   // a coda finita, le partite non lette si ritentano una volta: un sondaggio
   // caduto su un replay o su una grafica spenta la seconda volta cade altrove
   if (!CODA_OROLOGI.length) {
-    if (!orologiInMoto && !orologiRipassati) { orologiRipassati = true; Object.keys(ARCHIVIO).forEach((k) => { if (ARCHIVIO[k].orologioFallito && !ARCHIVIO[k].orologio) delete ARCHIVIO[k].orologioFallito; }); orologiInCoda(true); }
+    // (30/09/2026) Il segno "non leggibile" NON si toglie piu' prima di
+    // ritentare: toglierlo faceva uscire la partita dalle utilizzabili per
+    // tutto il giro (65 partite "non ancora" dopo ogni riavvio). Resta finche'
+    // la lettura non riesce, e ogni partita si ritenta UNA volta sola, non a
+    // ogni avvio: il secondo no si ricorda (riprovato).
+    if (!orologiInMoto && !orologiRipassati) { orologiRipassati = true; orologiInCoda(true); }
     return;
   }
   const registrando = registrandoDavvero() || laDirettaGira();
@@ -11404,12 +11409,13 @@ function giraOrologi() {
   if (CODA_DURATE.length || durateInMoto) { setTimeout(giraOrologi, 60000); return; }
   const rec = CODA_OROLOGI.shift();
   orologiInMoto++;
+  const eraFallito = !!(ARCHIVIO[rec] && ARCHIVIO[rec].orologioFallito);
   calibraOrologio(rec).then(() => { orologiFatti++; })
     .catch((e) => {
       orologiFalliti++; console.log("[clip] cronometro non letto (" + rec + "): " + e.message);
       // ci si ricorda del fallimento: a un riavvio non si ricomincia dalle
       // stesse partite senza grafica; si ritentano solo nel giro finale
-      if (ARCHIVIO[rec]) { ARCHIVIO[rec].orologioFallito = { quando: new Date().toISOString(), motivo: String(e.message).slice(0, 80) }; scriviArchivio(); }
+      if (ARCHIVIO[rec]) { ARCHIVIO[rec].orologioFallito = Object.assign({ quando: new Date().toISOString(), motivo: String(e.message).slice(0, 80) }, eraFallito ? { riprovato: true } : {}); scriviArchivio(); }
     })
     .then(() => { orologiInMoto--; setTimeout(giraOrologi, 500); });
   setTimeout(giraOrologi, 3000);       // e intanto parte la seconda
@@ -11440,7 +11446,7 @@ function orologiInCoda(ripasso) {
     const a = ARCHIVIO[rec];
     if (a && senzaCodeDi(a)) return;                       // S3 contato: il cronometro si legge a richiesta
     if (!a || a.orologio || gia.has(rec) || senzaPartita(a)) return;
-    if (a.orologioFallito && !ripasso) return;        // gia' provata: al giro finale
+    if (a.orologioFallito && (!ripasso || a.orologioFallito.riprovato)) return;   // gia' provata: al giro finale, e una volta sola
     CODA_OROLOGI.push(rec);
   });
   CODA_OROLOGI.sort((x, y) => prioritaPartita(x) - prioritaPartita(y));
