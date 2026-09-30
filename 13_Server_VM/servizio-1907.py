@@ -750,6 +750,40 @@ def _persone_note():
     return sorted(e for e in ee if e and "@" in e)
 
 
+# ── LO STATO DI REVISIONE E L'ASSEGNATO, COME SU FRAME.IO (30/09/2026) ─────
+# Ogni clip (o cartella) ha uno stato (da rivedere, in lavorazione, approvata, da rifare) e, se serve, a chi
+# tocca. Chi e' assegnato lo ritrova in Menzioni. Lo mette chiunque del club; resta chi e quando.
+STATI = os.path.join(CASA, "stati.json")
+STATI_OK = ("", "da-rivedere", "in-lavorazione", "approvata", "da-rifare")
+
+
+def stati_leggi():
+    return 200, {"ok": True, "stati": _leggi(STATI, {"per": {}}).get("per", {})}
+
+
+def stati_scrivi(p, chi):
+    chi = (chi or "").lower()
+    if not chi: return 403, {"ok": False, "errore": "Per cambiare lo stato bisogna essere entrati con la propria mail."}
+    via = _rel(p.get("via"))
+    if not via or not os.path.realpath(os.path.join(R, via)).startswith(R + "/"): return 400, {"ok": False, "errore": "Percorso non valido."}
+    with C_LOCK:
+        c = _leggi(STATI, {"per": {}}); x = c.setdefault("per", {}).get(via, {})
+        if "stato" in p:
+            st = str(p.get("stato") or "")
+            if st not in STATI_OK: return 400, {"ok": False, "errore": "Stato sconosciuto."}
+            x["stato"] = st
+        if "assegnato" in p:
+            a = str(p.get("assegnato") or "").strip().lower()
+            if a and not re.fullmatch(r"[a-z0-9._%+-]+@(comofootball\.com|sent\.tv)", a): return 400, {"ok": False, "errore": "Si assegna a un indirizzo @comofootball.com o @sent.tv."}
+            if a != x.get("assegnato", ""): x["assegnato_quando"] = int(time.time()); x["assegnato_da"] = chi
+            x["assegnato"] = a
+        x.update(chi=chi, quando=int(time.time()))
+        if not x.get("stato") and not x.get("assegnato"): c["per"].pop(via, None)
+        else: c["per"][via] = x
+        _scrivi(STATI, c)
+    return 200, {"ok": True, "via": via, "stato": c["per"].get(via, {})}
+
+
 def commenti_leggi(q, chi):
     chi = (chi or "").lower()
     c = _leggi(COMMENTI, {"per": {}, "lette": {}})
@@ -764,6 +798,11 @@ def commenti_leggi(q, chi):
                     if chi and chi in y.get("menzioni", []):
                         fuori.append({"via": v, "id": x["id"], "rid": y["id"], "chi": y["chi"], "quando": y["quando"], "testo": y["testo"][:300],
                                       "t": x.get("t", 0), "letta": y["id"] in lette, "risolto": bool(x.get("risolto"))})
+        for v, x in _leggi(STATI, {"per": {}}).get("per", {}).items():
+            if chi and x.get("assegnato") == chi:
+                rid = "a" + hashlib.sha1((v + str(x.get("assegnato_quando", 0))).encode()).hexdigest()[:10]
+                fuori.append({"via": v, "id": "", "rid": rid, "chi": x.get("assegnato_da", ""), "quando": x.get("assegnato_quando", 0), "testo": "ti ha assegnato questa clip" + (" · stato: " + x["stato"].replace("-", " ") if x.get("stato") else ""),
+                              "t": 0, "letta": rid in lette, "risolto": x.get("stato") == "approvata", "assegnata": True})
         fuori.sort(key=lambda z: -z["quando"])
         return 200, {"ok": True, "menzioni": fuori[:300], "nuove": sum(1 for z in fuori if not z["letta"])}
     v = _rel((q.get("v") or [""])[0])
@@ -823,8 +862,12 @@ def commenti_scrivi(p, chi):
 
 
 def commenti_segui(da, a):
-    """una cartella o un file spostato: i commenti vanno col nuovo percorso"""
+    """una cartella o un file spostato: i commenti (e gli stati) vanno col nuovo percorso"""
     with C_LOCK:
+        st = _leggi(STATI, {"per": {}}); ps = st.get("per", {}); cam = False
+        for v in list(ps):
+            if v == da or v.startswith(da + "/"): ps[a + v[len(da):]] = ps.pop(v); cam = True
+        if cam: _scrivi(STATI, st)
         c = _leggi(COMMENTI, {"per": {}}); per = c.get("per", {}); cambiato = False
         for v in list(per):
             if v == da or v.startswith(da + "/"):
@@ -843,7 +886,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         via = urllib.parse.urlparse(self.path).path
-        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle", "/commenti", "/elimina-clip"): return self.rispondi(404, {"ok": False})
+        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle", "/commenti", "/elimina-clip", "/stati"): return self.rispondi(404, {"ok": False})
         try:
             n = int(self.headers.get("Content-Length") or 0)
             p = json.loads(self.rfile.read(min(n, 2_000_000)) or b"{}")
@@ -851,6 +894,9 @@ class H(BaseHTTPRequestHandler):
             return self.rispondi(400, {"ok": False, "errore": "richiesta non valida"})
         if via == "/volti":
             cod, r = battezza(p, str(self.headers.get("X-Utente") or ""))
+            return self.rispondi(cod, r)
+        if via == "/stati":
+            cod, r = stati_scrivi(p, str(self.headers.get("X-Utente") or ""))
             return self.rispondi(cod, r)
         if via == "/elimina-clip":
             cod, r = elimina_clip(p, str(self.headers.get("X-Utente") or ""))
@@ -923,6 +969,9 @@ class H(BaseHTTPRequestHandler):
             c = _leggi(ELIMINATI, {"voci": {}})
             return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "stato": stato, "eliminati": c.get("voci", {}),
                                        "puoi": puo_segnare(chi), "elimina": puo_eliminare(chi)}, extra={"Cache-Control": "no-store"})
+        if u.path == "/stati":
+            cod, r = stati_leggi()
+            return self.rispondi(cod, r, extra={"Cache-Control": "no-store"})
         if u.path == "/commenti":
             cod, r = commenti_leggi(q, self.headers.get("X-Utente") or "")
             return self.rispondi(cod, r, extra={"Cache-Control": "no-store"})
