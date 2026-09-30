@@ -431,6 +431,21 @@
   /* L'ANTEPRIMA AL PASSAGGIO: il video dell'azione (o il provino del 1907) sopra il fotogramma,
      e la tessera ingrandita sopra le altre */
   .tes.az{position:relative;transition:transform .18s ease, box-shadow .18s ease;}
+  .antp{position:relative;transition:transform .18s ease, box-shadow .18s ease;}
+  .minil.antp{display:inline-block;overflow:hidden;position:relative;}
+  .minil.antp.grande{z-index:40;box-shadow:0 12px 40px rgba(0,0,0,.65), 0 0 0 1px var(--oro);}
+  .minil.antp .ant-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:1;}
+  .minil.antp .ant-barra{position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.18);z-index:2;pointer-events:none;}
+  .minil.antp .ant-barra i{display:block;height:100%;width:0;background:#C9A24B;}
+  .antp.grande{transform:scale(2.3);z-index:40;box-shadow:0 22px 60px rgba(0,0,0,.65), 0 0 0 1px var(--oro);}
+  .antp .mini{position:relative;overflow:hidden;}
+  .antp .mini .ant-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:1;}
+  .antp .mini .ant-barra{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.18);z-index:2;pointer-events:none;}
+  .antp .mini .ant-barra i{display:block;height:100%;width:0;background:#C9A24B;transition:width .2s linear;}
+  .antp.ant-attesa .mini::after{content:"anteprima…";position:absolute;left:8px;bottom:8px;z-index:2;font-size:10.5px;color:var(--ivory2);background:rgba(0,0,0,.6);padding:2px 7px;border-radius:4px;pointer-events:none;}
+  .sq-tra{height:28px;padding:0 10px;border-radius:14px;border:1px solid var(--riga2);background:transparent;color:var(--ivory);font:600 11px/1 'Mazzard',sans-serif;cursor:pointer;}
+  .sq-tra.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
+  @media (prefers-reduced-motion: reduce){ .antp{transition:none;} }
   .tes.az.grande{transform:scale(2.3);z-index:40;box-shadow:0 22px 60px rgba(0,0,0,.65), 0 0 0 1px var(--oro);}
   @media (prefers-reduced-motion: reduce){ .tes.az{transition:none;} }
   .tes .mini .ant-video,.tes .mini .ant-prov{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;}
@@ -1895,6 +1910,8 @@
   // in vista. Le anteprime restano a un clic, e chi le sceglie le ritrova.
   var VISTA = "lista";
   try { if (localStorage.getItem("mam2-vista-2") !== "1") { localStorage.setItem("mam2-vista", "lista"); localStorage.setItem("mam2-vista-2", "1"); } VISTA = localStorage.getItem("mam2-vista") === "griglia" ? "griglia" : "lista"; } catch (e) {}
+  // l'anteprima di una partita: sette minuti dopo il fischio d'inizio, gioco e non studio
+  function tAntPartita(x){ var k = +(x && x.kickoff); return Math.round((k > 0 && k < 7200 ? k : 300) + 420); }
   function linkAsset(x){ return "mam2.html?asset=" + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : ""); }
   // L'ANTEPRIMA: la grafica si disegna dai dati (nessuna immagine da
   // fabbricare). Senza due squadre riconosciute (studio, file senza nome)
@@ -2017,17 +2034,17 @@
       el("recenti").innerHTML = '<table class="lista"><thead><tr><th></th><th>Partita</th><th>Competizione</th><th>Data</th><th>Durata</th><th>Peso</th><th>Telecronaca</th></tr></thead><tbody>' + VISTI.map(function(x){
         var r = x.reg && REGS[x.reg], mini = r && r.mini ? BASE + r.mini : "";
         var ant = anteprimaHtml(x);
-        return '<tr data-href="' + linkAsset(x) + '"><td class="mini2c' + (ant ? ' conant' : '') + '">' + (ant ? '<span class="minil conant">' + ant + '</span>' : '<span class="minil" data-reg="' + esc(x.s3 ? "" : (x.reg || "")) + '" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '"></span>') + '</td><td class="p">' + esc(nomeDi(x)) + (x.partita ? '<small>' + esc(x.nome) + '</small>' : '') + '</td><td>' + (compEtichetta(x) || '<span style="color:var(--fumo)">\u2014</span>') + '</td><td class="n">' + quando(x.quando) + '</td><td class="n">' + (x.durata ? tc(x.durata) : "—") + '</td><td class="n">' + peso(x.peso) + '</td><td>' + (x.telecronaca ? '<span class="tcb">tc</span>' : '<span style="color:var(--fumo)">—</span>') + '</td></tr>';
+        return '<tr data-href="' + linkAsset(x) + '"><td class="mini2c' + (ant ? ' conant' : '') + '">' + (ant ? '<span class="minil conant antp" data-rec="' + esc(x.s3 ? "" : (x.rec || "")) + '" data-reg="' + esc(x.s3 ? "" : (x.reg || "")) + '" data-t="' + tAntPartita(x) + '">' + ant + '</span>' : '<span class="minil antp" data-rec="' + esc(x.s3 ? "" : (x.rec || "")) + '" data-t="' + tAntPartita(x) + '" data-reg="' + esc(x.s3 ? "" : (x.reg || "")) + '" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '"></span>') + '</td><td class="p">' + esc(nomeDi(x)) + (x.partita ? '<small>' + esc(x.nome) + '</small>' : '') + '</td><td>' + (compEtichetta(x) || '<span style="color:var(--fumo)">\u2014</span>') + '</td><td class="n">' + quando(x.quando) + '</td><td class="n">' + (x.durata ? tc(x.durata) : "—") + '</td><td class="n">' + peso(x.peso) + '</td><td>' + (x.telecronaca ? '<span class="tcb">tc</span>' : '<span style="color:var(--fumo)">—</span>') + '</td></tr>';
       }).join("") + '</tbody></table>';
       el("recenti").querySelectorAll("tr[data-href]").forEach(function(tr){ tr.addEventListener("click", function(){ vaiEditing(tr.dataset.href); }); });
-      var daL = Array.prototype.slice.call(el("recenti").querySelectorAll(".minil[data-reg]")).filter(function(m){ return m.dataset.reg; });
+      var daL = Array.prototype.slice.call(el("recenti").querySelectorAll(".minil:not(.conant)[data-reg]")).filter(function(m){ return m.dataset.reg; });
       var giroL = function(){ var m = daL.shift(); if (!m) return; posa(m.dataset.reg, undefined, function(u){ m.style.backgroundImage = "url('" + u + "')"; }, function(){ setTimeout(giroL, 80); }); };
       giroL();
       return;
     }
     el("recenti").innerHTML = VISTI.map(function(x){
       var r = x.reg && REGS[x.reg], mini = r && r.mini ? BASE + r.mini : "", ant = anteprimaHtml(x);
-      return '<a class="card" href="' + linkAsset(x) + '">' +
+      return '<a class="card antp" href="' + linkAsset(x) + '" data-rec="' + esc(x.s3 ? "" : (x.rec || "")) + '" data-reg="' + esc(x.reg || "") + '" data-t="' + tAntPartita(x) + '">' +
         (ant ? '<div class="mini">' + ant : '<div class="mini" data-reg="' + esc(x.s3 ? "" : (x.reg || "")) + '" style="' + (mini ? "background-image:url('" + esc(mini) + "')" : "") + '">') + (x.telecronaca ? '<span class="tc">tc</span>' : '') + '<span class="play">&#9654;</span>' + (x.durata ? '<span class="dur">' + tc(x.durata) + '</span>' : '') + '</div>' +
         '<div class="t">' + didascalia(x) + '<small>' + compEtichetta(x, true) + quando(x.quando) + ' · ' + peso(x.peso) + '</small></div></a>';
     }).join("");
@@ -2574,6 +2591,10 @@
   }
   // ── I RISULTATI A TESSERE ──
   var RIS_TAB = "tutto";
+  // DUE SQUADRE, LE PARTITE FRA LORO (30/09/2026, Goffredo: "associare COMO e
+  // JUVENTUS per cercare tutte le partite tra le due"). Con due o piu' squadre
+  // nei gettoni, di suo valgono insieme; l'interruttore torna a "una delle due"
+  var SQ_TRA = true; try { SQ_TRA = localStorage.getItem("mam2-sq-tra") !== "0"; } catch (e) {}
   // IL RUOLO di chi si cerca (dal ponte: ESPN, se no il testo degli appunti)
   var RUOLI = {
     "gol": { eti: "Gol", cl: "", c: "#C9A24B" }, "assist": { eti: "Assist", cl: "assist", c: "#6EE7A8" },
@@ -2650,7 +2671,7 @@
   }, true);
   function tesseraPartita(x, link){
     var ant = anteprimaHtml(x);
-    return '<a class="card tes" href="' + link(x) + '"><div class="mini">' + ant + '</div><div class="t">' + didascalia(x) + '<small>' + compEtichetta(x, true) + quando(x.quando) + ' · ' + durata(x.durata) + lingueRis(x, link) + '</small></div></a>';
+    return '<a class="card tes antp" href="' + link(x) + '" data-rec="' + esc(x.s3 ? "" : (x.rec || "")) + '" data-reg="' + esc(x.reg || "") + '" data-t="' + tAntPartita(x) + '"><div class="mini">' + ant + '</div><div class="t">' + didascalia(x) + '<small>' + compEtichetta(x, true) + quando(x.quando) + ' · ' + durata(x.durata) + lingueRis(x, link) + '</small></div></a>';
   }
   // DOVE SI APRE. La finestra (dentro-fuori) e' larga apposta, per il montaggio;
   // chi clicca vuole vedere la giocata. Quando il secondo l'ha detto
@@ -2731,7 +2752,7 @@
       if (sts.length && (!ev || sts.indexOf(stagioneDi(ev.quando)) < 0)) return false;
       if (lgs.length && lgs.indexOf(linguaDi(titolo || (ev && ev.partita))) < 0) return false;
       if (dvs.length && dvs.indexOf(ev && !ev.s3 ? "nas" : "arrivo") < 0) return false;
-      if (sqs.length) { var t = nomiSq(ev, titolo); if (!sqs.some(function(s){ return piatto(s).split(/\s+/).filter(Boolean).every(function(w){ return t.indexOf(w) >= 0; }); })) return false; }
+      if (sqs.length) { var t = nomiSq(ev, titolo), c = function(s){ return piatto(s).split(/\s+/).filter(Boolean).every(function(w){ return t.indexOf(w) >= 0; }); }; if (!(sqs.length > 1 && SQ_TRA ? sqs.every(c) : sqs.some(c))) return false; }
       return true;
     };
     var rosa = gio && RIS.scheda && RIS.scheda.inRosa ? new Set(RIS.scheda.inRosa) : null;
@@ -2844,7 +2865,9 @@
     var testo1907 = frase || RACCOLTA ? "" : [cognome1907, Q.replace(/"[^"]*"?|“[^”]*”?/g, " ")].join(" ").replace(/\s+/g, " ").trim();
     chiedi1907(testo1907);
     var partite = F.partite.sort(function(a, b){ return String(b.quando || "").localeCompare(String(a.quando || "")); });
-    var azioni = F.azioni, dette = F.dette;
+    // LE TELECRONACHE FUORI DAI RISULTATI, per ora (Goffredo 30/09/2026: "poi
+    // capiremo come fare per le interviste"): la ricerca resta, non si mostra
+    var azioni = F.azioni, dette = [];
     var quandoDi = function(x){ var ev = evDi(x); return ev && ev.quando ? Date.parse(ev.quando) : (x.quando || 0); };
     if (ORDINE_RIS === "recenti") azioni.sort(function(a, b){ return quandoDi(b) - quandoDi(a) || (a.t || 0) - (b.t || 0); });
     else if (ORDINE_RIS === "migliori") {
@@ -2852,7 +2875,7 @@
       azioni.sort(function(a, b){ return voto(b) - voto(a); });
     }
     var link = function(x, t, lin){ return "mam2.html?asset=" + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + (t !== undefined ? "&t=" + Math.floor(t) : "") + (lin ? "&lingua=" + lin : ""); };
-    var nomeSq = gettone("s").map(function(s){ return s.eti; }).join(" / ");
+    var nomeSq = gettone("s").map(function(s){ return s.eti; }).join(gettone("s").length > 1 && SQ_TRA ? " – " : " / ");
     var etiRuoli = rls.map(function(r){ return (RUOLI[r] || {}).eti || r; }).join(" o ");
     var gruppi = {
       partite: { k: "partite", eti: gio ? "Partite con " + gio.eti : nomeSq ? "Partite · " + nomeSq : "Partite", c: CAT.evento.c, n: partite.length, html: function(max){ return partite.slice(0, max).map(function(x){ return tesseraPartita(x, link); }).join(""); } },
@@ -2871,6 +2894,7 @@
     var h = '<div class="filtri-ris"><button data-rt="tutto" class="' + (RIS_TAB === "tutto" ? "on" : "") + '">Tutto<b>' + tot + '</b></button>' +
       lista.filter(function(g){ return g.n; }).map(function(g){ return '<button data-rt="' + g.k + '" style="--c:' + g.c + '" class="' + (RIS_TAB === g.k ? "on" : "") + '">' + (g.k === "partite" ? "Partite" : g.k === "azioni" ? "Azioni" : g.k === "arch1907" ? "Como 1907" : "Telecronache") + '<b>' + g.n + '</b></button>'; }).join("") +
       '<button disabled title="arrivano con l’archivio foto">Foto<b>—</b></button>' +
+      (gettone("s").length > 1 ? '<button type="button" id="sqTra" class="sq-tra' + (SQ_TRA ? " on" : "") + '" title="' + (SQ_TRA ? "solo le partite fra queste squadre: clic per averle tutte, di una o dell\u2019altra" : "tutte le partite di una o dell\u2019altra: clic per tenere solo quelle fra loro") + '">' + (SQ_TRA ? "Fra loro" : "Una o l\u2019altra") + '</button>' : '') +
       '<button type="button" id="apriFiltri" class="apri-filtri' + (PANNELLO_APERTO ? " aperto" : "") + '" aria-expanded="' + PANNELLO_APERTO + '" aria-controls="pannelloFiltri">Filtri' + (nFiltri ? '<b>' + nFiltri + '</b>' : '') + ' <span aria-hidden="true">' + (PANNELLO_APERTO ? "▴" : "▾") + '</span></button>' +
       (azioni.length > 1 ? '<label class="ordina">Ordina <select id="ordRis"><option value="pertinenza">più pertinenti</option><option value="recenti">più recenti</option><option value="migliori">migliori prima</option></select></label>' : '') + '</div>';
     if (PANNELLO_APERTO) h += pannelloHtml();
@@ -2898,6 +2922,7 @@
     if (cercaAttiva) { var ci = box.querySelector('input[data-colcerca="' + cercaAttiva + '"]'); if (ci) { ci.focus(); ci.setSelectionRange(ci.value.length, ci.value.length); } }
     window.scrollTo(0, scorri);
     if (el("ordRis")) { el("ordRis").value = ORDINE_RIS; el("ordRis").addEventListener("change", function(){ ORDINE_RIS = this.value; disegnaRisultati(); }); }
+    if (el("sqTra")) el("sqTra").addEventListener("click", function(){ SQ_TRA = !SQ_TRA; try { localStorage.setItem("mam2-sq-tra", SQ_TRA ? "1" : "0"); } catch (e) {} disegnaRisultati(); });
     if (el("apriFiltri")) el("apriFiltri").addEventListener("click", function(){ PANNELLO_APERTO = !PANNELLO_APERTO; try { localStorage.setItem("mam2-filtri", PANNELLO_APERTO ? "1" : "0"); } catch (e) {} disegnaRisultati(); });
     box.querySelectorAll("[data-ruolo]").forEach(function(b){ b.addEventListener("click", function(){
       var r = b.dataset.ruolo;
@@ -3296,7 +3321,7 @@
     clearTimeout(ANT.timer);
     if (ANT.video) { try { ANT.video.pause(); ANT.video.removeAttribute("src"); ANT.video.load(); } catch (e) {} ANT.video.remove(); ANT.video = null; }
     if (ANT.card) {
-      ANT.card.classList.remove("ant-su", "ant-attesa", "grande");
+      ANT.card.classList.remove("ant-su", "ant-attesa", "grande"); if (ANT.card.classList.contains("minil")) ANT.card.style.transform = "";
       [].forEach.call(ANT.card.querySelectorAll(".ant-barra,.ant-prov"), function(n){ n.remove(); });
     }
     ANT.card = null;
@@ -3304,13 +3329,16 @@
   function barraAnt(mini){ var b = document.createElement("span"); b.className = "ant-barra"; b.innerHTML = "<i></i>"; mini.appendChild(b); return b.firstChild; }
   function ingrandisci(card){
     // quanto cresce per lato (2,3x): se non ci sta, si allarga verso l'interno
-    var r = card.getBoundingClientRect(), w = window.innerWidth, h = window.innerHeight, S = 2.3;
+    // la miniatura dell'elenco (26 px) cresce fino a ~320 px, come una scheda
+    var r = card.getBoundingClientRect(), w = window.innerWidth, h = window.innerHeight, S = card.classList.contains("minil") ? Math.max(4, 320 / Math.max(1, r.width)) : 2.3;
+    if (card.classList.contains("minil")) card.style.transform = "scale(" + S.toFixed(2) + ")";
     var gx = r.width * (S - 1) / 2 + 8, gy = r.height * (S - 1) / 2 + 8;
     var ox = r.left < gx ? "left" : r.right > w - gx ? "right" : "center", oy = r.top < gy ? "top" : r.bottom > h - gy ? "bottom" : "center";
     card.style.transformOrigin = ox + " " + oy; card.classList.add("grande");
   }
   function avviaAnteprima(card){
-    var mini = card.querySelector(".mini"); if (!mini) return;
+    // nella Libreria a elenco la scheda e' la miniatura stessa
+    var mini = card.querySelector(".mini") || (card.classList.contains("minil") ? card : null); if (!mini) return;
     ingrandisci(card);
     if (card.classList.contains("a1907")) {
       var x = AZ_PER_CHIAVE[card.dataset.e1907]; if (!x) return;
@@ -3351,18 +3379,23 @@
     pv.style.backgroundPosition = (i / 5 * 100) + "% 0";
     var b = card.querySelector(".ant-barra i"); if (b) { b.style.marginLeft = (i / 6 * 100) + "%"; b.style.width = "16.66%"; }
   }
-  el("risultati").addEventListener("mouseover", function(e){
-    var card = e.target.closest(".tes.az"); if (!card || card === ANT.card) return;
+  // su tutte le schede (azioni, partite nei risultati, partite della Libreria)
+  function suScheda(e){
+    var card = e.target.closest(".tes.az, .antp"); if (!card || card === ANT.card) return;
     if (!card.classList.contains("a1907") && !card.dataset.rec && !card.dataset.reg) return;
     fermaAnteprima(); ANT.card = card;
     ANT.timer = setTimeout(function(){ if (ANT.card === card) avviaAnteprima(card); }, 350);
-  });
+  }
+  el("risultati").addEventListener("mouseover", suScheda);
+  el("recenti").addEventListener("mouseover", suScheda);
   el("risultati").addEventListener("mousemove", function(e){ if (ANT.card && ANT.card.classList.contains("a1907")) { ANT.ultimo = e; scorriProvino(ANT.card, e); } });
-  el("risultati").addEventListener("mouseout", function(e){
+  function viaDallaScheda(e){
     if (!ANT.card) return;
     var verso = e.relatedTarget; if (verso && ANT.card.contains(verso)) return;
-    if (e.target.closest(".tes.az") === ANT.card) fermaAnteprima();
-  });
+    if (e.target.closest(".tes.az, .antp") === ANT.card) fermaAnteprima();
+  }
+  el("risultati").addEventListener("mouseout", viaDallaScheda);
+  el("recenti").addEventListener("mouseout", viaDallaScheda);
   function prossimoAz(){
     while (IN_AZ < 2 && CODA_AZ.length) {
       var a = CODA_AZ.shift(); IN_AZ++;
