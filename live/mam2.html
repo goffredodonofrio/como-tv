@@ -276,7 +276,8 @@
   #recenti.a-file{display:flex;flex-direction:column;gap:26px;}
   .fila-testa{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;} .fila-testa h3{margin:0;font:700 12px/1.2 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--ivory);}
   .fila-testa span{color:var(--fumo);font-size:12px;}
-  .ultimi{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));grid-template-rows:auto;grid-auto-rows:0;column-gap:12px;row-gap:0;overflow:hidden;}
+  /* una riga sola: le schede in piu' le nasconde tagliaUltimi(), non un overflow (che tagliava l'anteprima ingrandita) */
+  .ultimi{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));column-gap:12px;}
   .ultimi > .card{min-width:0;}
   .comp-griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
   .comp-t{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 10px 14px;border:1px solid var(--riga2);border-radius:14px;background:rgba(245,241,230,.03);color:var(--ivory);cursor:pointer;text-align:center;min-width:0;}
@@ -2064,7 +2065,7 @@
   function svgComo(et){
     var w = Math.min(96, Math.max(58, et.length * 16 + 18));
     return '<svg class="como-storico" viewBox="0 0 120 198" role="img" aria-label="Como ' + esc(et) + '">' +
-      '<image href="/loghi/stemma-como-storico.png?v=2" x="12.5" y="0" width="95" height="161" preserveAspectRatio="xMidYMid meet"/>' +
+      '<image href="/loghi/stemma-como-storico.png?v=3" x="12.5" y="0" width="95" height="161" preserveAspectRatio="xMidYMid meet"/>' +
       '<rect x="' + (60 - w / 2) + '" y="165" width="' + w + '" height="32" rx="16" fill="#C9A24B"/>' +
       '<text x="60" y="189" text-anchor="middle" font-family="\'Mazzard\',\'DM Sans\',Arial,sans-serif" font-weight="800" font-size="23" fill="#0E1A2E"' + (et.length > 4 ? ' textLength="' + (w - 16) + '" lengthAdjust="spacingAndGlyphs"' : '') + '>' + esc(et) + '</text></svg>';
   }
@@ -2108,7 +2109,7 @@
     var data = ok ? ("0" + dt.getDate()).slice(-2) + "." + ("0" + (dt.getMonth() + 1)).slice(-2) + "." + dt.getFullYear() : "";
     var t = testaDi(x);
     var testa = '<div class="an-top">' + (t.comp ? esc(t.comp) + (t.data ? ' \u00b7 ' : '') : '') + '<span class="an-data">' + esc(t.data) + '</span></div>';
-    var marchio = '<img class="an-marchio" src="/loghi/como-tv-logo-2025.png" alt="Como TV">';
+    var marchio = '<img class="an-marchio" src="/loghi/como-tv-logo-2025.png?v=2" alt="Como TV">';
     var v = x.voce || {};
     var fondo = function(){ return '<div class="an-fondo"><span class="an-tele"><i>' + (v.lingua === "AUDIO" ? "Suono" : "Telecronaca") + '</i><b>' +
       esc(v.lingua === "AUDIO" ? "Internazionale" : (v.tele || "—")) + '</b></span>' + (v.lingua && v.lingua !== "AUDIO" ? '<span class="an-lingua">' + (v.lingua === "ENG" ? BANDIERA_UK : '') + esc(v.lingua) + '</span>' : '') + marchio + '</div>' +
@@ -2123,7 +2124,7 @@
         (st.sotto ? '<span class="an-sotto">' + esc(st.sotto) + '</span>' : '') +
         (ora ? '<span class="an-quando"><em>' + ora + '</em></span>' : '') + '</div>' +
         '<div class="an-destra' + (qs.length === 1 ? ' uno' : qs.length > 2 ? ' tanti' : '') + '">' +
-          (qs.length ? qs.map(stemmaHtml).join("") : '<img class="an-scudo" src="/loghi/como-tv-logo-2025.png" alt="">') + '</div>' +
+          (qs.length ? qs.map(stemmaHtml).join("") : '<img class="an-scudo" src="/loghi/como-tv-logo-2025.png?v=2" alt="">') + '</div>' +
         '<div class="an-fondo"><span class="an-tele"><i>Studio</i><b>Como TV</b></span>' + marchio + '</div></article>';
     }
     // 2. LA PARTITA
@@ -2206,6 +2207,7 @@
         '<section class="fila"><div class="fila-testa"><h3>Competizioni</h3><span>' + chiavi.length + ', dall’ultimo evento arrivato</span></div><div class="comp-griglia">' +
         chiavi.map(function(k){ var g = gruppi[k];
           return '<button type="button" class="comp-t" data-filacomp="' + esc(g.nome) + '" title="' + esc(g.vista) + '"><span class="comp-logo">' + logoComp(g.vista, g.como) + '</span><b>' + esc(g.vista.replace(/^como 1907\s*\|\s*/i, "")) + '</b><small>' + g.n + (g.n === 1 ? " partita" : " partite") + ' · ' + quando(g.ultimo) + '</small></button>'; }).join("") + '</div></section>';
+      tagliaUltimi();
     } else el("recenti").innerHTML = VISTI.map(carta).join("");
     // le pose arrivano una alla volta, e la scheda si accende quando c'e'
     var da = Array.prototype.slice.call(el("recenti").querySelectorAll(".mini[data-reg]")).filter(function(m){ return m.dataset.reg; });
@@ -2422,6 +2424,14 @@
     el("compTenda").hidden = true; el("compCerca").value = "";
     scegliEtichetta("comp", a.dataset.comp);
   });
+  // GLI ULTIMI EVENTI su una riga: tante schede quante colonne ha la griglia a questa larghezza
+  function tagliaUltimi(){
+    var u = el("recenti").querySelector(".ultimi"); if (!u) return;
+    Array.prototype.forEach.call(u.children, function(c){ c.style.display = ""; });
+    var n = getComputedStyle(u).gridTemplateColumns.split(" ").filter(Boolean).length || 1;
+    Array.prototype.forEach.call(u.children, function(c, i){ if (i >= n) c.style.display = "none"; });
+  }
+  window.addEventListener("resize", function(){ clearTimeout(tagliaUltimi.t); tagliaUltimi.t = setTimeout(tagliaUltimi, 120); });
   // IL LOGO DI UNA COMPETIZIONE: evento-<nome> nella cartella dei loghi (come il ponte per le
   // anteprime); se manca, lo stemma del Como per le sue (giovanili, Como Cup, Women), il logo
   // Como TV per lo studio, se no la sigla nel colore della competizione
@@ -2429,7 +2439,7 @@
   function logoComp(nome, delComo){
     var etc = delComo ? etichettaComo(nome.replace(/^como 1907\s*\|\s*/i, "")) : "";
     if (etc) return '<span class="comp-disco">' + svgComo(etc) + '</span>';
-    var fb = /studio|training/i.test(nome) ? "/loghi/como-tv-logo-2025.png" : delComo ? "/loghi/stemma-espn-2572.png" : "";
+    var fb = /studio|training/i.test(nome) ? "/loghi/como-tv-logo-2025.png?v=2" : delComo ? "/loghi/stemma-espn-2572.png" : "";
     var sigla = nome.replace(/^como 1907\s*\|\s*/i, "").split(/\s+/).filter(Boolean).map(function(w){ return w[0]; }).join("").slice(0, 3).toUpperCase();
     return '<img src="/loghi/evento-' + slugComp(nome) + '.png?v=3" alt="" loading="lazy" data-fb="' + esc(fb) + '" data-sigla="' + esc(sigla) + '" data-col="' + esc(coloreComp(nome)) + '" onerror="logoMancante(this)">';
   }
