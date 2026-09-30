@@ -69,6 +69,7 @@
   .ico-est{font:800 11px/1 'Mazzard',sans-serif;color:var(--fumo);letter-spacing:.06em;}
   .ogg.scelto .etich{background:var(--oro);color:#10131c;}
   .ogg.bersaglio .miniatura{outline:2px dashed var(--oro);}
+  .ogg.bersaglio{background:rgba(201,162,75,.16)!important;} .col.bersaglio{background:rgba(201,162,75,.08);outline:1px dashed var(--oro);outline-offset:-3px;} #corpo.sopra{outline:2px dashed var(--oro);outline-offset:-4px;}
   /* COME ICONE */
   .icone{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:14px 10px;padding:16px;}
   .icone .ogg{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px;border-radius:8px;cursor:default;user-select:none;}
@@ -503,12 +504,12 @@
     var ok = function () { var nuovo = i.value.trim(); if (!nuovo || nuovo === vecchio) { chiudi(); return; } manda({ azione: "rinomina", via: v, nome: nuovo }).then(function () { chiudi(); toast("Rinominato."); SCELTI = [unisci(padre(v), nuovo)]; ricarica(); }).catch(function (e) { toast(esc(e.message), true); }); };
     $("okRin").onclick = ok; i.onkeydown = function (e) { if (e.key === "Enter") ok(); };
   }
+  // come nel Finder non si chiede conferma: si sposta e si puo' annullare (⌘Z o il link nell'avviso)
   function sposta(vie, dest) {
     if (!vie.length) return;
-    if (!confirm("Spostare " + vie.length + (vie.length === 1 ? " elemento" : " elementi") + " in «" + (dest || "Como 1907") + "»?")) return;
     manda({ azione: "sposta", vie: vie, in: dest }).then(function (j) {
       var no = (j.esiti || []).filter(function (x) { return x[1] !== "ok"; });
-      toast("Spostati: " + j.spostati + (no.length ? "<br>Non spostati: " + no.slice(0, 6).map(function (x) { return esc(ultimo(x[0])) + " (" + esc(x[1]) + ")"; }).join(", ") : ""), no.length > 0);
+      toast("Spostati in «" + esc(nomeDest(dest)) + "»: " + j.spostati + (j.spostati ? ' · <a href="#" data-annulla>Annulla (⌘Z)</a>' : "") + (no.length ? "<br>Non spostati: " + no.slice(0, 6).map(function (x) { return esc(ultimo(x[0])) + " (" + esc(x[1]) + ")"; }).join(", ") : ""), no.length > 0);
       SCELTI = []; delete CACHE[dest]; ricarica();
     }).catch(function (e) { toast(esc(e.message), true); });
   }
@@ -572,33 +573,79 @@
     });
   }
 
-  // ── trascinare: spostare quello che c'e', o caricare i file dal Mac ──
-  var PRESI = [];
+  // ── TRASCINARE, COME NEL FINDER (30/09/2026, Goffredo: "verifica bene i trascinamenti, non lo vedo precisissimo") ──
+  // Si lascia su una cartella (riquadro, elenco, colonne, percorso, colonna a sinistra), sullo spazio vuoto di
+  // una colonna o della finestra (= quella cartella), sul Cestino. Accanto al puntatore si legge cosa succede;
+  // con ⌥ si copia invece di spostare; tenendo fermi un secondo su una cartella, si apre (a molla); vicino al
+  // bordo la finestra scorre; un file solo trascinato sulla scrivania del Mac si scarica.
+  var PRESI = [], MOLLA = { b: null, t: null }, HINT = null;
+  function hint(testo, x, y, no) {
+    if (!HINT) { HINT = document.createElement("div"); HINT.style.cssText = "position:fixed;z-index:200;pointer-events:none;padding:6px 10px;border-radius:8px;font:600 12.5px/1.2 'DM Sans',system-ui,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.45);white-space:nowrap"; document.body.appendChild(HINT); }
+    if (!testo) { HINT.hidden = true; return; }
+    HINT.hidden = false; HINT.textContent = testo; HINT.style.background = no ? "#3a2224" : "#1f2a1f"; HINT.style.color = no ? "#F08A8D" : "#8fe0a9"; HINT.style.border = "1px solid " + (no ? "#E5484D" : "#4FCB8B");
+    HINT.style.left = Math.min(x + 16, innerWidth - HINT.offsetWidth - 8) + "px"; HINT.style.top = Math.min(y + 18, innerHeight - 40) + "px";
+  }
   $("corpo").addEventListener("dragstart", function (e) {
-    var o = e.target.closest(".ogg"); if (!o || !PUOI) return;
+    var o = e.target.closest(".ogg"); if (!o || !PUOI || QUI === CEST) return;
     if (SCELTI.indexOf(o.dataset.v) < 0) scegli(o.dataset.v);
     PRESI = SCELTI.slice(); e.dataTransfer.effectAllowed = "copyMove"; e.dataTransfer.setData("text/plain", PRESI.join("\n"));
+    // l'etichetta sotto il puntatore: quanti elementi si portano
+    var g = document.createElement("div"); g.textContent = (PRESI.length === 1 ? (elemento(PRESI[0]) || {}).dir ? "📁 " : "🎞 " : "▣ ") + (PRESI.length === 1 ? ultimo(PRESI[0]) : PRESI.length + " elementi");
+    g.style.cssText = "position:fixed;top:-100px;left:0;padding:6px 10px;background:#2A2B30;color:#EDEDEE;border:1px solid #C9A24B;border-radius:8px;font:600 13px 'DM Sans',sans-serif;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    document.body.appendChild(g); try { e.dataTransfer.setDragImage(g, 12, 12); } catch (er) {} setTimeout(function () { g.remove(); }, 0);
+    document.querySelectorAll("#corpo .ogg").forEach(function (x) { if (PRESI.indexOf(x.dataset.v) >= 0) x.style.opacity = ".45"; });
     // un file solo trascinato sulla scrivania del Mac si scarica (Chrome)
     var x1 = PRESI.length === 1 ? elemento(PRESI[0]) : null;
     if (x1 && !x1.dir) try { e.dataTransfer.setData("DownloadURL", "application/octet-stream:" + x1.nome + ":" + location.origin + url(x1.v)); } catch (er) {}
   });
-  function bersaglio(e) { return e.target.closest && (e.target.closest(".ogg[data-dir-v]") || e.target.closest("#percorso a[data-dir]") || e.target.closest("#lato a[data-dir]")); }
-  function destDi(b) { return b.dataset.v != null ? b.dataset.v : b.dataset.dir; }
+  function bersaglio(e) {
+    if (!e.target.closest) return null;
+    var b = e.target.closest(".ogg[data-dir-v]") || e.target.closest("#percorso a[data-dir]") || e.target.closest("#lato a[data-dir]") || e.target.closest(".col[data-col]");
+    if (!b && e.target.closest("#corpo") && QUI !== CEST) b = $("corpo");
+    return b;
+  }
+  function destDi(b) { return b === $("corpo") ? QUI : b.dataset.v != null ? b.dataset.v : b.dataset.dir != null ? b.dataset.dir : b.dataset.col; }
+  function nomeDest(d) { return d === CEST ? "Cestino" : d ? tc(ultimo(d)) : "Como 1907"; }
+  // cosa succede lasciando qui: [ok, testo]
+  function esito(dest, copia_) {
+    var n = PRESI.length, cosa = n === 1 ? "«" + ultimo(PRESI[0]) + "»" : n + " elementi";
+    if (dest === CEST) return PUOI ? [true, "Sposta " + cosa + " nel Cestino"] : [false, "Il Cestino è del team"];
+    if (PRESI.some(function (v) { return dest === v || dest.indexOf(v + "/") === 0; })) return [false, "Non dentro se stessa"];
+    if (!copia_ && PRESI.every(function (v) { return padre(v) === dest; })) return [false, "È già in «" + nomeDest(dest) + "» · ⌥ per duplicare"];
+    return [true, (copia_ ? "Copia " : "Sposta ") + cosa + " in «" + nomeDest(dest) + "»" + (copia_ ? "" : " · ⌥ per copiare")];
+  }
   function daMac(e) { return !PRESI.length && e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") >= 0; }
+  function pulisci() { document.querySelectorAll(".bersaglio").forEach(function (x) { x.classList.remove("bersaglio"); }); $("corpo").classList.remove("sopra"); }
   document.addEventListener("dragover", function (e) {
     var b = bersaglio(e), mac = daMac(e);
     document.querySelectorAll(".bersaglio").forEach(function (x) { if (x !== b) x.classList.remove("bersaglio"); });
-    if (mac && PUOI) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; if (b) b.classList.add("bersaglio"); $("corpo").classList.toggle("sopra", !b && !!e.target.closest("#corpo")); return; }
-    if (!b || !PRESI.length || PRESI.indexOf(destDi(b)) >= 0) return; e.preventDefault(); e.dataTransfer.dropEffect = e.altKey ? "copy" : "move"; b.classList.add("bersaglio");
+    // la finestra scorre vicino al bordo
+    var c = $("corpo"), r = c.getBoundingClientRect(), sc = VISTA === "colonne" ? c.querySelector(".colonne") : c;
+    if (e.clientY < r.top + 36 && e.clientY > r.top - 10) c.scrollTop -= 16; else if (e.clientY > r.bottom - 36 && e.clientY < r.bottom + 10) c.scrollTop += 16;
+    if (sc && VISTA === "colonne") { if (e.clientX < r.left + 36) sc.scrollLeft -= 16; else if (e.clientX > r.right - 36) sc.scrollLeft += 16; }
+    if (mac && PUOI) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; var dm = b ? destDi(b) : QUI; if (b && b !== $("corpo")) b.classList.add("bersaglio"); c.classList.toggle("sopra", !b || b === c); hint("Carica qui: «" + nomeDest(dm) + "»", e.clientX, e.clientY); return; }
+    if (!PRESI.length) return;
+    if (!b) { hint("", 0, 0); return; }
+    var dest = destDi(b), es = esito(dest, e.altKey);
+    hint(es[1], e.clientX, e.clientY, !es[0]);
+    if (!es[0]) { try { e.dataTransfer.dropEffect = "none"; } catch (x) {} return; }
+    e.preventDefault(); e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+    if (b !== c) b.classList.add("bersaglio"); else c.classList.add("sopra");
+    // a molla: fermi un secondo su una cartella, si apre
+    var cartella = b.matches(".ogg[data-dir-v]") || (b.matches("#lato a[data-dir], #percorso a[data-dir]") && dest !== CEST);
+    if (cartella && MOLLA.b !== b) { clearTimeout(MOLLA.t); MOLLA.b = b; MOLLA.t = setTimeout(function () { if (MOLLA.b === b && PRESI.length && dest !== QUI) { MOLLA.b = null; vai(dest); } }, 1000); }
+    if (!cartella) { clearTimeout(MOLLA.t); MOLLA.b = null; }
   });
-  document.addEventListener("dragleave", function (e) { if (!e.relatedTarget || !$("fin").contains(e.relatedTarget)) { $("corpo").classList.remove("sopra"); document.querySelectorAll(".bersaglio").forEach(function (x) { x.classList.remove("bersaglio"); }); } });
+  document.addEventListener("dragleave", function (e) { if (!e.relatedTarget || !document.documentElement.contains(e.relatedTarget)) { pulisci(); hint("", 0, 0); } });
   document.addEventListener("drop", function (e) {
-    var b = bersaglio(e), mac = daMac(e); $("corpo").classList.remove("sopra"); document.querySelectorAll(".bersaglio").forEach(function (x) { x.classList.remove("bersaglio"); });
-    if (mac) { e.preventDefault(); if (!PUOI) { toast("Caricare possono le persone del team del Como 1907.", true); return; } var dest = b ? destDi(b) : QUI; caricaDaMac(e.dataTransfer, dest); return; }
-    if (!b || !PRESI.length) return; e.preventDefault(); var vie = PRESI.slice(); PRESI = [];
-    if (e.altKey) lavoro({ azione: "copia", vie: vie, in: destDi(b) }, "Copio"); else sposta(vie, destDi(b));
+    var b = bersaglio(e), mac = daMac(e); pulisci(); hint("", 0, 0); clearTimeout(MOLLA.t); MOLLA.b = null;
+    if (mac) { e.preventDefault(); if (!PUOI) { toast("Caricare possono le persone del team del Como 1907.", true); return; } var dest = b ? destDi(b) : QUI; if (dest === CEST) dest = QUI; caricaDaMac(e.dataTransfer, dest); return; }
+    if (!b || !PRESI.length) return;
+    var d = destDi(b), es = esito(d, e.altKey); if (!es[0]) return;
+    e.preventDefault(); var vie = PRESI.slice(); PRESI = [];
+    if (d === CEST) alCestino(vie); else if (e.altKey) lavoro({ azione: "copia", vie: vie, in: d }, "Copio"); else sposta(vie, d);
   });
-  document.addEventListener("dragend", function () { PRESI = []; document.querySelectorAll(".bersaglio").forEach(function (x) { x.classList.remove("bersaglio"); }); });
+  document.addEventListener("dragend", function () { PRESI = []; pulisci(); hint("", 0, 0); clearTimeout(MOLLA.t); MOLLA.b = null; document.querySelectorAll("#corpo .ogg").forEach(function (x) { x.style.opacity = ""; }); });
 
   // ── COPIA, INCOLLA, DUPLICA: un lavoro sul servizio, con la sua barra ──
   function incolla(sposta_) {

@@ -1844,53 +1844,88 @@
     b.innerHTML = FX_SCELTE.size ? n(FX_SCELTE.size) + (FX_SCELTE.size === 1 ? " scelto" : " scelti") + ' <button type="button" class="mini" data-fxnoscelta>Togli</button>' : "";
   }
   function viaDi(el) { return el.dataset.fxvia != null ? el.dataset.fxvia : el.dataset.fxfile; }
+  // IL TRASCINAMENTO COME NEL FINDER (30/09/2026, Goffredo: "verifica bene i trascinamenti, non lo vedo
+  // precisissimo"): si lascia su una cartella (riquadro, elenco, percorso, colonna a sinistra) o sullo spazio vuoto
+  // (= la cartella aperta); accanto al puntatore si legge cosa succede; con ⌥ si copia; fermi un secondo su una
+  // cartella, si apre (a molla); vicino al bordo la pagina scorre; niente conferma: si sposta e si puo' annullare.
+  var FX_MOLLA = { b: null, t: null }, FX_HINT = null;
+  function fxHint(testo, x, y, no) {
+    if (!FX_HINT) { FX_HINT = document.createElement("div"); FX_HINT.style.cssText = "position:fixed;z-index:400;pointer-events:none;padding:6px 10px;border-radius:8px;font:600 12.5px/1.2 'DM Sans',system-ui,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.45);white-space:nowrap"; document.body.appendChild(FX_HINT); }
+    if (!testo) { FX_HINT.hidden = true; return; }
+    FX_HINT.hidden = false; FX_HINT.textContent = testo; FX_HINT.style.background = no ? "#3a2224" : "#1f2a1f"; FX_HINT.style.color = no ? "#F08A8D" : "#8fe0a9"; FX_HINT.style.border = "1px solid " + (no ? "#E5484D" : "#4FCB8B");
+    FX_HINT.style.left = Math.min(x + 16, innerWidth - FX_HINT.offsetWidth - 8) + "px"; FX_HINT.style.top = Math.min(y + 18, innerHeight - 40) + "px";
+  }
   function fxBersaglio(e) {
-    if (FX.modo !== "vere" || !FX_PRESI.length) return null;
-    var b = e.target.closest && e.target.closest("#fxBody [data-fxvia], #fxBc [data-fxvia], #fxSide [data-fxvia]");
-    if (!b) return null;
-    var dest = b.dataset.fxvia; if (dest.charAt(0) === "\u00a7") return null;
-    // non dentro se stessi, non dove gia' sono
-    if (FX_PRESI.some(function (v) { return dest === v || dest.indexOf(v + "/") === 0; })) return null;
-    if (FX_PRESI.every(function (v) { return v.split("/").slice(0, -1).join("/") === dest; })) return null;
+    if (FX.modo !== "vere" || !FX_PRESI.length || !e.target.closest) return null;
+    var b = e.target.closest("#fxBody [data-fxvia], #fxBc [data-fxvia], #fxSide [data-fxvia]");
+    if (b && b.dataset.fxvia.charAt(0) === "§") return null;
+    if (!b && e.target.closest("#fxBody") && FX.via && FX.via.charAt(0) !== "§") b = $("fxBody");
     return b;
+  }
+  function fxDest(b) { return b === $("fxBody") ? FX.via : b.dataset.fxvia; }
+  function fxEsito(dest, copia_) {
+    var n1 = FX_PRESI.length, cosa = n1 === 1 ? "«" + FX_PRESI[0].split("/").pop() + "»" : n1 + " elementi", nd = dest ? tc(dest.split("/").pop()) : "Como 1907";
+    if (FX_PRESI.some(function (v) { return dest === v || dest.indexOf(v + "/") === 0; })) return [false, "Non dentro se stessa"];
+    if (!copia_ && FX_PRESI.every(function (v) { return v.split("/").slice(0, -1).join("/") === dest; })) return [false, "È già in «" + nd + "» · ⌥ per duplicare"];
+    return [true, (copia_ ? "Copia " : "Sposta ") + cosa + " in «" + nd + "»" + (copia_ ? "" : " · ⌥ per copiare")];
   }
   $("fxBox").addEventListener("dragstart", function (e) {
     var t = e.target.closest && e.target.closest("#fxBody [draggable=true]"); if (!t || FX.modo !== "vere") return;
     var v = viaDi(t);
     FX_PRESI = FX_SCELTE.has(v) ? Array.from(FX_SCELTE) : [v];
-    try { e.dataTransfer.setData("text/plain", FX_PRESI.join("\n")); e.dataTransfer.effectAllowed = "move"; } catch (x) {}
+    try { e.dataTransfer.setData("text/plain", FX_PRESI.join("\n")); e.dataTransfer.effectAllowed = "copyMove"; } catch (x) {}
+    var g = document.createElement("div"); g.textContent = FX_PRESI.length === 1 ? FX_PRESI[0].split("/").pop() : FX_PRESI.length + " elementi";
+    g.style.cssText = "position:fixed;top:-100px;left:0;padding:6px 10px;background:#2A2B30;color:#EDEDEE;border:1px solid #C9A24B;border-radius:8px;font:600 13px 'DM Sans',sans-serif;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    document.body.appendChild(g); try { e.dataTransfer.setDragImage(g, 12, 12); } catch (x) {} setTimeout(function () { g.remove(); }, 0);
     document.querySelectorAll("#fxBody [draggable=true]").forEach(function (x) { if (FX_PRESI.indexOf(viaDi(x)) >= 0) x.classList.add("fx-preso"); });
   });
-  $("fxBox").addEventListener("dragend", function () {
-    FX_PRESI = []; document.querySelectorAll(".fx-preso,.fx-drop").forEach(function (x) { x.classList.remove("fx-preso", "fx-drop"); });
-  });
-  $("fxBox").addEventListener("dragover", function (e) {
+  function fxPulisci() { document.querySelectorAll(".fx-drop,.fx-preso").forEach(function (x) { x.classList.remove("fx-drop", "fx-preso"); }); fxHint(""); clearTimeout(FX_MOLLA.t); FX_MOLLA.b = null; }
+  $("fxBox").addEventListener("dragend", function () { FX_PRESI = []; fxPulisci(); });
+  document.addEventListener("dragover", function (e) {
+    if (!FX_PRESI.length) return;
+    // la pagina scorre vicino al bordo
+    if (e.clientY < 60) window.scrollBy(0, -18); else if (e.clientY > innerHeight - 60) window.scrollBy(0, 18);
     var b = fxBersaglio(e);
     document.querySelectorAll(".fx-drop").forEach(function (x) { if (x !== b) x.classList.remove("fx-drop"); });
-    if (!b) return; e.preventDefault(); try { e.dataTransfer.dropEffect = "move"; } catch (x) {} b.classList.add("fx-drop");
+    if (!b) { fxHint(""); return; }
+    var dest = fxDest(b), es = fxEsito(dest, e.altKey);
+    fxHint(es[1], e.clientX, e.clientY, !es[0]);
+    if (!es[0]) return;
+    e.preventDefault(); try { e.dataTransfer.dropEffect = e.altKey ? "copy" : "move"; } catch (x) {}
+    b.classList.add("fx-drop");
+    // a molla: fermi un secondo su una cartella, si apre
+    if (b !== $("fxBody") && FX_MOLLA.b !== b) { clearTimeout(FX_MOLLA.t); FX_MOLLA.b = b; FX_MOLLA.t = setTimeout(function () { if (FX_MOLLA.b === b && FX_PRESI.length && dest !== FX.via) { FX_MOLLA.b = null; FX.via = dest; fxVai(); } }, 1000); }
+    if (b === $("fxBody")) { clearTimeout(FX_MOLLA.t); FX_MOLLA.b = null; }
   });
-  $("fxBox").addEventListener("dragleave", function (e) { var b = e.target.closest && e.target.closest(".fx-drop"); if (b && !b.contains(e.relatedTarget)) b.classList.remove("fx-drop"); });
+  document.addEventListener("dragleave", function (e) { if (FX_PRESI.length && (!e.relatedTarget || !document.documentElement.contains(e.relatedTarget))) { document.querySelectorAll(".fx-drop").forEach(function (x) { x.classList.remove("fx-drop"); }); fxHint(""); } });
   $("fxBox").addEventListener("drop", function (e) {
-    var b = fxBersaglio(e); document.querySelectorAll(".fx-drop,.fx-preso").forEach(function (x) { x.classList.remove("fx-drop", "fx-preso"); });
-    if (!b) return; e.preventDefault();
-    var vie = FX_PRESI.slice(), dest = b.dataset.fxvia; FX_PRESI = [];
-    fxSposta(vie, dest);
+    var b = fxBersaglio(e), copia_ = e.altKey; fxPulisci();
+    if (!b) return;
+    var dest = fxDest(b); if (!fxEsito(dest, copia_)[0]) return;
+    e.preventDefault(); var vie = FX_PRESI.slice(); FX_PRESI = [];
+    if (copia_) fxCopia(vie, dest); else fxSposta(vie, dest);
   });
+  function fxAnnulla() { fxManda({ azione: "annulla" }).then(function (j) { avviso("", "Annullato: " + esc(j.annullato || "")); FX_ULTIMA = null; fxDisegna(); }).catch(function (er) { avviso("err", esc(er.message)); }); }
+  document.addEventListener("click", function (e) { var u = e.target.closest && e.target.closest("[data-fxannulla]"); if (u) { e.preventDefault(); fxAnnulla(); } });
   function fxSposta(vie, dest) {
-    var nomi = vie.map(function (v) { return v.split("/").pop(); });
-    $("velo").innerHTML = '<div class="fx-dlg" role="dialog" aria-label="Sposta"><h2>Sposta</h2><p>' + (vie.length === 1 ? "«" + esc(nomi[0]) + "»" : n(vie.length) + " elementi (" + esc(nomi.slice(0, 4).join(", ")) + (vie.length > 4 ? "…" : "") + ")") +
-      ' in <b>' + esc(dest ? dest.split("/").join(" › ") : "Como 1907") + '</b>?</p><p class="nota-date">Si sposta sulla NAS del club, per tutti. Raccolte e commenti li seguono; il MAM si riallinea in pochi minuti.</p><div class="az"><button type="button" id="fxNo">Annulla</button><button type="button" class="oro" id="fxOk">Sposta</button></div></div>';
-    $("velo").hidden = false; $("fxOk").focus(); $("fxNo").onclick = chiudi;
-    $("fxOk").onclick = function () {
-      $("fxOk").disabled = true;
-      fxManda({ azione: "sposta", vie: vie, in: dest }).then(function (j) {
-        chiudi();
-        (j.esiti || []).forEach(function (x) { if (x[1] === "ok") SPOST[x[0]] = (dest ? dest + "/" : "") + x[0].split("/").pop(); });
-        var no = (j.esiti || []).filter(function (x) { return x[1] !== "ok"; });
-        avviso(no.length ? "err" : "", (j.spostati ? "Spostati: " + n(j.spostati) + "." : "Niente spostato.") + (no.length ? " Non spostati: " + no.slice(0, 5).map(function (x) { return esc(x[0].split("/").pop()) + " (" + esc(x[1]) + ")"; }).join(", ") : ""));
-        FX_SCELTE.clear(); FX_ULTIMA = null; fxDisegna();
-      }).catch(function (e) { $("fxOk").disabled = false; avviso("err", esc(e.message)); });
-    };
+    fxManda({ azione: "sposta", vie: vie, in: dest }).then(function (j) {
+      (j.esiti || []).forEach(function (x) { if (x[1] === "ok") SPOST[x[0]] = (dest ? dest + "/" : "") + x[0].split("/").pop(); });
+      var no = (j.esiti || []).filter(function (x) { return x[1] !== "ok"; });
+      avviso(no.length ? "err" : "", (j.spostati ? "Spostati in «" + esc(dest ? tc(dest.split("/").pop()) : "Como 1907") + "»: " + n(j.spostati) + ' · <a href="#" data-fxannulla style="color:var(--oro2)">Annulla</a>' : "Niente spostato.") + (no.length ? " Non spostati: " + no.slice(0, 5).map(function (x) { return esc(x[0].split("/").pop()) + " (" + esc(x[1]) + ")"; }).join(", ") : ""));
+      FX_SCELTE.clear(); FX_ULTIMA = null; fxDisegna();
+    }).catch(function (er) { avviso("err", esc(er.message)); });
+  }
+  function fxCopia(vie, dest) {
+    fxManda({ azione: "copia", vie: vie, in: dest }).then(function (j) {
+      avviso("", "Copio " + n(j.n) + (j.n === 1 ? " elemento" : " elementi") + " (" + gb(j.tot) + ") in «" + esc(dest ? tc(dest.split("/").pop()) : "Como 1907") + "»…");
+      (function segui() {
+        fetch(BASE + "cartelle?lavoro=" + encodeURIComponent(j.lavoro), { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (L) {
+          if (L.stato === "in corso") { setTimeout(segui, 2000); return; }
+          avviso(L.errori && L.errori.length ? "err" : "", "Copia " + (L.stato === "fatto" ? "fatta" : "fermata") + ": " + L.risultati.length + " di " + L.n + (L.risultati.length ? ' · <a href="#" data-fxannulla style="color:var(--oro2)">Annulla</a>' : ""));
+          FX_ULTIMA = null; fxDisegna();
+        }).catch(function () { setTimeout(segui, 5000); });
+      })();
+    }).catch(function (er) { avviso("err", esc(er.message)); });
   }
   function fxModo(m) { FX.modo = m; try { localStorage.setItem("mam1907-fx", m); } catch (e) {} fxVai(); }
   $("fxOrd").onclick = function () { fxModo("ord"); }; $("fxVere").onclick = function () { fxModo("vere"); };
