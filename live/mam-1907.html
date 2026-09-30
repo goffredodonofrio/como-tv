@@ -1074,6 +1074,7 @@
       var x = e.x, nomi = (x.squadre || []).map(function (q) { return norm(q.nome); }).sort().join("|"), k = e.dt + "|" + (nomi || norm(versione(x.titolo || x.partita || "").t));
       var o = per[k] = per[k] || { dt: e.dt, ramo: e.ramo, sotto: e.sotto, x: x, ris: "", v: {} };
       o.v[e.lingua] = e; o.ris = o.ris || x.ris || e.ris || "";
+      var rt = RIS_TV[x.rec]; if (rt && (!o.ris || o.fonteRis === "tabellone")) { if (!o.ris || rt[1] !== "tabellone") { o.ris = rt[0]; o.fonteRis = rt[1]; } }
     });
     return Object.keys(per).map(function (k) {
       var o = per[k], t = (o.x.partita || "") + " " + (o.x.competizione || "") + " " + (o.x.compVista || "");
@@ -1096,7 +1097,7 @@
       h += '<div class="fx-sez">' + esc(c) + " · " + n(ll.length) + '</div><div style="overflow-x:auto"><table class="el-tab fx-tab"><thead><tr><th>Data</th><th>Partita</th><th>Competizione</th><th>Risultato</th><th>Versioni</th></tr></thead><tbody>' +
         ll.map(function (o) {
           var x = o.x, sq = x.squadre && x.squadre.length === 2 ? x.squadre.map(function (q) { return q.nome; }).join(" – ") : versione(x.titolo || x.partita || "").t.replace(/\s+\d+\s*[-–]\s*\d+\s*$/, "");
-          return "<tr><td class=\"n\">" + dataRip(o.dt) + '</td><td class="tit"><b>' + esc(tc(sq)) + "</b></td><td>" + esc(x.compVista || x.competizione || "") + '</td><td class="n">' + esc(o.ris || "") + "</td><td>" +
+          return "<tr><td class=\"n\">" + dataRip(o.dt) + '</td><td class="tit"><b>' + esc(tc(sq)) + "</b></td><td>" + esc(x.compVista || x.competizione || "") + '</td><td class="n">' + (o.ris ? esc(o.ris) + (o.fonteRis === "tabellone" ? ' <small style="color:var(--fumo)" title="letto dal tabellone in video: da verificare">tabellone</small>' : "") : '<span style="color:var(--fumo)">—</span>') + "</td><td>" +
             ["ITA", "ENG"].map(function (lg) { var e = o.v[lg]; return e ? '<button type="button" class="mini" data-apripart="' + esc(e.x.rec) + "|" + esc(e.x.reg || "") + '" title="apri nell’Editor la versione ' + lg + '">' + lg + "</button> " : ""; }).join("") + "</td></tr>";
         }).join("") + "</tbody></table></div>";
     });
@@ -2696,6 +2697,9 @@
   // chi e' taggato lo ritrova in Menzioni. Si salvano nel servizio-1907 (commenti.json).
   var REV = null, CONTI_C = {}, MENZ = { lista: [], nuove: 0 }, PUO_ELIM = false, DANN = {};
   // I VIDEO DANNEGGIATI (30/09/2026, danneggiati-1907.py): MP4/MOV troncati, download da Frame non finiti
+  // i risultati delle partite di Como TV (risultati-1907.py): {rec: ["2-1", "comotv"|"espn"|"tabellone"]}
+  var RIS_TV = {};
+  function caricaRisultati() { return fetch(BASE + "indice/risultati-comotv.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { RIS_TV = j || {}; if (/\/partite$/.test(FX.via || "")) fxDisegna(); }).catch(function () {}); }
   function caricaDanneggiati() { return fetch(BASE + "indice/danneggiati.json", { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { DANN = j.danneggiati || {}; }).catch(function () {}); }
   // LO STATO DI REVISIONE E L'ASSEGNATO (30/09/2026, come su Frame.io)
   var STATI = {}, STATI_N = { "da-rivedere": ["Da rivedere", "#C9A24B"], "in-lavorazione": ["In lavorazione", "#5AA7E8"], "approvata": ["Approvata", "#4FCB8B"], "da-rifare": ["Da rifare", "#E5484D"] };
@@ -3029,7 +3033,7 @@
 
 
       disegnaStagioni(); disegnaAlbero(); disegnaCollezioni(); FX.stag = STAG; fxDisegna(); disegnaRiassunto();
-      caricaConti(); caricaMenzioni(); caricaDanneggiati(); caricaStati();
+      caricaConti(); caricaMenzioni(); caricaDanneggiati(); caricaStati(); caricaRisultati();
       var soloVolti = location.hash === "#volti"; if (soloVolti) IGN_TUTTI = true;
       caricaIgnoti().then(function () { if (soloVolti) apriBattesimo(); });
       var soloRacc = location.hash === "#raccolte"; if (soloRacc) $("raccolteBox").hidden = false;

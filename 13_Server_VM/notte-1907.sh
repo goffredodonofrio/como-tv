@@ -26,6 +26,8 @@ aspetta; passo "date dalle camere"
 nice -n 15 python3 /opt/comotv/date-1907.py
 passo "indice"
 nice -n 10 python3 /opt/comotv/indice-1907-da-elenco.py
+# i risultati delle partite del Como registrate da Como TV (Stagione > Partite del Como)
+nice -n 10 python3 /opt/comotv/risultati-1907.py | tail -1
 aspetta; passo "locandine"
 nice -n 15 python3 /opt/comotv/copertine-1907.py | tail -1
 D=$CASA/pub/copertine
