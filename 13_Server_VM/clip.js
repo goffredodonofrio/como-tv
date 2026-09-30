@@ -17130,7 +17130,8 @@ const AZIONI = {
     q.libera = true;
     q.pezzi.sort((a, b) => (a.t0 || 0) - (b.t0 || 0));
     const conBuchi = ["V1", "V2"].some((n) => { let t = 0; return q.pezzi.filter((x) => (x.traccia || "V1") === n).some((x) => { const s = (x.t0 || 0) > t + 0.04; t = Math.max(t, (x.t0 || 0) + dur(x)); return s; }); });
-    if (!eraLibera && !conBuchi) delete q.libera;
+    // senza buchi su V1 e V2 si torna attaccati, anche se uno spostamento di prima l'aveva staccata
+    if (!conBuchi) delete q.libera; else if (!eraLibera) console.log("[clip] sequenza \"" + (q.titolo || q.id) + "\": staccata dallo spostamento in gruppo");
     riallinea(q);
     scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, d, spostati: P.length + G.length + A.length };
