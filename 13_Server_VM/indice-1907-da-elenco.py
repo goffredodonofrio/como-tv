@@ -37,6 +37,8 @@ VIDEO = (".mp4", ".mov", ".mxf", ".m4v", ".avi", ".mkv", ".mts", ".m2ts", ".webm
 FOTO = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".tif", ".tiff", ".cr2", ".cr3", ".arw", ".nef", ".dng", ".psd")
 SCARTA = (".log", ".ds_store", ".xml", ".xmp", ".bim", ".cpi", ".bdm", ".mpl", ".thm", ".ppn", ".ctg", ".lrv", ".ini", ".db")
 NASCOSTE = {"COMO TV - THUMBNAILS"}
+try: DANNEGGIATI = set(json.load(open("/var/lib/comotv-1907/pub/danneggiati.json")).get("danneggiati", {}))
+except Exception: DANNEGGIATI = set()
 OGGI = int(time.strftime("%Y%m%d"))
 MESI = {m: i + 1 for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
 MESI.update({"gen": 1, "mag": 5, "giu": 6, "lug": 7, "ago": 8, "set": 9, "ott": 10, "dic": 12})
@@ -556,6 +558,8 @@ def main():
         if stag_p and dn and not in_stagione(dn, stag_p) and fonte not in ("nome", "calendario"): dn, fonte = 0, ""
         stag = stag_p or (stagione_di(dn) if dn and dn % 10000 // 100 else "")
         vid = sorted(f[0] for f in fs if tipo(f[0]) == "video")
+        # (30/09/2026) la copertina non si prende da un video danneggiato (danneggiati-1907.py)
+        vidOk = [x for x in vid if (d + "/" + x) not in DANNEGGIATI] or vid
         v = len(vid); fo = sum(1 for f in fs if tipo(f[0]) == "foto")
         # I METADATI: tipo, squadra, competizione, avversario, persone
         md = {}
@@ -603,7 +607,7 @@ def main():
         # (29/09/2026) il rappresentativo: un video; se la cartella ha solo foto, una foto (jpg/png/webp,
         # quelle che ffmpeg legge): senza, la copertina restava senza immagine
         fotoL = sorted(f[0] for f in fs if f[0].lower().endswith((".jpg", ".jpeg", ".png", ".webp")))
-        righe.append([d, dn, stag, len(fs), v, fo, sum(f[1] for f in fs), fonte, (d + "/" + vid[len(vid) // 2]) if vid else (d + "/" + fotoL[len(fotoL) // 2]) if fotoL else "", md])
+        righe.append([d, dn, stag, len(fs), v, fo, sum(f[1] for f in fs), fonte, (d + "/" + vidOk[len(vidOk) // 2]) if vid else (d + "/" + fotoL[len(fotoL) // 2]) if fotoL else "", md])
     # LE VICINE: una cartella senza data dentro una ripresa datata ("G07 - COMO v
     # JUVENTUS/match/HUDI'S CAM", camera sbagliata) prende il giorno delle sue
     # sorelle, se sotto lo stesso genitore c'e' un giorno solo.
