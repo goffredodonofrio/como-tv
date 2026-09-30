@@ -281,7 +281,10 @@
   .comp-griglia{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
   .comp-t{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 10px 14px;border:1px solid var(--riga2);border-radius:14px;background:rgba(245,241,230,.03);color:var(--ivory);cursor:pointer;text-align:center;min-width:0;}
   .comp-t:hover,.comp-t:focus-visible{border-color:var(--oro);background:rgba(201,162,75,.08);outline:none;}
-  .comp-logo{width:84px;height:84px;display:flex;align-items:center;justify-content:center;} .comp-logo img{max-width:100%;max-height:100%;object-fit:contain;}
+  .comp-logo{width:100px;height:100px;display:flex;align-items:center;justify-content:center;} .comp-logo img{max-width:100%;max-height:100%;object-fit:contain;}
+  /* i loghi sono cerchi blu come le locandine di tv.comofootball.com; le riserve (stemma del Como, Como TV) nello stesso cerchio */
+  .comp-logo img.fb,.ct-logo img.fb{width:100%;height:100%;padding:22%;box-sizing:border-box;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1e3268,#0b122c 78%);}
+  .comp-sigla{box-shadow:inset 0 0 0 2px rgba(255,255,255,.12);}
   .comp-sigla{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:800 22px/1 'Mazzard',sans-serif;}
   .comp-t b{font:600 13px/1.25 'DM Sans',sans-serif;max-width:100%;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
   .comp-t small{font-size:11.5px;color:var(--fumo);font-variant-numeric:tabular-nums;}
@@ -1356,8 +1359,8 @@
   .lingue-player button+button{border-left:1px solid rgba(245,241,230,.2);}
   .lingue-player button.on{background:var(--oro);color:var(--navy);}
   .lingue-ris{display:inline-flex;gap:3px;margin-left:6px;vertical-align:1px;}
-  .lingue-ris a{font:700 9px/1 ui-monospace,Menlo,monospace;letter-spacing:.05em;padding:2px 4px;border-radius:3px;border:1px solid rgba(201,162,75,.6);color:var(--oro2);text-decoration:none;}
-  .lingue-ris a:hover{background:var(--oro);color:var(--navy);}
+  .lingue-ris [data-apri-lingua]{cursor:pointer;font:700 9px/1 ui-monospace,Menlo,monospace;letter-spacing:.05em;padding:2px 4px;border-radius:3px;border:1px solid rgba(201,162,75,.6);color:var(--oro2);text-decoration:none;}
+  .lingue-ris [data-apri-lingua]:hover,.lingue-ris [data-apri-lingua]:focus-visible{outline:none;background:var(--oro);color:var(--navy);}
   /* IL MATERIALE DEL CLUB (30/09/2026) */
   .club-testa{font-size:11px;color:var(--fumo);margin:2px 0 8px;line-height:1.4;}
   .club-testa b{color:var(--ivory);font-size:12px;}
@@ -2401,12 +2404,12 @@
   function logoComp(nome, delComo){
     var fb = /studio|training/i.test(nome) ? "/loghi/como-tv-logo.png" : delComo ? "/loghi/stemma-espn-2572.png" : "";
     var sigla = nome.replace(/^como 1907\s*\|\s*/i, "").split(/\s+/).filter(Boolean).map(function(w){ return w[0]; }).join("").slice(0, 3).toUpperCase();
-    return '<img src="/loghi/evento-' + slugComp(nome) + '.png" alt="" loading="lazy" data-fb="' + esc(fb) + '" data-sigla="' + esc(sigla) + '" data-col="' + esc(coloreComp(nome)) + '" onerror="logoMancante(this)">';
+    return '<img src="/loghi/evento-' + slugComp(nome) + '.png?v=2" alt="" loading="lazy" data-fb="' + esc(fb) + '" data-sigla="' + esc(sigla) + '" data-col="' + esc(coloreComp(nome)) + '" onerror="logoMancante(this)">';
   }
   window.logoMancante = function(img){
     var s0 = img.getAttribute("src") || "";
-    if (/\.png$/.test(s0) && /evento-/.test(s0) && !img.dataset.svg) { img.dataset.svg = 1; img.src = s0.replace(/\.png$/, ".svg"); return; }
-    if (img.dataset.fb && s0 !== img.dataset.fb) { img.src = img.dataset.fb; return; }
+    if (/\.png(\?|$)/.test(s0) && /evento-/.test(s0) && !img.dataset.svg) { img.dataset.svg = 1; img.src = s0.replace(/\.png(\?.*)?$/, ".svg"); return; }
+    if (img.dataset.fb && s0 !== img.dataset.fb) { img.classList.add("fb"); img.src = img.dataset.fb; return; }
     var sp = document.createElement("span"); sp.className = "comp-sigla"; sp.textContent = img.dataset.sigla || "?"; sp.style.background = img.dataset.col || "#3a3d46"; sp.style.color = testoSu(img.dataset.col || "#3a3d46");
     img.replaceWith(sp);
   };
@@ -2913,16 +2916,22 @@
     return h + '</div>';
   }
   // ITA · ENG · INT sotto una partita del Como: ognuna apre l'Editing con quell'audio
+  // (30/09/2026) i bollini sono <span>, non <a>: dentro la scheda, che e' gia' un link, un <a>
+  // spezzava la scheda in due e meta' restava senza grafica
   function lingueRis(x, link, t){
     var ls = x.lingue || (x.rec && LINGUE_INFO[x.rec] ? ["eng", "int"].filter(function(k){ return LINGUE_INFO[x.rec][k]; }) : []);
     var club = +x.club || 0;
     if ((!ls || !ls.length) && !club) return "";
-    return '<span class="lingue-ris">' + (ls && ls.length ? ["ita"].concat(ls) : []).map(function(k){ return '<a data-apri-lingua="' + esc(link(x, t, k === "ita" ? "" : k)) + '" title="' + ({ ita: "con il commento ITA di Como TV", eng: "con il commento inglese del club", int: "con il suono internazionale" })[k] + '">' + k.toUpperCase() + '</a>'; }).join("") +
-      (club ? '<a data-apri-lingua="' + esc(link(x, t) + "&club=1") + '" title="il materiale del club di questa giornata: HL, interviste, conferenza, camere">CLUB ' + club + '</a>' : '') + '</span>';
+    return '<span class="lingue-ris">' + (ls && ls.length ? ["ita"].concat(ls) : []).map(function(k){ return '<span role="link" tabindex="0" data-apri-lingua="' + esc(link(x, t, k === "ita" ? "" : k)) + '" title="' + ({ ita: "con il commento ITA di Como TV", eng: "con il commento inglese del club", int: "con il suono internazionale" })[k] + '">' + k.toUpperCase() + '</span>'; }).join("") +
+      (club ? '<span role="link" tabindex="0" data-apri-lingua="' + esc(link(x, t) + "&club=1") + '" title="il materiale del club di questa giornata: HL, interviste, conferenza, camere">CLUB ' + club + '</span>' : '') + '</span>';
   }
   document.addEventListener("click", function(e){
     var a = e.target.closest && e.target.closest("[data-apri-lingua]"); if (!a) return;
     e.preventDefault(); e.stopPropagation(); vaiEditing(a.dataset.apriLingua);
+  }, true);
+  document.addEventListener("keydown", function(e){
+    if (e.key !== "Enter" || !e.target.dataset || !e.target.dataset.apriLingua) return;
+    e.preventDefault(); e.stopPropagation(); vaiEditing(e.target.dataset.apriLingua);
   }, true);
   function tesseraPartita(x, link){
     var ant = anteprimaHtml(x);
@@ -3893,37 +3902,53 @@
     var mini = card.querySelector(".mini") || (card.classList.contains("minil") ? card : null); if (!mini) return;
     ingrandisci(card);
     if (card.classList.contains("a1907")) {
+      // IL MATERIALE DEL 1907 come le altre (Goffredo, 30/09/2026): il video con l'audio.
+      // La copia leggera se c'e', se no l'originale (gli 8 bit il browser li legge);
+      // se il browser non lo legge (10 bit, ProRes), il provino a sei fotogrammi di prima.
       var x = AZ_PER_CHIAVE[card.dataset.e1907]; if (!x) return;
       card.classList.add("ant-attesa");
-      var u = "/como-tv/mam-1907/provino/" + x.k1907 + ".jpg?v=" + encodeURIComponent(x.via1907), img = new Image();
-      img.onload = function(){
+      var provino = function(){
         if (ANT.card !== card) return;
-        card.classList.remove("ant-attesa"); card.classList.add("ant-su");
-        var pv = document.createElement("div"); pv.className = "ant-prov"; pv.style.backgroundImage = 'url("' + u + '")';
-        mini.insertBefore(pv, mini.querySelector(".sopra")); barraAnt(mini).style.width = "16.66%";
-        if (ANT.ultimo) scorriProvino(card, ANT.ultimo);
+        var u = "/como-tv/mam-1907/provino/" + x.k1907 + ".jpg?v=" + encodeURIComponent(x.via1907), img = new Image();
+        img.onload = function(){
+          if (ANT.card !== card) return;
+          card.classList.remove("ant-attesa"); card.classList.add("ant-su");
+          var pv = document.createElement("div"); pv.className = "ant-prov"; pv.style.backgroundImage = 'url("' + u + '")';
+          mini.insertBefore(pv, mini.querySelector(".sopra")); barraAnt(mini).style.width = "16.66%";
+          if (ANT.ultimo) scorriProvino(card, ANT.ultimo);
+        };
+        img.onerror = function(){ card.classList.remove("ant-attesa"); };
+        img.src = u;
       };
-      img.onerror = function(){ card.classList.remove("ant-attesa"); };
-      img.src = u;
+      var orig = "/como-tv/mam-1907/file/" + x.via1907.split("/").map(encodeURIComponent).join("/");
+      fetch("/como-tv/mam-1907/copia?v=" + encodeURIComponent(x.via1907), { cache: "no-store" })
+        .then(function(r){ return r.ok ? r.json() : {}; }).catch(function(){ return {}; })
+        .then(function(st){ if (ANT.card === card) videoAnteprima(card, mini, st && st.stato === "pronta" && st.via ? st.via : orig, +x.t || 0, (+x.t || 0) + 10, provino); });
       return;
     }
-    var t = +card.dataset.t || 0, da = Math.max(0, t - 4), a = t + 6;
+    var t = +card.dataset.t || 0;
     card.classList.add("ant-attesa");
-    viaDiReg(card).then(function(via){
-      if (ANT.card !== card) return;
-      var v = document.createElement("video"); v.className = "ant-video"; v.muted = false; v.volume = 0.8; v.playsInline = true; v.preload = "auto";
-      var bi = barraAnt(mini);
-      // con l'audio (Goffredo, 28/09/2026); se il browser non lo lascia partire, muto
-      v.addEventListener("loadedmetadata", function(){ try { v.currentTime = da; } catch (e) {} v.play().catch(function(){ v.muted = true; v.play().catch(function(){}); }); });
-      v.addEventListener("playing", function(){ if (ANT.card === card) { card.classList.remove("ant-attesa"); card.classList.add("ant-su"); } });
-      v.addEventListener("timeupdate", function(){
-        if (v.currentTime >= a || v.currentTime < da - 1) { try { v.currentTime = da; } catch (e) {} }
-        bi.style.width = Math.max(0, Math.min(100, (v.currentTime - da) / (a - da) * 100)).toFixed(1) + "%";
-      });
-      v.addEventListener("error", function(){ card.classList.remove("ant-attesa"); });
-      mini.insertBefore(v, mini.querySelector(".sopra"));
-      ANT.video = v; v.src = BASE + via;
-    }).catch(function(){ card.classList.remove("ant-attesa"); });
+    viaDiReg(card).then(function(via){ if (ANT.card === card) videoAnteprima(card, mini, BASE + via, Math.max(0, t - 4), t + 6); })
+      .catch(function(){ card.classList.remove("ant-attesa"); });
+  }
+  // il video dell'anteprima: parte da "da" con l'audio e torna a "da" arrivato ad "a";
+  // seNo() se il browser non lo sa leggere
+  function videoAnteprima(card, mini, src, da, a, seNo){
+    var v = document.createElement("video"); v.className = "ant-video"; v.muted = false; v.volume = 0.8; v.playsInline = true; v.preload = "auto";
+    var bi = barraAnt(mini), fallito = false;
+    var male = function(){ if (fallito) return; fallito = true; v.remove(); if (ANT.video === v) ANT.video = null; if (seNo && ANT.card === card) seNo(); else card.classList.remove("ant-attesa"); };
+    // con l'audio (Goffredo, 28/09/2026); se il browser non lo lascia partire, muto
+    v.addEventListener("loadedmetadata", function(){ if (v.duration && a > v.duration) a = v.duration; try { v.currentTime = da; } catch (e) {} v.play().catch(function(){ v.muted = true; v.play().catch(function(){}); }); });
+    v.addEventListener("loadeddata", function(){ if (!v.videoWidth) male(); });
+    v.addEventListener("playing", function(){ if (ANT.card === card) { card.classList.remove("ant-attesa"); card.classList.add("ant-su"); } });
+    v.addEventListener("timeupdate", function(){
+      if (v.currentTime >= a || v.currentTime < da - 1) { try { v.currentTime = da; } catch (e) {} }
+      bi.style.width = Math.max(0, Math.min(100, (v.currentTime - da) / Math.max(0.1, a - da) * 100)).toFixed(1) + "%";
+    });
+    v.addEventListener("ended", function(){ try { v.currentTime = da; } catch (e) {} v.play().catch(function(){}); });
+    v.addEventListener("error", male);
+    mini.insertBefore(v, mini.querySelector(".sopra"));
+    ANT.video = v; v.src = src;
   }
   function scorriProvino(card, e){
     var pv = card.querySelector(".ant-prov"); if (!pv) return;
