@@ -5069,10 +5069,21 @@
     // che vengono dopo; un legato resta legato, fuori sincrono di tanto
     if (z.tr && z.tr !== "V1") {
       if (traccaBloccata(z.tr)) return avviso("err", "La traccia " + z.tr + " e' bloccata.");
-      var lungA = z.b - z.a, dopoA = AUD.filter(function(au){ return (au.traccia || "A1") === z.tr && t0Audio(au) >= z.b - 0.02; }).map(function(au){ return au.id; });
-      if (!dopoA.length) { BUCO_SEL = null; disegnaTl(); return; }
-      return post({ tipo:"clip-hl-sposta-gruppo", seq: SEQ.id, d: -Math.round(lungA * 1000) / 1000, pezzi: [], grafiche: [], audio: dopoA, soloAudio: true })
-        .then(function(d){ BUCO_SEL = null; ricaricaSeq(d.seq); avviso("ok", "Spazio vuoto chiuso su " + z.tr + ": " + tc(lungA) + (AUD.some(function(au){ return au.legato && dopoA.indexOf(au.id) >= 0; }) ? " (gli audio legati ora sono fuori sincrono: il numero rosso dice di quanto)" : "") + "."); })
+      var lungA = z.b - z.a, epsA = 0.02, dentroQui = function(a0, b0){ return a0 < z.b - epsA && b0 > z.a + epsA; };
+      // COME PREMIERE (30/09/2026, Federico: "mi sposta solo l'audio, il video
+      // rimane fermo"): se quello spazio e' vuoto su TUTTE le tracce scorre tutto
+      // quello che viene dopo, video compreso; se su un'altra traccia li' c'e'
+      // qualcosa (il video continua, solo l'audio ha il buco) scorre solo questa
+      var occupato = PZ.some(function(x){ return dentroQui(x.t0 || 0, (x.t0 || 0) + (x.fuori - x.dentro)); }) ||
+                     GRAF.some(function(g){ return dentroQui(g.dentro, g.fuori); }) ||
+                     AUD.some(function(au){ var a0 = t0Audio(au); return (au.traccia || "A1") !== z.tr && dentroQui(a0, a0 + (au.fuori - au.dentro)); });
+      var tuttoA = !occupato;
+      var pzA = tuttoA ? PZ.filter(function(x){ return (x.t0 || 0) >= z.b - epsA; }).map(function(x){ return x.id; }) : [];
+      var gA = tuttoA ? GRAF.filter(function(g){ return g.dentro >= z.b - epsA; }).map(function(g){ return g.id; }) : [];
+      var dopoA = AUD.filter(function(au){ return (tuttoA || (au.traccia || "A1") === z.tr) && t0Audio(au) >= z.b - epsA; }).map(function(au){ return au.id; });
+      if (!dopoA.length && !pzA.length && !gA.length) { BUCO_SEL = null; disegnaTl(); return; }
+      return post({ tipo:"clip-hl-sposta-gruppo", seq: SEQ.id, d: -Math.round(lungA * 1000) / 1000, pezzi: pzA, grafiche: gA, audio: dopoA, soloAudio: true })
+        .then(function(d){ BUCO_SEL = null; ricaricaSeq(d.seq); avviso("ok", "Spazio vuoto chiuso su " + z.tr + ": " + tc(lungA) + (tuttoA ? ", tutto quello che viene dopo e' scorso indietro" : ", solo su " + z.tr + " (sulle altre tracce li' c'e' qualcosa)") + "."); })
         .catch(function(er){ avviso("err", esc(er.message)); });
     }
     var eps = 0.02, lung = z.b - z.a, dentro = [];
