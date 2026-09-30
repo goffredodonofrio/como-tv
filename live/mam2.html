@@ -7551,7 +7551,35 @@
     if (FORMATI.length > 1) c.formati = FORMATI; else c.formato = FORMATI[0];
     post(c).then(function(){ avviso("ok", "Export in coda: lo segui qui a destra." + (c.raccolta ? " Finito, entra in «" + esc(c.raccolta) + "»." : "")); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); });
   });
-  el("eXml").addEventListener("click", function(){ if (!SEQ) return; post({ tipo:"clip-hl-esporta", seq: SEQ.id, come:"premiere", volume: volumeMontaggio(false) || "" }).then(function(){ return post({ tipo:"clip-hl-srt", seq: SEQ.id, lingua: el("eSottoL").value }); }).then(function(){ avviso("ok", "XML e SRT pronti: li trovi nelle uscite."); giroUscite(); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  // L'XML PER PREMIERE ARRIVA SUL COMPUTER DI CHI MONTA (30/09/2026): non resta
+  // sul server ad aspettare un clic nelle uscite. Si scarica subito nella
+  // cartella Download, con l'SRT a fianco. Dentro, ogni file e' scritto col suo
+  // percorso sulla NAS vista dal Mac ("/Volumes/COMOTV - VOD/S3-ARCHIVIO/..."):
+  // con la NAS montata Premiere apre la sequenza gia' attaccata.
+  function scaricaSulComputer(url, nome){
+    var a = document.createElement("a"); a.href = url; a.download = nome || "";
+    document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1500);
+  }
+  el("eXml").addEventListener("click", function(){
+    if (!SEQ) return;
+    var vol = volumeMontaggio(false); if (vol === null) return;
+    var b = el("eXml"), testo = b.textContent; b.disabled = true; b.textContent = "Preparo l\u2019XML\u2026";
+    var nomi = [];
+    post({ tipo:"clip-hl-esporta", seq: SEQ.id, come:"premiere", volume: vol || "" }).then(function(d){
+      var pr = d.premiere; if (!pr || !pr.file) throw new Error("l\u2019XML non \u00e8 uscito");
+      scaricaSulComputer(BASE + pr.file + "?scarica=1", pr.nome); nomi.push(pr.nome || "sequenza.xml");
+      return post({ tipo:"clip-hl-srt", seq: SEQ.id, lingua: el("eSottoL").value }).then(function(x){
+        var st = x.sottotitoli || {}, fs2 = st.files || (st.file ? [st] : []);
+        // un attimo fra un file e l'altro: alcuni browser ne bloccano due insieme
+        fs2.forEach(function(f, k){ setTimeout(function(){ scaricaSulComputer(BASE + f.file + "?scarica=1", f.nome); }, 700 * (k + 1)); nomi.push(f.nome); });
+      }).catch(function(){ /* senza SRT l'XML basta */ });
+    }).then(function(){
+      avviso("ok", "Scaricat" + (nomi.length > 1 ? "i" : "o") + " sul tuo computer (cartella Download): " + nomi.map(esc).join(", ") +
+        ". In Premiere: File \u203a Importa l\u2019XML" + (vol ? ", con la NAS montata in \u201c" + esc(vol) + "\u201d." : "; i file vanno ricollegati a mano."));
+      giroUscite();
+    }).catch(function(er){ avviso("err", esc(er.message)); })
+      .then(function(){ b.disabled = false; b.textContent = testo; });
+  });
   // ── L'ARCHIVIO SULLA NAS: la scheda nella Libreria ──
   function gbTesto(b){ return b >= 1e12 ? (b / 1e12).toFixed(2).replace(".", ",") + " TB" : Math.round(b / 1e9) + " GB"; }
   // i GB con due decimali: ogni 10 MB cambia cifra, si vede che sale

@@ -5790,7 +5790,18 @@ async function hlEsportaPremiere(q, percorso, volume) {
   // intera. Altrove il file ce l'ha scaricato lui, e il nome basta.
   const suNasDi = (rx) => !!(rx && rx.arch && (magazzinoDi2(rx.arch.bucket) || {}).cartella);
   const suNas = suNasDi(r);
-  const sotto = (chiave, rx) => (suNasDi(rx || r) ? chiave : path.basename(chiave));
+  // DOVE STA IL FILE, VISTO DAL MAC DI CHI MONTA (30/09/2026). Le partite
+  // dell'archivio (ex S3) stanno sulla NAS in S3-ARCHIVIO/TEMP/... (o nella
+  // copia riparata in S3-ARCHIVIO/_riparati): si scrive quel percorso,
+  // relativo alla radice della QNAP. Prima usciva il solo nome del file
+  // (quando il montatore le scaricava da S3) e Premiere non le trovava.
+  const radiceNas = QNAP_RADICE.replace(/\/+$/, "") + "/";
+  const sotto = (chiave, rx) => {
+    if (suNasDi(rx || r)) return chiave;
+    const f = copiaInCasa(chiave);
+    if (f && f.indexOf(radiceNas) === 0) return f.slice(radiceNas.length);
+    return path.basename(chiave);
+  };
   const cartellaVia = vol ? vol + "/" : (via.indexOf("/") >= 0 ? via.slice(0, via.lastIndexOf("/") + 1) : "");
   const via1 = (vol && r && r.arch && !c1 && !percorso) ? vol + "/" + sotto(r.arch.chiave) : via;
   // OGNI PEZZO IL SUO FILE, anche di un'altra partita. In una gol
