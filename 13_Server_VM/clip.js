@@ -4842,6 +4842,7 @@ function pezziDaScaricare(q) {
   const visti = {};
   return tutti.filter((x) => {
     if (mediaVia(x)) return false;          // ce l'ha gia' in casa: e' suo
+    if (x.animata) return false;            // il suono di una grafica animata: sta in _grafiche/animate
     const k = chiaveCasa(q, x);
     if (visti[k]) return false;
     visti[k] = true;
@@ -5009,12 +5010,12 @@ function costruisciMix(q, iBase) {
     if (a.muto || !suona[a.traccia]) return;
     const t = (q.tracce && q.tracce[a.traccia]) || {};
     const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
-    const mioA = mediaVia(suoP);
+    const mioA = mediaVia(suoP) || (a.animata ? viaAnimata(a.animata, "wav") : null);
     // OGNI PEZZO CON LA SUA PARTITA (26/09/2026): canali e materiale di
     // riserva erano sempre quelli di q.reg, anche per un pezzo di un'altra
     // partita in una gol collection
     const rA = regDi(q, suoP || a);
-    const canaliQui = quantiCanali(rA);
+    const canaliQui = a.animata ? 2 : quantiCanali(rA);
     const k = suoP ? chiaveCasa(q, suoP) : chiavePezzo(idRegDi(q, a), a.dentro, a.fuori);
     const casa = mioA || filePezzo(k);
     const dur = Math.max(0.05, a.fuori - a.dentro);
@@ -5137,6 +5138,8 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   // Premiere non esce: qui era un interruttore che si ricordava e basta.
   const trV = tracceDi(q);
   const grafiche0 = trV.G.muto ? [] : (q.grafiche || []).filter((g) => {
+    // bumper ed endtag non hanno il PNG: hanno il loro video con l'alfa
+    if (g.animata) return !!viaAnimata(g.animata, "mov");
     try { return fs.existsSync(path.join(cartellaGrafiche(), g.id + ".png")); } catch (e) { return false; }
   });
   const v1Spenta = !!trV.V1.muto;
@@ -5460,6 +5463,13 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
     let catena = "";
     const ingressi = [];
     let ultimo = "0:v";
+    // FIN DOVE FINISCE L'ULTIMA COSA (30/09/2026): un endtag che va oltre
+    // l'ultima clip allunga il montato, come in Premiere. Sotto, nero.
+    {
+      const fineV = (q.pezzi || []).reduce((m, x) => Math.max(m, (x.t0 || 0) + Math.max(0, x.fuori - x.dentro)), 0);
+      const oltre = fineSequenza(q) - fineV;
+      if (oltre > 0.04) { catena += "[0:v]tpad=stop_mode=add:stop_duration=" + oltre.toFixed(3) + ":color=black[fondo0];"; ultimo = "fondo0"; }
+    }
     // I PEZZI SOPRA (V2). Vanno prima delle grafiche, perche' una grafica
     // deve poter stare anche sopra di loro. Ognuno entra come un ingresso
     // suo, si rimpicciolisce al riquadro che gli e' stato dato e si sposta
@@ -5512,10 +5522,12 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
         const h2 = Math.max(2, Math.round((g.h || dopoH) * kk / 2) * 2);
         const x = Math.round((dopoW - w2) / 2), y = Math.round((dopoH - h2) / 2);
         const usc = (i === grafiche.length - 1) ? "v" : ("g" + i + "o");
-        catena += "[" + nG + ":v]scale=" + w2 + ":" + h2 + "[g" + i + "];" +
+        // l'animata entra al suo secondo (setpts), tiene l'alfa e sparisce quando finisce
+        const pre = g.animata ? "setpts=PTS-STARTPTS+" + g0.dentro.toFixed(3) + "/TB," : "";
+        catena += "[" + nG + ":v]" + pre + "scale=" + w2 + ":" + h2 + (g.animata ? ",format=yuva420p" : "") + "[g" + i + "];" +
                   "[" + ultimo + "][g" + i + "]overlay=" + x + ":" + y +
                   ":enable='between(t," + g0.dentro.toFixed(2) + "," + g0.fuori.toFixed(2) + ")'" +
-                  ":format=auto[" + usc + "];";
+                  (g.animata ? ":eof_action=pass" : "") + ":format=auto[" + usc + "];";
         ultimo = usc;
       });
     }
@@ -5869,7 +5881,8 @@ async function hlEsportaPremiere(q, percorso, volume) {
   const posti = {};
   const contati = {};
   q.pezzi.forEach((x, i) => { contati.v = (contati.v || 0) + 1; posti["v:" + x.id] = contati.v; });
-  (q.audio || []).slice().sort((a, b) => (a.t0 || 0) - (b.t0 || 0)).forEach((a) => {
+  // il suono delle grafiche animate sta sulla VM, non sulla NAS: nell'XML non c'e'
+  (q.audio || []).filter((a) => !a.animata).slice().sort((a, b) => (a.t0 || 0) - (b.t0 || 0)).forEach((a) => {
     const t = "a" + iTraccia(a.traccia);
     contati[t] = (contati[t] || 0) + 1;
     posti["a:" + a.id] = contati[t];
@@ -5924,6 +5937,7 @@ async function hlEsportaPremiere(q, percorso, volume) {
   });
 
   (q.audio || []).forEach((a) => {
+    if (a.animata) return;
     const da = dovE(a.dentro, (q.pezzi || []).filter((y) => y.id === a.legato)[0]).da;
     const inF = frame(a.dentro - da), outF = frame(a.fuori - da);
     const durF = Math.max(1, outF - inF);
@@ -13360,7 +13374,9 @@ const TIPI = { ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".
                ".xml": "application/xml", ".jpg": "image/jpeg", ".srt": "text/plain; charset=utf-8",
                // il PNG serve alle grafiche del livello V2: senza, l'anteprima
                // sopra il Programma era un riquadro vuoto con dentro un 404
-               ".png": "image/png" };
+               ".png": "image/png",
+               // bumper ed endtag: la WebM con l'alfa per l'anteprima, il WAV del loro suono
+               ".webm": "video/webm", ".wav": "audio/wav" };
 
 // ── IL PONTE SUL MAGAZZINO DI CASA ────────────────────────────────────
 //
@@ -13709,7 +13725,8 @@ function serviHttp(req, res, u) {
   if (ATTIVO && u.pathname.startsWith("/qnap/")) { serviQnap(req, res, u); return true; }
   if (!ATTIVO || !u.pathname.startsWith("/clip/")) return false;
   const pezzi = decodeURIComponent(u.pathname.slice(6)).split("/").filter(Boolean);
-  if (!pezzi.length || pezzi.length > 3 || pezzi.some((x) => !/^[A-Za-z0-9._-]+$/.test(x) || x.startsWith("."))) {
+  // quattro livelli solo per _hl/_grafiche/animate/<k>.webm
+  if (!pezzi.length || pezzi.length > (pezzi[2] === "animate" ? 4 : 3) || pezzi.some((x) => !/^[A-Za-z0-9._-]+$/.test(x) || x.startsWith("."))) {
     res.writeHead(404).end("non trovato"); return true;
   }
   const est = path.extname(pezzi[pezzi.length - 1]).toLowerCase();
@@ -14097,6 +14114,26 @@ function cartellaGrafiche() {
   assicura(d);
   return d;
 }
+// ══════════ LE GRAFICHE ANIMATE (30/09/2026) ══════════
+//  Bumper ed endtag di Como TV (11_Editing, da Goffredo): video con la
+//  trasparenza (QuickTime Animation, ProRes 4444) e un suono. Stanno sulla
+//  traccia delle grafiche, SOPRA il video, come in Premiere: il bumper copre
+//  lo stacco, l'endtag entra sopra la fine dell'ultima clip. Per ognuno in
+//  _grafiche/animate: <k>.mov (l'originale con l'alfa, per l'export),
+//  <k>.webm (VP9 con l'alfa, per il monitor del browser), <k>.wav (il suono,
+//  che va su A3 come un audio suo), e animate.json con nome, durata, misure.
+function cartellaAnimate() { return path.join(cartellaGrafiche(), "animate"); }
+let ANIMATE = { mt: -1, v: {} };
+function animate() {
+  const f = path.join(cartellaAnimate(), "animate.json");
+  let mt = 0; try { mt = fs.statSync(f).mtimeMs; } catch (e) { return {}; }
+  if (ANIMATE.mt !== mt) { try { ANIMATE = { mt, v: JSON.parse(fs.readFileSync(f, "utf8")) || {} }; } catch (e) { ANIMATE = { mt, v: {} }; } }
+  return ANIMATE.v;
+}
+function viaAnimata(k, est) {
+  const f = path.join(cartellaAnimate(), path.basename(String(k || "")) + "." + est);
+  return fs.existsSync(f) ? f : null;
+}
 
 // ══════════ I TITOLI ══════════
 //  Per scrivere un nome sullo schermo si usciva dal montaggio, si faceva un
@@ -14192,6 +14229,11 @@ async function disegnaTitolo(via, testo, sopra, stile, colore, formato) {
 // l'originale — segnato come adattato.
 async function stratoPerFormato(g, formato) {
   const f = TELA_FORMATO[formato] ? formato : "16:9";
+  if (g.animata) {
+    const via = viaAnimata(g.animata, "mov");
+    if (!via) throw new Error("la grafica animata \"" + (g.nome || g.animata) + "\" non c'e' piu' sulla macchina");
+    return { file: via, w: g.w, h: g.h, animata: true, adattata: formatoDiMisura(g.w, g.h) !== f };
+  }
   if (g.titolo && f !== "16:9") {
     const nome = g.id + "-" + f.replace(":", "x") + ".png";
     const via = path.join(cartellaGrafiche(), nome);
@@ -14216,6 +14258,9 @@ function hlGrafica(p) {
 
   if (p.togli) {
     const prima = q.grafiche.length;
+    // il suono della grafica animata se ne va con lei
+    const via0 = q.grafiche.filter((g) => g.id === p.grafica)[0];
+    if (via0 && via0.animata) q.audio = (q.audio || []).filter((a) => a.grafica !== via0.id);
     // IL PNG RESTA SUL DISCO (26/09/2026): cancellarlo qui voleva dire che
     // ⌘Z rimetteva in timeline una grafica senza immagine. Qualche file in
     // piu' in _grafiche, che la pulizia delle uscite vede gia' come orfani.
@@ -14227,6 +14272,7 @@ function hlGrafica(p) {
   if (p.grafica && p.dividi !== undefined) {        // la lametta
     const g = q.grafiche.filter((x) => x.id === p.grafica)[0];
     if (!g) throw new Error("grafica sconosciuta");
+    if (g.animata) throw new Error("una grafica animata non si divide: accorciala dai bordi");
     const dove = num(p.dividi, 0, durataSeq, 0);
     if (!(dove > g.dentro + 0.3 && dove < g.fuori - 0.3)) throw new Error("il taglio cadrebbe sul bordo");
     // il PNG si COPIA: due grafiche che puntano allo stesso file si
@@ -14254,6 +14300,21 @@ function hlGrafica(p) {
   if (p.grafica) {                                  // spostare o allungare
     const g = q.grafiche.filter((x) => x.id === p.grafica)[0];
     if (!g) throw new Error("grafica sconosciuta");
+    if (g.animata) {
+      // UNA GRAFICA ANIMATA dura quanto il suo video (si puo' solo accorciare)
+      // e puo' andare oltre la fine del montato: l'endtag la allunga, come in
+      // Premiere. Il suo suono le va dietro.
+      const lung = +(animate()[g.animata] || {}).durata || (g.fuori - g.dentro);
+      const d0 = g.dentro;
+      if (p.dentro !== undefined) g.dentro = num(p.dentro, 0, 86400, g.dentro);
+      if (p.fuori !== undefined) g.fuori = num(p.fuori, 0, 86400, g.fuori);
+      if (p.fuori === undefined) g.fuori = g.dentro + Math.min(lung, g.fuori - d0);
+      g.fuori = Math.min(g.fuori, g.dentro + lung);
+      if (g.fuori - g.dentro < 0.2) throw new Error("la grafica diventerebbe un lampo");
+      (q.audio || []).forEach((a) => { if (a.grafica === g.id) { a.t0 = Math.round(g.dentro * 1000) / 1000; a.fuori = Math.min(lung, a.dentro + (g.fuori - g.dentro)); } });
+      scrivi(); annuncia(0, "clip");
+      return { ok: true, seq: q };
+    }
     if (p.dentro !== undefined) g.dentro = num(p.dentro, 0, durataSeq, g.dentro);
     if (p.fuori !== undefined) g.fuori = num(p.fuori, 0, durataSeq, g.fuori);
     if (p.nome !== undefined) g.nome = String(p.nome).slice(0, 120);
@@ -17198,7 +17259,7 @@ const AZIONI = {
     let mancano = 0, fatte = 0;
     for (const a of (q.audio || [])) {
       const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
-      const mioW = mediaVia(suoP);
+      const mioW = mediaVia(suoP) || (a.animata ? viaAnimata(a.animata, "wav") : null);
       const k = mioW ? ("media-" + path.basename(mioW) + "-" + a.dentro.toFixed(2) + "-" + a.fuori.toFixed(2)).replace(/[^A-Za-z0-9._-]/g, "_")
                      : chiavePezzo(idRegDi(q, suoP || a), a.dentro, a.fuori);
       const via = path.join(cartellaOnde(), k + ".json");
@@ -17260,6 +17321,29 @@ const AZIONI = {
   "clip-anello": () => ({ ok: true, tolti: anello() }),
   "clip-grafica-uscita": graficaSuUscita,
   "clip-hl-grafica": hlGrafica,
+  "clip-hl-animate": () => ({ ok: true, animate: animate() }),
+  // UNA GRAFICA ANIMATA ALLA TESTINA: la grafica sopra il video e il suo suono su A3
+  "clip-hl-animata": (p) => {
+    const q = seqMia(p);
+    normalizzaSeq(q);
+    const k = String(p.chiave || ""), m = animate()[k];
+    if (!m || !viaAnimata(k, "mov")) throw new Error("questa grafica animata non c'e' sulla macchina");
+    if ((tracceDi(q).G || {}).bloccata) throw new Error("la traccia delle grafiche e' bloccata");
+    toccataAMano(q);
+    q.grafiche = q.grafiche || [];
+    const dentro = Math.round(num(p.t, 0, 86400, 0) * 1000) / 1000, dur = +m.durata || 5;
+    const g = { id: nuovoId("g"), dentro, fuori: Math.round((dentro + dur) * 1000) / 1000, nome: m.nome || k, animata: k,
+                w: m.w || 1920, h: m.h || 1080, formato: formatoDiMisura(m.w || 1920, m.h || 1080),
+                file: "/clip/" + CARTELLA_HL + "/_grafiche/animate/" + k + ".webm", quando: Date.now() };
+    q.grafiche.push(g);
+    q.grafiche.sort((a, b) => a.dentro - b.dentro);
+    if (viaAnimata(k, "wav")) {
+      const tr = TRACCE_A.find((n) => n === "A3") || "A1";
+      q.audio.push({ id: nuovoId("a"), traccia: tr, dentro: 0, fuori: dur, t0: dentro, titolo: (m.nome || k) + " · suono", animata: k, grafica: g.id });
+    }
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, grafica: g };
+  },
   "clip-hl-grafica-formato": async (p) => {
     const q = seqDi(p);
     const g = (q.grafiche || []).filter((x) => x.id === String(p.grafica || ""))[0];
