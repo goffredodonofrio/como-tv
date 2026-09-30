@@ -207,6 +207,7 @@
   .bf-ch.tutti{margin-left:auto;}
   .bf-pop{position:absolute;top:38px;left:0;z-index:70;min-width:260px;max-width:min(820px,94vw);max-height:440px;overflow:auto;padding:12px 14px;border:1px solid var(--riga2);border-radius:12px;background:#141a27;box-shadow:0 18px 44px rgba(0,0,0,.55);}
   .bf-pop .ris.bf-dentro{max-width:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 22px;}
+  .bf-gio-sch{width:min(620px,90vw);} .bf-gio-sch .col-azzera{margin-top:10px;}
   .bf-gio{width:320px;} .bf-gio input{width:100%;margin:0 0 8px;}
   .bf-gio-lista a{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:6px;cursor:pointer;color:var(--ivory);font-size:13px;}
   .bf-gio-lista a:hover{background:rgba(201,162,75,.14);} .bf-gio-lista em{font-style:normal;color:var(--fumo);font-size:11.5px;} .bf-gio-lista small{margin-left:auto;color:var(--fumo);font-size:11px;}
@@ -2300,7 +2301,7 @@
   // ── I FILTRI DELLA RICERCA (30/09/2026) ────────────────────────────────
   //  Ogni gettone dice di che tipo e' ("Tipo · Angolo"); i valori con un ordine
   //  (tempo, minuto, punteggio) lo tengono; le parole li riconoscono mentre si scrive.
-  var BREVE_TIPO = { ta: "Tipo", si: "Situazione", te: "Tempo", mi: "Minuto", sp: "Punteggio", ct: "", sd: "Stadio", ar: "Arbitro", cl: "", l: "Audio", st: "", r: "", p: "Punto", d: "" };
+  var BREVE_TIPO = { ta: "Tipo", si: "Situazione", te: "Tempo", mi: "Minuto", sp: "Punteggio", ct: "", sd: "Stadio", ar: "Arbitro", cl: "", l: "Audio", st: "", r: "Tipo", p: "Punto", d: "" };
   var ORDINE_TA = ["Gol", "Tiro in porta", "Tiro fuori", "Tiro respinto", "Palo", "Rigore", "Occasione", "Giocata", "Angolo", "Punizione", "Fuorigioco", "Fallo", "Giallo", "Rosso", "VAR", "Sostituzione"];
   var TA_MINORI = { "Angolo": 1, "Punizione": 1, "Fuorigioco": 1, "Fallo": 1 };
   var ORDINE_SI = ["Calcio piazzato", "Contropiede", "Colpo di testa", "Da fuori area", "Parata", "Boato del pubblico"];
@@ -2355,10 +2356,14 @@
     ["l", "ENG", ["commento inglese", "inglese", "english"]], ["l", "INT", ["suono internazionale", "senza commento", "audio ambiente", "ambientale"]],
     ["cl", "si", ["materiale del club", "club"]]
   ];
+  var TA_R = { "Gol": "gol", "Tiro in porta": "tiro parato", "Tiro fuori": "tiro", "Tiro respinto": "tiro", "Palo": "palo", "Rigore": "rigore sbagliato", "Giallo": "giallo", "Rosso": "rosso" };
   function candidatiFiltro(f){
     var q = piatto(f); if (q.length < 3) return [];
-    var fuori = [];
-    PAROLE_FILTRO.forEach(function(r){ if (r[2].some(function(w){ var p = piatto(w); return p === q || (q.length >= 4 && p.indexOf(q) === 0); })) fuori.push({ t: r[0], v: r[1], eti: etiValore(r[0], r[1]) }); });
+    var fuori = [], conG = gettone("g").length > 0;
+    PAROLE_FILTRO.forEach(function(r){ if (r[2].some(function(w){ var p = piatto(w); return p === q || (q.length >= 4 && p.indexOf(q) === 0); })) {
+      if (conG && r[0] === "ta" && TA_R[r[1]] && RUOLI[TA_R[r[1]]]) fuori.push({ t: "r", v: TA_R[r[1]], eti: RUOLI[TA_R[r[1]]].eti });
+      else fuori.push({ t: r[0], v: r[1], eti: etiValore(r[0], r[1]) });
+    } });
     return fuori.filter(function(x, i){ return fuori.findIndex(function(y){ return y.t === x.t && y.v === x.v; }) === i; }).slice(0, 4);
   }
   var ETI_P = { secondo: "al secondo", minuto: "al minuto" }, ETI_D = { nas: "sulla NAS", arrivo: "in arrivo" };
@@ -2461,7 +2466,7 @@
     if (g.al && modo === "ris") h += voltoHtml(g.v);
     if (modo === "sugg") {
       var n = Object.keys(SCHEDA_SEL.r).length + Object.keys(SCHEDA_SEL.c).length + Object.keys(SCHEDA_SEL.st).length;
-      h += '<div class="sg-azioni"><button type="button" class="sg-cerca" data-sgcerca="1">Cerca' + (n ? ' con ' + n + (n === 1 ? ' filtro' : ' filtri') : ' tutto di ' + esc(String(g.eti || "").split(/\s+/).pop())) + '</button><span>Invio</span></div>';
+      h += '<div class="sg-azioni"><button type="button" class="sg-cerca" data-sgcerca="1">Cerca tutto di ' + esc(String(g.eti || "").split(/\s+/).pop()) + '</button><span>Invio · o clic su un numero</span></div>';
     }
     return h + '</div>';
   }
@@ -2615,7 +2620,9 @@
       e.preventDefault();                       // il fuoco resta nel campo: il menu non si chiude
       var a = e.target.closest("a[data-sug]"); if (a) return scegliSuggerimento(+a.dataset.sug);
       var t = e.target.closest("[data-sg]");
-      if (t) { var v = t.dataset.sg.split("|"); var m = SCHEDA_SEL[v[0]]; if (m[v[1]]) delete m[v[1]]; else m[v[1]] = v[2]; suggerisci(); return; }
+      // UN SOLO MODO DI CERCARE (30/09/2026): un numero della scheda sceglie subito
+      // il giocatore e quel filtro, come nei risultati e nelle tendine (niente spunte in sospeso)
+      if (t) { var v = t.dataset.sg.split("|"), g0 = SUG[SUG_I]; if (!g0) return; SCHEDA_SEL = { nome: g0.v + "|" + g0.sq, r: {}, c: {}, st: {} }; SCHEDA_SEL[v[0]][v[1]] = v[2]; scegliSuggerimento(SUG_I); return; }
       if (e.target.closest("[data-sgcerca]")) scegliSuggerimento(SUG_I);
     });
     el("suggerisci").addEventListener("mouseover", function(e){ var a = e.target.closest("a[data-sug]"); if (!a || +a.dataset.sug === SUG_I) return; SUG_I = +a.dataset.sug; suggerisci(); });
@@ -2625,7 +2632,9 @@
     });
     el("campoG").addEventListener("click", function(e){ if (e.target === el("campoG") || e.target.id === "gettoni") inp.focus(); });
   })();
-  el("cercaLib").addEventListener("input", function(){ SUG_I = 0; suggerisci(); });
+  // il campo ha l'autofocus: il "focus" arriva prima di chi lo ascolta, e senza
+  // questo il dizionario dei giocatori non partiva finche' non si cliccava fuori e dentro
+  el("cercaLib").addEventListener("input", function(){ caricaDizionario(); SUG_I = 0; suggerisci(); });
   function cerca(q){
     // LA CASELLA IN CUI SI STA SCRIVENDO NON SI TOCCA. Qui prima si
     // riscrivevano tutte e due con il testo ripulito: lo spazio appena
@@ -2814,7 +2823,7 @@
   var COLONNE = [
     { t: "ta", eti: "Tipo di azione", soloAzioni: true, sez: "Azione" },
     { t: "si", eti: "Situazione", soloAzioni: true, sez: "Azione" },
-    { t: "r", eti: "Giocata", soloAzioni: true, sez: "Azione" },
+    { t: "r", eti: "Tipo di azione", soloAzioni: true, sez: "Azione" },
     { t: "c", eti: "Competizione", sez: "Partita" },
     { t: "st", eti: "Stagione", sez: "Partita" },
     { t: "s", eti: "Squadra", sez: "Partita" },
@@ -3440,21 +3449,33 @@
   var BF = [
     { k: "s", eti: "Squadra", c: ["s"] }, { k: "g", eti: "Giocatore", c: ["g"] }, { k: "c", eti: "Competizione", c: ["c"] },
     { k: "st", eti: "Stagione", c: ["st"] }, { k: "ta", eti: "Tipo di azione", c: ["ta"] }, { k: "tm", eti: "Tempo e minuto", c: ["te", "mi"] },
-    { k: "l", eti: "Audio", c: ["l"] }, { k: "tutti", eti: "Tutti i filtri", c: ["si", "r", "sp", "ct", "sd", "ar", "cl", "p"] }
+    { k: "l", eti: "Audio", c: ["l"] }, { k: "tutti", eti: "Tutti i filtri", c: ["si", "sp", "ct", "sd", "ar", "cl", "p"] }
   ];
   var BF_APERTA = "", BF_GIO = [];
   function colDi(t){ return COLONNE.filter(function(c){ return c.t === t; })[0]; }
+  // UN SOLO "TIPO DI AZIONE": con un giocatore (o un allenatore) sono le SUE giocate
+  // (gol, assist, tiri, pali, passaggi chiave… gli stessi numeri della sua scheda),
+  // senza sono i tipi di tutte le azioni
+  function colonneTenda(x){
+    if (x.k === "ta" && gettone("g").length) return ["r"];
+    return x.c;
+  }
   function popBarra(k){
     var x = BF.filter(function(y){ return y.k === k; })[0]; if (!x) return "";
-    if (k === "g") return '<div class="bf-gio"><input type="search" id="bfGio" placeholder="Nome del giocatore o dell\u2019allenatore" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><div id="bfGioLista" class="bf-gio-lista"><p class="bf-nota">Scrivi almeno tre lettere.</p></div></div>';
+    if (k === "g") {
+      var gio = gettone("g")[0];
+      if (!gio) return '<p class="bf-nota">Scrivi il nome nel campo di ricerca qui sopra: ti propongo giocatori e allenatori, con la loro scheda.</p>';
+      return '<div class="bf-gio-sch">' + schedaCardHtml(gio, schedaDi(gio.v, gio.sq, function(){ if (BF_APERTA === "g") disegnaBarraFiltri(); }, gio.al), "ris", (function(){ var c = {}; (RIS.azioni || []).forEach(function(x){ if (x.ruolo) c[x.ruolo] = (c[x.ruolo] || 0) + 1; }); return c; })()) +
+        '<button type="button" class="col-azzera" data-bftogli="g">Togli ' + esc(gio.eti) + '</button></div>';
+    }
     var visto = {};
-    return '<div class="ris bf-dentro">' + x.c.map(function(t){ var col = colDi(t); if (!col) return ""; var h = htmlColonna(col, true); if (k === "tutti" && h && !visto[col.sez]) { visto[col.sez] = 1; h = '<h4 class="col-sez">' + col.sez + '</h4>' + h; } return h; }).join("") + '</div>';
+    return '<div class="ris bf-dentro">' + colonneTenda(x).map(function(t){ var col = colDi(t); if (!col) return ""; var h = htmlColonna(col, true); if (k === "tutti" && h && !visto[col.sez]) { visto[col.sez] = 1; h = '<h4 class="col-sez">' + col.sez + '</h4>' + h; } return h; }).join("") + '</div>';
   }
   function disegnaBarraFiltri(){
     var b = el("barraFiltri"); if (!b) return;
     var cerca0 = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.colcerca;
     b.innerHTML = BF.map(function(x){
-      var sc = GETTONI.filter(function(g){ return x.c.indexOf(g.t) >= 0; });
+      var sc = GETTONI.filter(function(g){ return x.c.indexOf(g.t) >= 0 || (x.k === "ta" && g.t === "r"); });
       var nomi = sc.map(function(g){ return g.t === "g" || g.t === "s" || g.t === "c" ? g.eti : g.t === "st" ? g.v : etiValore(g.t, g.v); });
       var testo = !sc.length ? x.eti : x.k === "tutti" ? x.eti + " · " + sc.length : x.eti + ": " + nomi.slice(0, 2).join(", ") + (nomi.length > 2 ? " +" + (nomi.length - 2) : "");
       return '<button type="button" class="bf-ch' + (sc.length ? " on" : "") + (BF_APERTA === x.k ? " aperta" : "") + (x.k === "tutti" ? " tutti" : "") + '" data-bf="' + x.k + '" aria-expanded="' + (BF_APERTA === x.k) + '">' + esc(testo) + '<i aria-hidden="true">\u25BE</i></button>';
@@ -3466,7 +3487,12 @@
   }
   if (el("barraFiltri")) {
     el("barraFiltri").addEventListener("click", function(e){
-      var c = e.target.closest(".bf-ch"); if (c) { BF_APERTA = BF_APERTA === c.dataset.bf ? "" : c.dataset.bf; disegnaBarraFiltri(); return; }
+      var c = e.target.closest(".bf-ch");
+      // senza un giocatore scelto, "Giocatore" porta al campo: si cerca in un modo solo
+      if (c && c.dataset.bf === "g" && !gettone("g").length) { BF_APERTA = ""; disegnaBarraFiltri(); var inp = el("cercaLib"); inp.placeholder = "Scrivi il nome di un giocatore o di un allenatore…"; inp.focus(); return; }
+      if (c) { BF_APERTA = BF_APERTA === c.dataset.bf ? "" : c.dataset.bf; disegnaBarraFiltri(); return; }
+      var tg = e.target.closest("[data-bftogli]"); if (tg) { GETTONI = GETTONI.filter(function(y){ return y.t !== tg.dataset.bftogli; }); BF_APERTA = ""; disegnaGettoni(); cerca(el("cercaLib").value); return; }
+      var sg = e.target.closest("[data-sg]"); if (sg) { var v = sg.dataset.sg.split("|"); cambiaFiltroGettone(v[0], v[1], v[2]); return; }
       var t = e.target.closest("[data-coltutte]"); if (t) { COLONNA_TUTTE[t.dataset.coltutte] = !COLONNA_TUTTE[t.dataset.coltutte]; disegnaBarraFiltri(); return; }
       var g = e.target.closest("[data-bfgio]"); if (g) { var x = BF_GIO[+g.dataset.bfgio]; if (!x) return; aggiungiGettone(x); BF_APERTA = ""; disegnaGettoni(); cerca(el("cercaLib").value); }
     });

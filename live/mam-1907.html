@@ -251,6 +251,7 @@
   .bf-pop{position:absolute;top:38px;left:0;z-index:70;min-width:260px;max-width:min(860px,94vw);max-height:460px;overflow:auto;padding:12px 14px;border:1px solid var(--riga2);border-radius:12px;background:#141a27;box-shadow:0 18px 44px rgba(0,0,0,.55);}
   .bf-pop .pannello-filtri{border:0;padding:0;background:none;}
   .bf-nota{color:var(--fumo);font-size:12px;margin:4px 2px;}
+  .bf-volti{margin:0 0 10px;height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--oro);background:rgba(201,162,75,.12);color:var(--oro2);font:600 12px/1 'DM Sans',system-ui,sans-serif;cursor:pointer;}
   #apriFiltri{display:none!important;}
   .col-sez{grid-column:1/-1;margin:6px 0 -6px;padding-top:8px;border-top:1px solid var(--riga2);font:700 10.5px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--oro2);}
   .col-sez:first-child{border-top:0;padding-top:0;margin-top:0;}
@@ -2469,7 +2470,9 @@
       var x = BF7.filter(function (y) { return y.k === BF7_APERTA; })[0];
       if (!F) { pop = '<p class="bf-nota">Carico l’elenco dei file…</p>'; caricaFile().then(disegnaBarra7).catch(function () {}); }
       else { SOLO_K = x.c; try { pop = pannello(trovati()).replace(' id="pannelloFiltri"', ""); } finally { SOLO_K = null; }
-        if (x.k !== "tutti") pop = pop.replace(/<h4 class="col-sez">[^<]*<\/h4>/g, ""); }
+        if (x.k !== "tutti") pop = pop.replace(/<h4 class="col-sez">[^<]*<\/h4>/g, "");
+        // le persone si scelgono anche dal volto: stessa riga, stessi gettoni
+        if (x.k === "pers") pop = '<button type="button" class="bf-volti" data-bfvolti="1">Scegli dal volto</button>' + pop; }
     }
     b.innerHTML = BF7.map(function (x) {
       var sc = G.filter(function (g) { return x.c.indexOf(g.k) >= 0; });
@@ -2484,7 +2487,8 @@
     $("barraFiltri").addEventListener("click", function (e) {
       var c = e.target.closest(".bf-ch"); if (c) { BF7_APERTA = BF7_APERTA === c.dataset.bf ? "" : c.dataset.bf; disegnaBarra7(); return; }
       var t = e.target.closest("[data-coltutte]"); if (t) { COL_TUTTE[t.dataset.coltutte] = true; disegnaBarra7(); return; }
-      if (e.target.closest("[data-azzera]")) { G = G.filter(function (x) { return x.k === "tipo"; }); disegnaGettoni(); vai(); }
+      if (e.target.closest("[data-azzera]")) { G = G.filter(function (x) { return x.k === "tipo"; }); disegnaGettoni(); vai(); return; }
+      if (e.target.closest("[data-bfvolti]")) { BF7_APERTA = ""; disegnaBarra7(); if ($("apriVolti")) $("apriVolti").click(); }
     });
     $("barraFiltri").addEventListener("change", function (e) {
       var c = e.target.closest("[data-col]"); if (!c) return;
