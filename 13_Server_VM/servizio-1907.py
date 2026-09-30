@@ -750,6 +750,134 @@ def _persone_note():
     return sorted(e for e in ee if e and "@" in e)
 
 
+# ── I LINK DI CONDIVISIONE ESTERNI, COME SU FRAME.IO (30/09/2026) ─────────
+# Chi e' del club crea un link per partner, sponsor, media: le clip (o le cartelle) scelte, con scadenza,
+# password facoltativa (si tiene solo l'impronta con sale) e "si puo' scaricare" si/no. Il link apre una
+# pagina pubblica (senza login Google) che mostra SOLO quelle clip; i file li serve nginx dopo il controllo
+# del servizio (X-Accel-Redirect verso posti interni). Ogni link conta le visite e si puo' revocare.
+CONDIVISI = os.path.join(CASA, "condivisi.json")
+PAGINA_CONDIVISA = "/var/www/comotv/live/condiviso-1907.html"
+SEGRETO_C = os.path.join(CASA, ".segreto-condivisi")
+
+
+def _segreto():
+    try: return open(SEGRETO_C, "rb").read()
+    except OSError:
+        k = secrets.token_bytes(32); open(SEGRETO_C, "wb").write(k); os.chmod(SEGRETO_C, 0o600); return k
+
+
+def _impronta_pw(pw, sale): return hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(sale), 120000).hex()
+
+
+def _gettone_ok(tok, cookie):
+    import hmac
+    atteso = hmac.new(_segreto(), tok.encode(), "sha256").hexdigest()
+    return any(c.strip() == "c1907_%s=%s" % (tok[:12], atteso) for c in (cookie or "").split(";"))
+
+
+def _elementi(vie):
+    """le clip di un link: i file scelti e, per le cartelle, i video e le foto dentro (al massimo 500)"""
+    fuori = []
+    for v in vie:
+        pieno = os.path.join(R, v)
+        if os.path.isfile(pieno): fuori.append(v)
+        elif os.path.isdir(pieno):
+            for d, ds, fs in os.walk(pieno):
+                ds[:] = sorted(x for x in ds if not x.startswith((".", "@")))
+                for f in sorted(fs):
+                    if f.lower().endswith(VIDEO + FOTO) and not f.startswith("."): fuori.append(os.path.relpath(os.path.join(d, f), R))
+                if len(fuori) >= 500: break
+        if len(fuori) >= 500: break
+    return fuori[:500]
+
+
+def condividi(p, chi):
+    chi = (chi or "").lower()
+    if not puo_segnare(chi): return 403, {"ok": False, "errore": "I link di condivisione li crea il team del Como 1907."}
+    with C_LOCK:
+        c = _leggi(CONDIVISI, {"link": {}})
+        if p.get("azione") == "revoca":
+            x = c["link"].get(str(p.get("token")))
+            if not x: return 404, {"ok": False, "errore": "Link non trovato."}
+            if x["chi"] != chi and not _admin(chi): return 403, {"ok": False, "errore": "Lo revoca chi l'ha creato."}
+            x["revocato"] = int(time.time()); _scrivi(CONDIVISI, c)
+            return 200, {"ok": True}
+        vie = [_rel(v) for v in (p.get("vie") or [])][:200]
+        vie = [v for v in vie if v and os.path.realpath(os.path.join(R, v)).startswith(R + "/") and os.path.exists(os.path.join(R, v))]
+        if not vie: return 400, {"ok": False, "errore": "Niente da condividere."}
+        giorni = max(0, min(365, int(p.get("giorni") or 7)))
+        tok = secrets.token_urlsafe(18)
+        x = {"vie": vie, "titolo": str(p.get("titolo") or os.path.basename(vie[0]))[:120], "chi": chi, "quando": int(time.time()),
+             "scade": int(time.time()) + giorni * 86400 if giorni else 0, "scarico": bool(p.get("scarico")), "visite": 0}
+        pw = str(p.get("password") or "")
+        if pw: x["sale"] = secrets.token_hex(16); x["pw"] = _impronta_pw(pw, x["sale"])
+        c["link"][tok] = x; _scrivi(CONDIVISI, c)
+    return 200, {"ok": True, "token": tok, "url": "https://projects-cloud.it/condivisi/" + tok}
+
+
+def condivisi_miei(chi):
+    chi = (chi or "").lower(); c = _leggi(CONDIVISI, {"link": {}})
+    l = [dict(token=k, **{a: b for a, b in v.items() if a not in ("pw", "sale")}, password=bool(v.get("pw"))) for k, v in c["link"].items() if v["chi"] == chi or _admin(chi)]
+    return 200, {"ok": True, "link": sorted(l, key=lambda z: -z["quando"])[:300]}
+
+
+def pubblico(h, parti, metodo, corpo):
+    """/pub/<token>[/info|/accedi|/file/<i>|/mini/<i>]: la pagina e i file di un link condiviso"""
+    import hmac
+    tok = parti[0] if parti else ""
+    c = _leggi(CONDIVISI, {"link": {}}); x = c["link"].get(tok)
+    ora = int(time.time())
+    if not x or x.get("revocato") or (x.get("scade") and x["scade"] < ora):
+        return h.rispondi(410 if x else 404, "<!doctype html><meta charset=utf-8><title>Link non valido</title><body style='font:16px system-ui;background:#0A0F24;color:#F5F1E6;display:grid;place-items:center;height:100vh;margin:0'><p>Questo link non &egrave; pi&ugrave; valido (scaduto o revocato). / This link is no longer valid.</p>".encode(), "text/html; charset=utf-8")
+    cosa = parti[1] if len(parti) > 1 else ""
+    if not cosa:
+        try: return h.rispondi(200, open(PAGINA_CONDIVISA, "rb").read(), "text/html; charset=utf-8", {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"})
+        except OSError: return h.rispondi(500, {"ok": False})
+    if cosa == "accedi" and metodo == "POST":
+        pw = str((corpo or {}).get("password") or "")
+        if x.get("pw") and hmac.compare_digest(_impronta_pw(pw, x["sale"]), x["pw"]):
+            v = hmac.new(_segreto(), tok.encode(), "sha256").hexdigest()
+            return h.rispondi(200, {"ok": True}, extra={"Set-Cookie": "c1907_%s=%s; Path=/condivisi/%s; HttpOnly; Secure; SameSite=Lax; Max-Age=604800" % (tok[:12], v, tok)})
+        time.sleep(1.5)
+        return h.rispondi(403, {"ok": False, "errore": "Password sbagliata / Wrong password"})
+    if x.get("pw") and not _gettone_ok(tok, h.headers.get("Cookie")):
+        return h.rispondi(401, {"ok": False, "password": True, "titolo": x["titolo"]})
+    el = _elementi(x["vie"])
+    if cosa == "info":
+        with C_LOCK:
+            c = _leggi(CONDIVISI, {"link": {}})
+            if tok in c["link"]: c["link"][tok]["visite"] = c["link"][tok].get("visite", 0) + 1; c["link"][tok]["ultima"] = ora; _scrivi(CONDIVISI, c)
+        fuori = []
+        for i, v in enumerate(el):
+            try: peso = os.path.getsize(os.path.join(R, v))
+            except OSError: peso = 0
+            fuori.append({"i": i, "nome": os.path.basename(v), "cartella": os.path.dirname(v).split("/")[-1], "tipo": "video" if v.lower().endswith(VIDEO) else "foto", "peso": peso})
+        return h.rispondi(200, {"ok": True, "titolo": x["titolo"], "scarico": x["scarico"], "scade": x.get("scade", 0), "da": x["chi"], "elementi": fuori}, extra={"Cache-Control": "no-store"})
+    try: i = int(parti[2])
+    except (IndexError, ValueError): return h.rispondi(404, {"ok": False})
+    if i < 0 or i >= len(el): return h.rispondi(404, {"ok": False})
+    v = el[i]; pieno = os.path.join(R, v); k = chiave(v)
+    if cosa == "mini":
+        dest = os.path.join(MINI, k + ".jpg")
+        if not os.path.exists(dest):
+            with MINI_INSIEME:
+                if not os.path.exists(dest) and not fai_mini(v, pieno, dest): return h.rispondi(404, {"ok": False})
+        return h.rispondi(200, b"", "image/jpeg", {"X-Accel-Redirect": "/_int_mini/" + k + ".jpg", "Cache-Control": "private, max-age=86400"})
+    if cosa == "file":
+        scarica = "scarica" in (h.path.split("?", 1)[1] if "?" in h.path else "")
+        if scarica and not x["scarico"]: return h.rispondi(403, {"ok": False, "errore": "Questo link non permette di scaricare."})
+        # per guardare: la copia leggera se c'e' (i formati che il browser non legge), se no l'originale
+        if not scarica and os.path.exists(os.path.join(COPIE, k + ".mp4")):
+            return h.rispondi(200, b"", "video/mp4", {"X-Accel-Redirect": "/_int_copie/" + k + ".mp4"})
+        extra = {"X-Accel-Redirect": "/_int_frame/" + urllib.parse.quote(v)}
+        if scarica: extra["Content-Disposition"] = "attachment; filename*=UTF-8''" + urllib.parse.quote(os.path.basename(v))
+        import mimetypes
+        tipo = mimetypes.guess_type(v)[0] or "application/octet-stream"
+        if tipo == "video/quicktime" and not scarica: tipo = "video/mp4"
+        return h.rispondi(200, b"", tipo, extra)
+    return h.rispondi(404, {"ok": False})
+
+
 # ── LO STATO DI REVISIONE E L'ASSEGNATO, COME SU FRAME.IO (30/09/2026) ─────
 # Ogni clip (o cartella) ha uno stato (da rivedere, in lavorazione, approvata, da rifare) e, se serve, a chi
 # tocca. Chi e' assegnato lo ritrova in Menzioni. Lo mette chiunque del club; resta chi e quando.
@@ -886,7 +1014,11 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         via = urllib.parse.urlparse(self.path).path
-        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle", "/commenti", "/elimina-clip", "/stati"): return self.rispondi(404, {"ok": False})
+        if via.startswith("/pub/"):
+            try: corpo = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 4096)) or b"{}")
+            except Exception: corpo = {}
+            return pubblico(self, [x for x in via[5:].split("/") if x], "POST", corpo)
+        if via not in ("/premiere", "/volti", "/doppioni", "/cartelle", "/commenti", "/elimina-clip", "/stati", "/condividi"): return self.rispondi(404, {"ok": False})
         try:
             n = int(self.headers.get("Content-Length") or 0)
             p = json.loads(self.rfile.read(min(n, 2_000_000)) or b"{}")
@@ -894,6 +1026,9 @@ class H(BaseHTTPRequestHandler):
             return self.rispondi(400, {"ok": False, "errore": "richiesta non valida"})
         if via == "/volti":
             cod, r = battezza(p, str(self.headers.get("X-Utente") or ""))
+            return self.rispondi(cod, r)
+        if via == "/condividi":
+            cod, r = condividi(p, str(self.headers.get("X-Utente") or ""))
             return self.rispondi(cod, r)
         if via == "/stati":
             cod, r = stati_scrivi(p, str(self.headers.get("X-Utente") or ""))
@@ -969,6 +1104,11 @@ class H(BaseHTTPRequestHandler):
             c = _leggi(ELIMINATI, {"voci": {}})
             return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "stato": stato, "eliminati": c.get("voci", {}),
                                        "puoi": puo_segnare(chi), "elimina": puo_eliminare(chi)}, extra={"Cache-Control": "no-store"})
+        if u.path.startswith("/pub/"):
+            return pubblico(self, [urllib.parse.unquote(x) for x in u.path[5:].split("/") if x], "GET", None)
+        if u.path == "/condividi":
+            cod, r = condivisi_miei(self.headers.get("X-Utente") or "")
+            return self.rispondi(cod, r, extra={"Cache-Control": "no-store"})
         if u.path == "/stati":
             cod, r = stati_leggi()
             return self.rispondi(cod, r, extra={"Cache-Control": "no-store"})

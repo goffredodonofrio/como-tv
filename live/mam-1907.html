@@ -461,6 +461,13 @@
   .fx-dlg{width:min(460px,100%);background:var(--pan);border-radius:14px;border:1px solid rgba(201,162,75,.35);padding:20px 22px;display:flex;flex-direction:column;gap:10px;}
   .fx-dlg h2{font:700 13px/1 'Mazzard',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--oro);margin:0;}
   .fx-dlg input{font:inherit;font-size:14px;padding:9px 12px;border-radius:8px;border:1px solid var(--riga2);background:rgba(245,241,230,.06);color:var(--ivory);}
+  .cond .cd-riga{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--riga);border-radius:10px;}
+  .cond .cd-riga b,.cond .cd-est > b{display:block;font-size:14px;} .cond small{display:block;color:var(--fumo);font-size:12px;}
+  .cond .cd-riga.ok input{flex:1;font:inherit;font-size:13px;color:var(--oro2);background:var(--navy);border:1px solid var(--riga2);border-radius:7px;padding:8px;}
+  .cond .cd-est{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid rgba(201,162,75,.35);border-radius:10px;}
+  .cond label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--fumo);} .cond .cd-due{display:flex;gap:10px;} .cond .cd-due label{flex:1;}
+  .cond select,.cond input[type=text]{font:inherit;font-size:13.5px;color:var(--ivory);background:var(--navy);border:1px solid var(--riga2);border-radius:7px;padding:8px;}
+  .cond .cd-check{flex-direction:row;align-items:center;gap:8px;color:var(--ivory2);font-size:13px;}
   .fx-dlg .az{display:flex;justify-content:flex-end;gap:8px;}
   .lettore{width:min(1200px,100%);background:var(--pan);border-radius:14px;overflow:hidden;border:1px solid rgba(201,162,75,.35);}
   .lettore .schermo{position:relative;background:#000;aspect-ratio:16/9;max-height:72vh;display:grid;place-items:center;background-size:contain;background-position:center;background-repeat:no-repeat;}
@@ -1549,6 +1556,7 @@
     h += '<div class="fx-g"><h3>Scorciatoie</h3>' +
       '<button data-fxscorc="partite"><span class="fx-ic">▸</span><span class="fx-nome">Partite del Como</span></button>' +
       '<button data-fxscorc="volti"><span class="fx-ic">▸</span><span class="fx-nome">Volti</span></button>' +
+      '<button data-fxscorc="condivisi"><span class="fx-ic">▸</span><span class="fx-nome">Link condivisi</span></button>' +
       '<button data-fxscorc="menzioni"><span class="fx-ic">▸</span><span class="fx-nome">Menzioni</span>' + (MENZ.nuove ? '<span class="fx-n" style="color:var(--oro2);font-weight:700">' + MENZ.nuove + " nuove</span>" : MENZ.lista.length ? '<span class="fx-n">' + MENZ.lista.length + "</span>" : "") + "</button>" +
       '<a href="doppioni-1907.html"><span class="fx-ic">▸</span><span class="fx-nome">Doppioni 1907</span></a>' +
       '<a href="cartelle-1907.html"><span class="fx-ic">▸</span><span class="fx-nome">Organizza le cartelle</span></a></div>';
@@ -1576,7 +1584,7 @@
     }
     fxBc(pz); fxSide();
     $("fxAzioni").hidden = false;
-    $("fxAzioni").innerHTML = '<button type="button" data-fxnuova>+ Nuova cartella</button>' + (via ? '<button type="button" data-fxmod="' + esc(via) + '">Rinomina questa cartella</button><button type="button" data-fxcerca>Cerca qui dentro</button>' : "") +
+    $("fxAzioni").innerHTML = '<button type="button" data-fxnuova>+ Nuova cartella</button>' + (via ? '<button type="button" data-fxmod="' + esc(via) + '">Rinomina questa cartella</button><button type="button" data-fxcerca>Cerca qui dentro</button><button type="button" data-fxcond>Condividi la cartella</button>' : "") +
       '<a class="b" href="cartelle-1907.html#v=' + encodeURIComponent(via) + '">Sposta in…</a><span class="fx-scelti" id="fxScelti"></span>' +
       '<span>Per spostare, trascina cartelle e file su una cartella, sul percorso in alto o nella colonna a sinistra. ⌘ o Ctrl + clic per sceglierne più d’uno. Le modifiche vanno sulla NAS del club; il MAM si riallinea da solo in pochi minuti.</span>';
     fxScelti();
@@ -1682,6 +1690,7 @@
     if ((t = e.target.closest("[data-fxnoscelta]"))) { FX_SCELTE.clear(); document.querySelectorAll("#fxBody .fx-sel").forEach(function (x) { x.classList.remove("fx-sel"); }); fxScelti(); return; }
     if ((t = e.target.closest("[data-fxmod]"))) { fxRinomina(t.dataset.fxmod); return; }
     if ((t = e.target.closest("[data-fxnuova]"))) { var qui = FX.via; fxChiedi("Nuova cartella", "Dentro: " + (qui ? qui.split("/").join(" › ") : "COMOTV - FRAME"), "Nuova cartella", function (nome) { return fxManda({ azione: "nuova", in: qui, nome: nome }).then(function () { avviso("", "Cartella creata."); FX_ULTIMA = null; fxDisegna(); }); }); return; }
+    if ((t = e.target.closest("[data-fxcond]"))) { finestraCondividi([FX.via], ultimo(FX.via)); return; }
     if ((t = e.target.closest("[data-fxcerca]"))) { G = []; metti({ k: "cart", v: FX.via, n: ultimo(FX.via) }); window.scrollTo(0, 0); return; }
     if ((t = e.target.closest("[data-fxtutti]"))) { FX_TUTTI = true; fxVereDisegna(FX_ULTIMA); return; }
     if ((t = e.target.closest("[data-fxracc]"))) { FX_TUTTI = true; fxSide(); return; }
@@ -1701,6 +1710,7 @@
     if ((t = e.target.closest("#fxBody [data-rev]"))) { apriFileFx(t.dataset.rev); return; }
     if ((t = e.target.closest("[data-fxfile]"))) { apriFileFx(t.dataset.fxfile); return; }
     if ((t = e.target.closest("[data-fxscorc]"))) {
+      if (t.dataset.fxscorc === "condivisi") { linkCondivisi(); return; }
       if (t.dataset.fxscorc === "menzioni") { caricaMenzioni().then(apriMenzioni); return; }
       if (t.dataset.fxscorc === "volti") { $("apriVolti").click(); window.scrollTo(0, 0); return; }
       FX.modo = "ord"; FX.dip = "ft"; FX.sub = "Matchday"; FX.comp = ""; FX.par = ""; fxVai(); return;
@@ -2286,8 +2296,8 @@
       setTimeout(function () { var i = $("nomeRacc"); if (i) { i.focus(); i.onkeydown = function (e) { if (e.key === "Enter") salvaInRaccolta(); if (e.key === "Escape") { SALVA_APERTO = false; disegnaBarra(); } }; } }, 0);
       return;
     }
-    b.innerHTML = "<span>" + detto + " <em>(" + n(nv) + " video da montare)</em></span>" +
-      '<button class="salva" data-fa="salva">Salva in raccolta</button>' +
+    b.innerHTML = "<span>" + detto + "</span>" +
+      '<button class="salva" data-fa="condividi">Condividi</button><button class="svuota" data-fa="salva">Salva in raccolta</button>' +
       (nv ? '<button class="svuota" data-fa="premiere" title="la scelta come sequenza per Premiere, con gli originali della NAS">Premiere</button><button class="svuota" data-fa="copie" title="prepara le copie leggere per guardarli nel browser">Prepara le copie</button>' : "") +
       (RACCOLTA ? '<button class="svuota" data-fa="togli-racc">Togli dalla raccolta</button>' : "") + '<button class="svuota" data-fa="svuota">Svuota</button>';
   }
@@ -2384,6 +2394,7 @@
     var t = e.target.closest("[data-fa]"); if (!t) return;
     if (t.dataset.fa === "monta") monta(Array.from(SCELTI.values()), t);
     if (t.dataset.fa === "salva") { SALVA_APERTO = true; disegnaBarra(); }
+    if (t.dataset.fa === "condividi") { var sv = Array.from(SCELTI.keys()); finestraCondividi(sv, sv.length === 1 ? ultimo(sv[0]) : n(sv.length) + " elementi dal Como 1907"); }
     if (t.dataset.fa === "premiere") premiereXml(videoDi(Array.from(SCELTI.values())), [G.map(function (g) { return g.n; }).join(" · "), Q].filter(Boolean).join(" · ") || "Scelta Como 1907", t);
     if (t.dataset.fa === "copie") preparaCopie(videoDi(Array.from(SCELTI.values())));
     if (t.dataset.fa === "salva-ok") salvaInRaccolta();
@@ -2498,7 +2509,7 @@
   // leggera (720p) se c'e', e se non c'e' la si chiede al servizio-1907.
   var SEGUI = null;
   function apri(x) {
-    var u = url(x.via), dx = (x.tipo === "video" ? '<button data-fa="percorso-uno" title="il percorso del file sulla NAS, da incollare nel Finder (Vai alla cartella)">Copia percorso</button>' : "") + '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + '<button type="button" data-cazione="link" data-via="' + esc(x.via) + '">' + IC_LINK + " Copia link</button>" + (PUO_ELIM ? '<button type="button" class="rosso" data-cazione="elimina" data-via="' + esc(x.via) + '">' + IC_CESTO + " Elimina</button>" : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
+    var u = url(x.via), dx = (x.tipo === "video" ? '<button data-fa="percorso-uno" title="il percorso del file sulla NAS, da incollare nel Finder (Vai alla cartella)">Copia percorso</button>' : "") + '<a class="b" href="' + u + '" download>Scarica l’originale</a>' + '<button type="button" data-cazione="link" data-via="' + esc(x.via) + '">' + IC_LINK + " Condividi</button>" + (PUO_ELIM ? '<button type="button" class="rosso" data-cazione="elimina" data-via="' + esc(x.via) + '">' + IC_CESTO + " Elimina</button>" : "") + '<button data-fa="scegli-uno">' + (SCELTI.has(x.via) ? "Togli dalla scelta" : "Scegli") + '</button><button id="chiudi">Chiudi</button>';
     var info = '<div class="info"><div><b>' + esc(x.nome) + "</b><br>" + esc(percorsoVista(x.d)) + " · " + gb(x.peso) + (x.data ? " · girato il " + dataRip(x.data) : "") + '</div><div class="dx">' + dx + "</div></div>";
     var schermo;
     if (x.tipo === "foto" && /\.(jpe?g|png|webp)$/i.test(x.via)) schermo = '<div class="schermo"><img src="' + u + '" alt=""></div>';
@@ -2568,13 +2579,54 @@
   var IC_CESTO = '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   // I TRE TASTI SU OGNI MINIATURA (Goffredo, 29/09/2026): condividi (il link), scarica l'originale, elimina
   function bottoneMenu(via) {
-    return '<span class="clip-az" role="group" aria-label="azioni della clip"><button type="button" data-cazione="link" data-via="' + esc(via) + '" title="Copia il link della clip">' + IC_LINK + '</button><button type="button" data-cazione="scarica" data-via="' + esc(via) + '" title="Scarica l\u2019originale, cos\u00ec com\u2019\u00e8">' + IC_GIU + "</button>" +
+    return '<span class="clip-az" role="group" aria-label="azioni della clip"><button type="button" data-cazione="link" data-via="' + esc(via) + '" title="Condividi: link interno o esterno">' + IC_LINK + '</button><button type="button" data-cazione="scarica" data-via="' + esc(via) + '" title="Scarica l\u2019originale, cos\u00ec com\u2019\u00e8">' + IC_GIU + "</button>" +
       (PUO_ELIM ? '<button type="button" class="rosso" data-cazione="elimina" data-via="' + esc(via) + '" title="Elimina dalla NAS del club (definitivo)">' + IC_CESTO + "</button>" : "") + "</span>";
   }
   function linkClip(via) { return location.origin + location.pathname + "#apri=" + encodeURIComponent(via); }
   function apriVia(via, t) {
     var i = via.lastIndexOf("/"), nome = via.slice(i + 1), d = i > 0 ? via.slice(0, i) : "";
     apri({ via: via, nome: nome, d: d, peso: 0, tipo: RX_VID.test(nome) ? "video" : RX_FOTO.test(nome) ? "foto" : "altro", data: CART[d] ? CART[d][0] : 0, salta: t });
+  }
+  // CONDIVIDERE, COME SU FRAME.IO (30/09/2026): il link interno (chi entra con Google) o un link esterno per
+  // partner, sponsor, media: scadenza, password facoltativa, scarico si/no. La pagina pubblica mostra solo quello.
+  function finestraCondividi(vie, titolo) {
+    var interno = vie.length === 1 ? linkClip(vie[0]) : "";
+    $("velo").innerHTML = '<div class="fx-dlg cond" role="dialog" aria-label="Condividi" style="width:min(560px,100%)"><h2>Condividi</h2>' +
+      '<p class="nota-date">' + esc(vie.length === 1 ? vie[0].split("/").slice(-2).join(" › ") : n(vie.length) + " elementi scelti") + "</p>" +
+      (interno ? '<div class="cd-riga"><div><b>Link interno</b><small>per chi entra nel MAM con Google (club e Como TV)</small></div><button type="button" id="cdInt">Copia</button></div>' : "") +
+      '<div class="cd-est"><b>Link esterno</b><small>per partner, sponsor, media: senza login, solo quello che scegli</small>' +
+      '<label>Titolo <input id="cdTit" type="text" maxlength="120" value="' + esc(titolo) + '"></label>' +
+      '<div class="cd-due"><label>Scade <select id="cdGiorni"><option value="1">tra 1 giorno</option><option value="7" selected>tra 7 giorni</option><option value="30">tra 30 giorni</option><option value="90">tra 90 giorni</option><option value="0">mai</option></select></label>' +
+      '<label>Password <input id="cdPw" type="text" placeholder="facoltativa" autocomplete="off"></label></div>' +
+      '<label class="cd-check"><input type="checkbox" id="cdScarico" checked> si pu\u00f2 scaricare l\u2019originale</label>' +
+      '<div class="az"><button type="button" id="fxNo">Chiudi</button><button type="button" class="oro" id="cdCrea">Crea il link</button></div><div id="cdEsito"></div></div></div>';
+    $("velo").hidden = false; $("fxNo").onclick = chiudi;
+    if ($("cdInt")) $("cdInt").onclick = function () { copia(interno, "Link interno copiato."); };
+    $("cdCrea").onclick = function () {
+      var b = this; b.disabled = true;
+      fetch(BASE + "condividi", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ vie: vie, titolo: $("cdTit").value, giorni: +$("cdGiorni").value, password: $("cdPw").value, scarico: $("cdScarico").checked }) })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito."); return j; }); })
+        .then(function (j) { $("cdEsito").innerHTML = '<div class="cd-riga ok"><input type="text" readonly value="' + esc(j.url) + '"><button type="button" class="oro" id="cdCopia">Copia</button></div><small class="nota-date">Lo trovi (con le visite, e per revocarlo) in Scorciatoie \u203a Link condivisi.</small>'; $("cdCopia").onclick = function () { copia(j.url, "Link esterno copiato."); }; copia(j.url, "Link esterno creato e copiato."); })
+        .catch(function (e) { b.disabled = false; avviso("err", esc(e.message)); });
+    };
+  }
+  function copia(testo, msg) { (navigator.clipboard ? navigator.clipboard.writeText(testo) : Promise.reject()).then(function () { avviso("", msg); }).catch(function () { prompt("Il link", testo); }); }
+  function linkCondivisi() {
+    fetch(BASE + "condividi", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) {
+      var l = j.link || [], ora = Date.now() / 1000;
+      $("velo").innerHTML = '<div class="fx-dlg" role="dialog" aria-label="Link condivisi" style="width:min(760px,100%);max-height:84vh;overflow:auto"><h2>Link condivisi</h2>' +
+        (l.length ? '<table class="el-tab"><thead><tr><th>Titolo</th><th>Elementi</th><th>Scade</th><th>Visite</th><th></th></tr></thead><tbody>' + l.map(function (x) {
+          var morto = x.revocato || (x.scade && x.scade < ora);
+          return '<tr style="cursor:default' + (morto ? ";opacity:.5" : "") + '"><td class="tit"><b>' + esc(x.titolo) + "</b><small>" + esc(nomeMail(x.chi)) + " · " + quandoC(x.quando) + (x.password ? " · con password" : "") + (x.scarico ? " · scaricabile" : "") + '</small></td><td class="n">' + n(x.vie.length) + '</td><td class="n">' + (x.revocato ? "revocato" : x.scade ? (x.scade < ora ? "scaduto" : new Date(x.scade * 1000).toLocaleDateString("it-IT")) : "mai") + '</td><td class="n">' + n(x.visite || 0) + "</td><td>" +
+            (morto ? "" : '<button type="button" class="mini" data-cdcopia="' + esc(x.token) + '">Copia</button> <button type="button" class="mini" data-cdrevoca="' + esc(x.token) + '">Revoca</button>') + "</td></tr>";
+        }).join("") + "</tbody></table>" : '<p class="nota-date">Nessun link ancora. Sul tasto link di una clip, o sulla scelta: Condividi \u203a Link esterno.</p>') +
+        '<div class="az"><button type="button" id="fxNo">Chiudi</button></div></div>';
+      $("velo").hidden = false; $("fxNo").onclick = chiudi;
+      $("velo").querySelector(".fx-dlg").addEventListener("click", function (e) {
+        var c = e.target.closest("[data-cdcopia]"); if (c) { copia("https://projects-cloud.it/condivisi/" + c.dataset.cdcopia, "Link copiato."); return; }
+        var r = e.target.closest("[data-cdrevoca]"); if (r && confirm("Revocare il link? Chi lo apre vedr\u00e0 \u00abnon pi\u00f9 valido\u00bb.")) fetch(BASE + "condividi", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: "revoca", token: r.dataset.cdrevoca }) }).then(function () { avviso("", "Link revocato."); linkCondivisi(); });
+      });
+    }).catch(function () { avviso("err", "I link condivisi non arrivano: riprova."); });
   }
   function chiudiMenuClip() { var m = document.getElementById("clipMenu"); if (m) m.remove(); }
   function menuClip(via, bt) {
@@ -2592,7 +2644,8 @@
     });
   }
   function azioneClip(az, via) {
-      if (az === "link") { var l = linkClip(via); (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject()).then(function () { avviso("", "Link copiato: chi \u00e8 entrato con Google lo apre direttamente su questa clip."); }).catch(function () { prompt("Il link della clip", l); }); }
+      if (az === "link") { finestraCondividi([via], ultimo(via)); return; }
+      if (az === "link-interno") { var l = linkClip(via); (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject()).then(function () { avviso("", "Link copiato: chi \u00e8 entrato con Google lo apre direttamente su questa clip."); }).catch(function () { prompt("Il link della clip", l); }); }
       if (az === "scarica") { var a = document.createElement("a"); a.href = url(via); a.download = via.split("/").pop(); document.body.appendChild(a); a.click(); a.remove(); }
       if (az === "elimina") {
         if (!confirm("Eliminare DEFINITIVAMENTE dalla NAS del club:\n\n" + via + "\n\nNon si recupera.")) return;
