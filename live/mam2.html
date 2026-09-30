@@ -1198,7 +1198,7 @@
   .ed-tl .nomi .tr .presa.bordo{position:absolute;left:0;right:0;bottom:0;height:5px;cursor:ns-resize;z-index:3;}
   .ed-tl .nomi .tr .presa.bordo:hover,.ed-tl .nomi .tr .presa.bordo.tira{background:rgba(201,162,75,.45);}
   .ed-corsia.spenta{opacity:.35;}
-  #palcoE.v1spenta #videoE{opacity:0;} #palcoE.gspenta #grafE,#palcoE.gspenta #grafVidE{display:none!important;} #palcoE.cspenta #sottoBoxE{display:none;}
+  #palcoE.v1spenta #videoE{opacity:0;} #palcoE.vuoto #videoE{visibility:hidden;} #palcoE.gspenta #grafE,#palcoE.gspenta #grafVidE{display:none!important;} #palcoE.cspenta #sottoBoxE{display:none;}
   .ed-tl .nomi .a b{font-weight:700;font-size:10px;letter-spacing:.1em;color:var(--oro2);}
   .ed-tl .nomi .a i{font-style:normal;font-size:9px;font-family:'Mazzard',sans-serif;padding:1px 4px;border-radius:3px;
     border:1px solid var(--riga2);color:var(--fumo);cursor:pointer;line-height:1.5;}
@@ -1224,7 +1224,8 @@
 
   .ed-pista.lametta,.ed-pista.lametta .ed-pezzo{cursor:crosshair;}
   /* FUORI SINCRONO (come in Premiere): il numero rosso, in fotogrammi, sul video e sul suo audio; clic = rimetti in sincrono */
-  .ed-sync{position:absolute;top:2px;left:2px;z-index:5;background:#E5484D;color:#fff;font:700 10px/14px ui-monospace,Menlo,monospace;padding:0 4px;border-radius:3px;cursor:pointer;pointer-events:auto;box-shadow:0 1px 3px rgba(0,0,0,.4);}
+  .ed-sync{position:absolute;top:2px;left:2px;z-index:5;background:#C8252C;color:#fff;font:700 10px/12px ui-monospace,Menlo,monospace;padding:0 3px;border:1px solid rgba(255,255,255,.9);border-radius:4px;cursor:pointer;pointer-events:auto;box-shadow:0 1px 2px rgba(0,0,0,.5);}
+  .ed-pezzo .cima .ed-sync{position:static;display:inline-block;margin-right:4px;vertical-align:1px;}
   .ed-sync:hover{background:#ff6b70;}
   /* SELEZIONA IN AVANTI / INDIETRO (A, Shift+A di Premiere): la riga che segue il
      mouse e, tinte, le cose che il clic prenderebbe */
@@ -1234,7 +1235,7 @@
   .ed-buco.sel{border:1px solid var(--oro2);background:repeating-linear-gradient(135deg,rgba(201,162,75,.22) 0 6px,rgba(201,162,75,.08) 6px 12px);}
   .ed-rete{position:absolute;z-index:6;background:rgba(201,162,75,.14);border:1px solid var(--oro2);border-radius:3px;pointer-events:none;}
   .ed-magnete{position:absolute;top:0;bottom:0;width:1px;background:#7CD992;box-shadow:0 0 5px #7CD992;pointer-events:none;z-index:4;}
-  .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;} .ed-corsia.st{height:var(--h-C,26px);} .ed-corsia.g{height:var(--h-G,28px);} .ed-corsia.v2{height:var(--h-V2,40px);background:rgba(140,120,200,.05);} .ed-corsia.v2.mira{background:rgba(201,162,75,.12);box-shadow:0 0 0 1px var(--oro) inset;}
+  .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;cursor:col-resize;} .ed-corsia.st{height:var(--h-C,26px);} .ed-corsia.g{height:var(--h-G,28px);} .ed-corsia.v2{height:var(--h-V2,40px);background:rgba(140,120,200,.05);} .ed-corsia.v2.mira{background:rgba(201,162,75,.12);box-shadow:0 0 0 1px var(--oro) inset;}
   .ed-corsia.v.mira{background:rgba(201,162,75,.10);box-shadow:0 0 0 1px var(--oro) inset;}
   .ed-corsia.v{height:var(--h-V1,64px);background:rgba(245,241,230,.02);}
   .ed-graf{position:absolute;top:3px;bottom:3px;height:auto;background:#4E3A6E;border:1px solid #8C6BB5;border-radius:4px;overflow:hidden;padding:0 6px;font-size:10px;line-height:19px;white-space:nowrap;cursor:grab;box-sizing:border-box;color:var(--ivory);} .ed-graf.sel{outline:2px solid var(--oro2);} .ed-graf.anim{background:#6E4A1E;border-color:var(--oro);}
@@ -4028,7 +4029,21 @@
     else if (k === "traversa") k = "palo";
     return ICONE_AZ[k] ? { u: ICONE_AZ[k], n: k } : null;
   }
+  // LA TESTINA NEL VUOTO (30/09/2026), come in Premiere: nei buchi fra le
+  // clip e dopo l'ultima (dove finiscono un endtag o un audio) la testina va
+  // e scorre, il Programma e' nero e si sente quello che c'e' sotto. Un
+  // orologio suo tiene il tempo; il lettore del Programma, finche' siamo li',
+  // risponde a play/pausa/paused con quell'orologio (armaVE), cosi' tasti,
+  // pulsanti e barre funzionano uguali dentro e fuori dalle clip.
+  var VUOTO = null;
+  function fineTutto(){
+    var f = durSeq();
+    GRAF.forEach(function(g){ f = Math.max(f, +g.fuori || 0); });
+    AUD.forEach(function(a){ f = Math.max(f, (a.t0 || 0) + Math.max(0, a.fuori - a.dentro)); });
+    return f;
+  }
   function tSeq(){
+    if (VUOTO) return VUOTO.corre ? VUOTO.t + (performance.now() - VUOTO.da) / 1000 : VUOTO.t;
     var x = PZ[ORA.i]; if (!x || !VE) return 0;
     var d = x.fuori - x.dentro, v = velDi(x);
     return (x.t0 || 0) + Math.max(0, Math.min(d, ((VE.currentTime || 0) - x.dentro) / v));
@@ -4041,6 +4056,42 @@
     // in un buco, o oltre la fine: il primo che comincia dopo, se no l'ultimo
     for (var j = 0; j < PZ.length; j++) if ((PZ[j].t0 || 0) > t) return { i: j, dentro: 0 };
     return PZ.length ? { i: PZ.length - 1, dentro: Math.max(0, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05) } : null;
+  }
+  // la clip che sta DAVVERO sotto quel secondo (V1 prima di V2), o nessuna
+  function pezzoEsatto(t){
+    var v2 = null;
+    for (var i = 0; i < PZ.length; i++) {
+      var a = PZ[i].t0 || 0, b = a + (PZ[i].fuori - PZ[i].dentro);
+      if (t >= a && t < b) { if ((PZ[i].traccia || "V1") !== "V2") return { i: i, dentro: t - a }; if (!v2) v2 = { i: i, dentro: t - a }; }
+    }
+    return v2;
+  }
+  function segnaVuoto(){ var pc = el("palcoE"); if (pc) pc.classList.toggle("vuoto", !!VUOTO); }
+  function entraVuoto(t, corre){
+    if (VE) try { HTMLMediaElement.prototype.pause.call(VE); } catch (e) {}
+    VUOTO = { t: Math.max(0, t), corre: !!corre, da: performance.now() };
+    // la clip "di riferimento" resta l'ultima prima del buco (serve a Inquadratura e compagnia)
+    var k = -1, fk = -1; PZ.forEach(function(x, i){ var a = x.t0 || 0; if (a <= t && a > fk && (x.traccia || "V1") !== "V2") { fk = a; k = i; } });
+    if (k >= 0) ORA.i = k;
+    segnaVuoto();
+  }
+  function armaVE(v){
+    if (!v || v._armato) return v; v._armato = true;
+    var P = HTMLMediaElement.prototype, dP = Object.getOwnPropertyDescriptor(P, "paused");
+    v.play = function(){
+      if (VUOTO) {
+        if (!VUOTO.corre) {
+          // alla fine, play riparte dall'inizio (come Premiere)
+          if (VUOTO.t >= fineTutto() - 0.04) { vaiTempo(0, true); return Promise.resolve(); }
+          VUOTO.da = performance.now(); VUOTO.corre = true;
+        }
+        return Promise.resolve();
+      }
+      return P.play.call(v);
+    };
+    v.pause = function(){ if (VUOTO && VUOTO.corre) { VUOTO.t = tSeq(); VUOTO.corre = false; } return P.pause.call(v); };
+    Object.defineProperty(v, "paused", { configurable: true, get: function(){ return VUOTO ? !VUOTO.corre : dP.get.call(v); } });
+    return v;
   }
   function buchiDiQui(){
     var b = [], fin = 0;
@@ -4055,7 +4106,7 @@
   // Programma, il Browser media davanti, nessuna sequenza. Il pannello
   // Progetto elenca le sequenze che ci sono: un clic e si apre quella.
   function apriEditorVuoto(){
-    vai("editor"); VE = el("videoE");
+    vai("editor"); VE = armaVE(el("videoE"));
     SEQ = null; REGE = null; PZ = []; GRAF = []; AUD = []; SEL = null; SELS = [];
     briciole(["Montaggio"]); document.title = "Montaggio \u00b7 MAM Como TV";
     el("panProgNome").textContent = "nessuna sequenza"; el("panTlNome").textContent = "nessuna sequenza";
@@ -4085,7 +4136,7 @@
   function apriEditor(seqId){
     if (el("tlVuota")) el("tlVuota").hidden = true;
     el("palcoE").style.visibility = "";
-    vai("editor"); VE = el("videoE");
+    vai("editor"); VE = armaVE(el("videoE"));
     // LE REGISTRAZIONI SI CHIEDONO QUI, NON SI SPERA CHE CI SIANO GIA'.
     // Prima si guardava REGS, che lo riempie stato() all'avvio: aprendo un
     // montaggio dall'indirizzo la risposta di stato() poteva non essere
@@ -4105,6 +4156,7 @@
         location.replace(u.toString()); throw new Error("cambio ambito");
       }
       PZ = SEQ.pezzi || []; GRAF = SEQ.grafiche || []; AUD = SEQ.audio || [];
+      if (VUOTO) { VUOTO = null; segnaVuoto(); }
       var rr = REGS[SEQ.reg];
       // una partita d'archivio va riaperta: il suo indirizzo e' firmato e scade
       if (rr && rr.arch) return post({ tipo:"clip-archivio-apri", rec: rr.evento || rr.arch.rec || "" }).catch(function(){ return { reg: rr }; });
@@ -4113,13 +4165,13 @@
       REGE = d.reg || REGS[SEQ.reg] || null;
       if (!REGE) throw new Error("la partita di questa sequenza non e' aperta");
       el("eProg").textContent = "Progetto" + (SEQ.prog ? " ✓" : "");
-      el("eTitolo").textContent = SEQ.titolo || "sequenza"; el("panProgNome").textContent = el("panTlNome").textContent = SEQ.titolo || "sequenza"; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(durSeq());
+      el("eTitolo").textContent = SEQ.titolo || "sequenza"; el("panProgNome").textContent = el("panTlNome").textContent = SEQ.titolo || "sequenza"; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(fineTutto());
       briciole([REGE.titolo || "partita", SEQ.titolo || "sequenza"]);
       document.title = (SEQ.titolo || "sequenza") + " · MAM Como TV";
       // una sequenza vuota ha il Programma nero, non il primo fotogramma della partita
       if (PZ.length) VE.src = BASE + REGE.via;
       el("eAsset").onclick = vaiAllaPartita;
-      LENTE = { a: 0, b: Math.max(10, durSeq()) };
+      LENTE = { a: 0, b: Math.max(10, fineTutto()) };
       applicaFormato();
       disegnaEditor();
       var su = new URLSearchParams(location.search);
@@ -4135,10 +4187,10 @@
     // per essere due terzi di vuoto: si stringe su quello che c'e'
     // la vista NON si richiude su quello che resta dopo un taglio: in Premiere
     // tagliare dieci secondi non sposta la finestra (c'e' \ per adattare)
-    var d0 = durSeq(); if (!(LENTE.b - LENTE.a >= 1)) LENTE = { a: 0, b: Math.max(10, d0) }; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(durSeq());
+    var d0 = fineTutto(); if (!(LENTE.b - LENTE.a >= 1)) LENTE = { a: 0, b: Math.max(10, d0) }; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(fineTutto());
     // il conto nel pannello lo scriveva solo il giro delle uscite, ogni
     // quindici secondi: dopo un taglio restava indietro e sembrava rotto
-    if (el("eInfo")) el("eInfo").textContent = PZ.length + " pezzi · " + tc(durSeq()) + (SEQ && SEQ.chi ? " · " + SEQ.chi : "");
+    if (el("eInfo")) el("eInfo").textContent = PZ.length + " pezzi · " + tc(fineTutto()) + (SEQ && SEQ.chi ? " · " + SEQ.chi : "");
     // IL PROGRAMMA SEGUE LA SEQUENZA (26/09/2026): dopo il primo inserimento
     // restava nero, e svuotata la sequenza mostrava ancora l'ultimo pezzo
     if (VE) {
@@ -4148,7 +4200,7 @@
     disegnaEditor(); }
   function disegnaEditor(){ disegnaBin(); disegnaTl(); if (typeof disegnaDestGrafica === "function") disegnaDestGrafica(); }
   function disegnaBin(){
-    el("binConto").textContent = PZ.length + " · " + tc(durSeq());
+    el("binConto").textContent = PZ.length + " · " + tc(fineTutto());
     if (!PZ.length) { el("bin").innerHTML = '<div class="vuoto" style="padding:14px 12px">Sequenza vuota: dalla Sorgente segna entrata e uscita e premi \u201cIn timeline\u201d, o spunta le azioni.</div>'; return; }
     el("bin").innerHTML = PZ.map(function(x, i){
       var dur = x.fuori - x.dentro, tag = "";
@@ -4259,8 +4311,11 @@
       }
       if (au && Math.round(sfV * ((SEQ && +SEQ.fps) || 25))) {
         // il pezzo e' gia' nella sua traccia (e' l'ultimo aggiunto): il segno va dentro di lui
-        var segnoV = segnoSync(sfV, au.id);
-        if (suSopra) hv2 = hv2.slice(0, -6) + segnoV + '</div>'; else hv = hv.slice(0, -6) + segnoV + '</div>';
+        // come in Premiere: sul video il numero col segno opposto (l'audio e' +41, il video -41),
+        // PRIMA del nome, che si sposta per fargli posto
+        var segnoV = segnoSync(-sfV, au.id), CIMA = '<span class="cima">';
+        if (suSopra) { var k2 = hv2.lastIndexOf(CIMA) + CIMA.length; hv2 = hv2.slice(0, k2) + segnoV + hv2.slice(k2); }
+        else { var k1 = hv.lastIndexOf(CIMA) + CIMA.length; hv = hv.slice(0, k1) + segnoV + hv.slice(k1); }
       }
       var velX = velDi(x), fineX = x.dentro + d * velX, regX = regDelPezzo(x);
       righeDi(x).forEach(function(s){ if (s.b <= x.dentro || s.a >= fineX) return; var sa = a + Math.max(0, s.a - x.dentro) / velX, sb = a + Math.min(d, (s.b - x.dentro) / velX); if (sb < LENTE.a || sa > LENTE.b) return; var t2 = testoRiga(s).t; hs += '<div class="ed-st' + (s.m ? " mod" : "") + (TS_SEL === regX + "|" + s.k ? " sel" : "") + '" data-k="' + esc(s.k || "") + '" data-reg="' + esc(regX) + '" data-t="' + sa + '" style="left:' + Math.max(0, X(sa)) + 'px;width:' + Math.max(4, Math.min(w, X(sb)) - Math.max(0, X(sa))) + 'px" title="' + esc(t2) + '">' + esc(t2) + '</div>'; });
@@ -4287,7 +4342,7 @@
   }
   // quanto e' lunga la pista della barra: la sequenza, o fin dove sei
   // arrivato, piu' un quarto — c'e' sempre spazio per andare avanti
-  function pistaScorri(){ return Math.max(durSeq(), LENTE.b, 10) * 1.25; }
+  function pistaScorri(){ return Math.max(fineTutto(), LENTE.b, 10) * 1.25; }
   function disegnaScorri(){
     var t = el("tlScorri"), p = el("tlPomello"); if (!t || !p) return;
     var tot = pistaScorri(), w = t.clientWidth || 1;
@@ -4618,7 +4673,7 @@
       vc("Entrata della sequenza", "⇧I", function(){ if (INS !== null) vaiTempo(INS, false); }),
       vc("Uscita della sequenza", "⇧O", function(){ if (OUTS !== null) vaiTempo(OUTS, false); }),
       vc("Inizio della sequenza", "home", function(){ VE.pause(); if (PZ.length) vaiA(0, 0, false); }),
-      vc("Fine della sequenza", "end", function(){ VE.pause(); if (PZ.length) vaiA(PZ.length - 1, PZ[PZ.length - 1].fuori - PZ[PZ.length - 1].dentro - 0.05, false); })
+      vc("Fine della sequenza", "end", function(){ VE.pause(); if (PZ.length) vaiTempo(Math.max(0, fineTutto() - 0.05), false); })
     ],
     vista: [
       { capo: "Formato di riproduzione" },
@@ -5160,6 +5215,7 @@
   var VAI_GEN = 0;
   function vaiA(i, dentroIlPezzo, riproduci){
     var x = PZ[i]; if (!x || !VE) return;
+    if (VUOTO) { VUOTO = null; segnaVuoto(); }
     ORA.i = i;
     var v = velDi(x);
     var t = x.dentro + Math.max(0, Math.min((x.fuori - x.dentro) * v - 0.05, (dentroIlPezzo || 0) * v));
@@ -5192,12 +5248,30 @@
     if (riproduci) VE.play().catch(function(){});
     disegnaBin();
   }
-  function vaiTempo(t, riproduci){ var p = pezzoAlTempo(t); if (p) vaiA(p.i, p.dentro, riproduci); }
+  function vaiTempo(t, riproduci){
+    if (!PZ.length || !VE) return;
+    t = Math.max(0, t);
+    var p = pezzoEsatto(t);
+    if (p) vaiA(p.i, p.dentro, riproduci);
+    else { entraVuoto(t, riproduci); disegnaBin(); }
+  }
   var FERMO = null, ALTOE = 0, ORAE = "", INQ_VISTO = -2;
   function giroEditor(){
     if (!el("editor").classList.contains("on") || !VE || !PZ.length) return;
+    if (VUOTO && VUOTO.corre) {
+      var tv = tSeq(), finV = fineTutto(), pv = pezzoEsatto(tv);
+      if (pv) vaiA(pv.i, pv.dentro, true);                   // il buco finisce: entra la clip
+      else if (tv >= finV) { VUOTO.t = finV; VUOTO.corre = false; }
+    }
     var x = PZ[ORA.i]; if (!x) return;
-    if (!VE.paused && VE.currentTime >= x.dentro + (x.fuori - x.dentro) * velDi(x) - 0.05) { if (ORA.i + 1 < PZ.length) vaiA(ORA.i + 1, 0, true); else { VE.pause(); vaiA(ORA.i, x.fuori - x.dentro - 0.05, false); } }
+    if (!VUOTO && !VE.paused && VE.currentTime >= x.dentro + (x.fuori - x.dentro) * velDi(x) - 0.05) {
+      // alla fine della clip si va dove va il TEMPO: la clip che c'e' li',
+      // o il buco (nero) fino alla prossima, o la coda di un endtag
+      var tf = (x.t0 || 0) + (x.fuori - x.dentro), nx = pezzoEsatto(tf + 0.001);
+      if (nx && nx.i !== ORA.i) vaiA(nx.i, nx.dentro, true);
+      else if (tf < fineTutto() - 0.04) entraVuoto(tf, true);
+      else { VE.pause(); vaiA(ORA.i, x.fuori - x.dentro - 0.05, false); }
+    }
     var t = tSeq();
     var ts = tcf(t); if (ts !== ORAE) { ORAE = ts; el("eOra").firstChild.nodeValue = ts; if (el("eOraTl")) el("eOraTl").textContent = ts; }
     var gOra = GRAF.filter(function(g){ return t >= g.dentro && t < g.fuori; })[0], img = el("grafE");
@@ -5221,7 +5295,7 @@
     // li'. Ora: il video suona se il suo audio e' al suo posto; ogni altro
     // audio che cade sotto la testina lo suona un secondo lettore.
     var auOra = AUD.filter(function(z){ return z.legato === x.id; })[0];
-    var alSuoPosto = auOra && Math.abs((auOra.t0 || 0) - (x.t0 || 0)) < 0.05 && Math.abs(auOra.dentro - x.dentro) < 0.05;
+    var alSuoPosto = !VUOTO && auOra && Math.abs((auOra.t0 || 0) - (x.t0 || 0)) < 0.05 && Math.abs(auOra.dentro - x.dentro) < 0.05;
     var daVE = alSuoPosto && !auOra.muto && tracciaSuona(auOra.traccia) ? auOra : null;
     VE.muted = !daVE;
     if (daVE) { var vv = volumeAudio(daVE, t); if (Math.abs(VE.volume - vv) > 0.01) VE.volume = vv; }
@@ -5235,7 +5309,7 @@
     disegnaIspettore();
     if (!VE.paused && (t > LENTE.b || t < LENTE.a)) { var span = LENTE.b - LENTE.a; LENTE = { a: Math.max(0, t - span * 0.1), b: Math.max(0, t - span * 0.1) + span }; disegnaTl(); }
     if (SOTTOE) {
-      var ora = null, qui = righeDi(x); for (var k = 0; k < qui.length; k++) { var s = qui[k]; if (VE.currentTime >= s.a - .3 && VE.currentTime < s.b + .8) { ora = s; break; } }
+      var ora = null, qui = VUOTO ? [] : righeDi(x); for (var k = 0; k < qui.length; k++) { var s = qui[k]; if (VE.currentTime >= s.a - .3 && VE.currentTime < s.b + .8) { ora = s; break; } }
       var h = VE.clientHeight || 300;
       if (h !== ALTOE) { ALTOE = h; el("sottoItE").style.fontSize = (h * 51 / 1080) + "px"; el("sottoEnE").style.fontSize = (h * 55 / 1080) + "px"; }
       var txt = ora ? (((ora.l || "it") === LINGUAE) ? ora.x : (ora.y && ora.ya === LINGUAE ? ora.y : "\u2026 " + ora.x)) : "";
@@ -5285,11 +5359,11 @@
     return B;
   }
   var BT_PROG = BarraTempo(el("btProg"), {
-    dur: function(){ return SEQ ? durSeq() : 0; }, ora: function(){ return tSeq(); },
+    dur: function(){ return SEQ ? fineTutto() : 0; }, ora: function(){ return tSeq(); },
     dentro: function(){ return INS; }, fuori: function(){ return OUTS; },
     segni: function(){ return typeof marcatoriDellaSeq === "function" && SEQ ? marcatoriDellaSeq().dentro.map(function(z){ return Math.round(z.t * 10) / 10; }) : []; },
     inPlay: function(){ return VE && !VE.paused; }, ferma: function(){ if (VE) VE.pause(); }, riprendi: function(){ if (VE) VE.play().catch(function(){}); },
-    vai: function(t){ vaiTempo(Math.min(t, Math.max(0, durSeq() - 0.04)), false); }
+    vai: function(t){ vaiTempo(Math.min(t, Math.max(0, fineTutto() - 0.04)), false); }
   });
   var BT_SRG = BarraTempo(el("btSrg"), {
     dur: function(){ var v = el("videoS"); return SRG.r && isFinite(v.duration) ? v.duration : 0; }, ora: function(){ return el("videoS").currentTime || 0; },
@@ -5326,7 +5400,7 @@
         '<label title="acceso: esce un file in questo formato"><input type="checkbox" data-esce="' + f + '"' + (usc.indexOf(f) >= 0 ? " checked" : "") + "></label>" +
         '<div><b>' + f + "</b><small>" + ESP_NOMI[f] + "</small><small>" + ESP_MISURE[f] + (adatt ? ' · <em title="grafiche senza la versione in questo formato: in uscita verranno adattate">' + adatt + " grafic" + (adatt > 1 ? "he" : "a") + " adattat" + (adatt > 1 ? "e" : "a") + "</em>" : "") + "</small></div></div>";
     }).join("");
-    el("espSeq").textContent = SEQ ? (SEQ.titolo || "sequenza") + " · " + PZ.length + " pezzi · " + tcf(durSeq()) : "";
+    el("espSeq").textContent = SEQ ? (SEQ.titolo || "sequenza") + " · " + PZ.length + " pezzi · " + tcf(fineTutto()) : "";
     el("espVai").textContent = usc.length > 1 ? "Esporta " + usc.length + " file" : "Esporta";
     el("espVai").disabled = !usc.length;
     el("espRiassunto").innerHTML = usc.map(function(f){ return "<span>" + f + "</span>"; }).join("") ;
@@ -5354,11 +5428,11 @@
     el("espVista").hidden = false;
     el("espPalco").appendChild(box);                              // lo stesso monitor, qui
     if (!ESP.bt) ESP.bt = BarraTempo(el("btEsp"), {
-      dur: function(){ return SEQ ? durSeq() : 0; }, ora: function(){ return tSeq(); },
+      dur: function(){ return SEQ ? fineTutto() : 0; }, ora: function(){ return tSeq(); },
       dentro: function(){ return INS; }, fuori: function(){ return OUTS; },
       segni: function(){ return []; },
       inPlay: function(){ return VE && !VE.paused; }, ferma: function(){ if (VE) VE.pause(); }, riprendi: function(){ if (VE) VE.play().catch(function(){}); },
-      vai: function(t){ vaiTempo(Math.min(t, Math.max(0, durSeq() - 0.04)), false); }
+      vai: function(t){ vaiTempo(Math.min(t, Math.max(0, fineTutto() - 0.04)), false); }
     });
     espGuarda(espUscite().indexOf(ANTE) >= 0 ? ANTE : (espUscite()[0] || "16:9"));
     giroUscite();
@@ -5413,6 +5487,14 @@
     // restava muta finche' non si cliccava altrove)
     var ae = document.activeElement; if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) ae.blur();
     BUCO_SEL = null;
+    // IL RIGHELLO, come in Premiere: clic o trascinamento portano la testina, ovunque
+    if (e.target.closest("#cRig") && !e.target.closest(".mk")) {
+      var rR = el("pista").getBoundingClientRect();
+      RIG = { eraInPlay: VE && !VE.paused, left: rR.left, ultimo: 0 };
+      if (VE) VE.pause();
+      vaiTempo(tDiX(e.clientX - rR.left), false);
+      e.preventDefault(); return;
+    }
     var sy = e.target.closest(".ed-sync");
     if (sy) { e.preventDefault(); e.stopPropagation(); rimettiInSincrono(sy.dataset.sync); return; }
     if (STRUMENTO === "avanti" || STRUMENTO === "indietro") {
@@ -5479,7 +5561,9 @@
     }
     e.preventDefault(); disegnaEditor();
   });
+  var RIG = null;
   document.addEventListener("mousemove", function(e){
+    if (RIG) { if (Date.now() - RIG.ultimo > 40) { RIG.ultimo = Date.now(); vaiTempo(tDiX(e.clientX - RIG.left), false); } return; }
     if (RETE) {
       var r0 = el("pista").getBoundingClientRect();
       RETE.x1 = Math.max(r0.left, Math.min(r0.right, e.clientX));
@@ -5570,6 +5654,7 @@
     disegnaTl();
   });
   document.addEventListener("mouseup", function(e){
+    if (RIG) { var rg = RIG; RIG = null; vaiTempo(tDiX(e.clientX - rg.left), false); if (rg.eraInPlay && VE) VE.play().catch(function(){}); return; }
     if (RETE) {
       var re = RETE; RETE = null;
       if (el("reteBox")) el("reteBox").hidden = true;
@@ -5858,7 +5943,7 @@
     else if (e.key === "F2") { e.preventDefault(); e.stopPropagation(); rinominaPezzo(i); }
     else if ((e.key === "d" || e.key === "D") && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); duplicaPezzo(i); }
   });
-  el("ePlay").addEventListener("click", function(){ if (!VE) return; accendiVu(); if (VU_CTX && VU_CTX.state === "suspended") VU_CTX.resume(); if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiA(0, 0, true); else { if (PZ[ORA.i]) VE.playbackRate = velDi(PZ[ORA.i]); VE.play().catch(function(){}); } } else VE.pause(); });
+  el("ePlay").addEventListener("click", function(){ if (!VE) return; accendiVu(); if (VU_CTX && VU_CTX.state === "suspended") VU_CTX.resume(); if (VE.paused) { if (ORA.i < 0 && PZ.length) vaiTempo(0, true); else { if (PZ[ORA.i] && !VUOTO) VE.playbackRate = velDi(PZ[ORA.i]); VE.play().catch(function(){}); } } else VE.pause(); });
   el("ePrima").addEventListener("click", function(){ vaiA(Math.max(0, ORA.i - 1), 0, !VE.paused); });
   el("eDopo").addEventListener("click", function(){ vaiA(Math.min(PZ.length - 1, ORA.i + 1), 0, !VE.paused); });
   el("eTaglia").addEventListener("click", function(){ if (SELG && SEQ) { var g0 = GRAF.filter(function(z){ return z.id === SELG; })[0], t0 = tSeq(); if (g0 && t0 > g0.dentro + 0.3 && t0 < g0.fuori - 0.3) return post({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: SELG, dividi: Math.round(t0 * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Grafica divisa."); }).catch(function(er){ avviso("err", esc(er.message)); }); } var x = PZ[ORA.i]; if (!x || !SEQ) return; post({ tipo:"clip-hl-dividi", seq: SEQ.id, pezzo: x.id, a: Math.round(VE.currentTime * 100) / 100 }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Diviso."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
@@ -6306,11 +6391,11 @@
     else if (K === "T") { chiediTitolo(); }
     else if (K === "R") { chiediVelocita(); }
     else if (k === "ArrowLeft") { e.preventDefault(); VE.pause(); vaiTempo(Math.max(0, tSeq() - fot), false); }
-    else if (k === "ArrowRight") { e.preventDefault(); VE.pause(); vaiTempo(Math.min(durSeq() - 0.05, tSeq() + fot), false); }
+    else if (k === "ArrowRight") { e.preventDefault(); VE.pause(); vaiTempo(Math.min(fineTutto(), tSeq() + fot), false); }
     else if (k === "ArrowUp") { e.preventDefault(); el("ePrima").click(); }
     else if (k === "ArrowDown") { e.preventDefault(); el("eDopo").click(); }
     else if (k === "Home") { e.preventDefault(); VE.pause(); if (PZ.length) vaiA(0, 0, false); }
-    else if (k === "End") { e.preventDefault(); VE.pause(); if (PZ.length) vaiTempo(Math.max(0, durSeq() - 0.05), false); }
+    else if (k === "End") { e.preventDefault(); VE.pause(); if (PZ.length) vaiTempo(Math.max(0, fineTutto() - 0.05), false); }
     else if (K === "G") { chiediGain(); }
     else if (K === "M") { segnaMarker(); }
     else if (K === "F") { vaiAllaPartita(); }
@@ -6326,7 +6411,7 @@
   el("eSottoOn").addEventListener("click", function(){ SOTTOE = !SOTTOE; this.classList.toggle("on", SOTTOE); if (!SOTTOE) { el("sottoItE").textContent = ""; el("sottoEnE").textContent = ""; } });
   el("eSottoLingua").addEventListener("click", function(){ LINGUAE = LINGUAE === "it" ? "en" : "it"; this.textContent = LINGUAE === "it" ? "ITA" : "ENG"; el("eSottoL").value = LINGUAE; disegnaTl(); disegnaTesto(); traduciDetti(); });
   function lente(f){ var t = tSeq(), span = (LENTE.b - LENTE.a) * f; LENTE = { a: Math.max(0, t - span / 2), b: Math.max(0, t - span / 2) + span }; disegnaTl(); }
-  el("eMeno").addEventListener("click", function(){ lente(1.6); }); el("ePiu").addEventListener("click", function(){ lente(0.6); }); el("eTutta").addEventListener("click", function(){ LENTE = { a: 0, b: Math.max(10, durSeq()) }; disegnaTl(); });
+  el("eMeno").addEventListener("click", function(){ lente(1.6); }); el("ePiu").addEventListener("click", function(){ lente(0.6); }); el("eTutta").addEventListener("click", function(){ LENTE = { a: 0, b: Math.max(10, fineTutto()) }; disegnaTl(); });
   el("eRinomina").addEventListener("click", function(){ if (!SEQ) return; var n = window.prompt("Nome della sequenza:", SEQ.titolo || ""); if (!n) return; post({ tipo:"clip-hl-imposta", seq: SEQ.id, titolo: n }).then(function(d){ if (d.seq) { SEQ.titolo = d.seq.titolo || n; } else SEQ.titolo = n; el("eTitolo").textContent = SEQ.titolo; }).catch(function(er){ avviso("err", esc(er.message)); }); });
   el("eProg").addEventListener("click", function(){ if (!SEQ) return; scegliProgetto(function(pid){ post({ tipo:"clip-hl-progetto", seq: SEQ.id, prog: pid }).then(function(d){ if (d.seq) SEQ.prog = d.seq.prog; el("eProg").textContent = "Progetto" + (SEQ.prog ? " ✓" : ""); avviso("ok", pid ? "Sequenza nel progetto." : "Sequenza senza progetto."); }).catch(function(er){ avviso("err", esc(er.message)); }); }); });
   el("eCasa").addEventListener("click", function(){ if (!SEQ) return; post({ tipo:"clip-hl-in-casa", seq: SEQ.id }).then(function(){ avviso("ok", "Porto i pezzi in casa\u2026"); }).catch(function(er){ avviso("err", esc(er.message)); }); });
@@ -7931,7 +8016,7 @@
       if (q.casa) el("eCasaStato").textContent = q.casa.stato === "lavora" ? "in casa: " + q.casa.fatti + "/" + q.casa.quanti : (q.casa.stato === "pronto" ? "pezzi in casa" : "");
       el("eUscite").innerHTML = h || '<span style="color:var(--fumo);font-size:12px">Ancora niente.</span>';
       if (ESP.aperta) el("espUscite").innerHTML = el("eUscite").innerHTML;
-      el("eInfo").textContent = PZ.length + " pezzi · " + tc(durSeq()) + (q.chi ? " · " + q.chi : "");
+      el("eInfo").textContent = PZ.length + " pezzi · " + tc(fineTutto()) + (q.chi ? " · " + q.chi : "");
       var lavora = (q.export && q.export.stato === "lavora") || (q.casa && q.casa.stato === "lavora");
       GIRO_E = setTimeout(giroUscite, lavora ? 1500 : 15000);
       // mai durante un trascinamento o una selezione a riquadro: il gesto tiene
