@@ -7680,7 +7680,17 @@ function correggiArchivio(voci) {
 // si tengono solo i video delle partite della prima squadra maschile.
 const ARCH1907 = { quando: 0, mtime: 0, voci: [] };
 const DIR_1907 = process.env.COMOTV_1907_PUB || "/var/lib/comotv-1907/pub";
-const PARTITE_1907 = /(men'?s? first team|men first team)\/(matchdays?|matchday_[^/]*)\/|\/match\/men'?s first team\//i;
+const PARTITE_1907 = /(men'?s? first team|men first team)\/(matchdays?|matchday_[^/]*)\/|\/match\/men'?s first team\/|first team interviews\//i;
+// IL TIPO DI UNA CLIP DEL CLUB, dalla cartella (Goffredo, 30/09/2026: "il tag CAMERA OFFLOADS,
+// il filtro interviste"): si mostra sulla tessera e si filtra nella ricerca
+function tipoClub1907(via) {
+  const t = String(via).toLowerCase();
+  if (/camera offload|scarichi/.test(t)) return "Camera offloads";
+  if (/press ?conf|conferenza/.test(t)) return "Conferenza stampa";
+  if (/interview|intervist|\bitw\b|flash ?interview/.test(t)) return "Intervista";
+  if (/(^|\/)hl[ _]|highlight/.test(t)) return "Highlights";
+  return "";
+}
 function carica1907() {
   const f = path.join(DIR_1907, "file.json");
   let st; try { st = fs.statSync(f); } catch (e) { return ARCH1907; }
@@ -7696,8 +7706,8 @@ function carica1907() {
       // LA PARTITA e' la cartella subito dopo "Matchdays" / "MATCHDAY_Serie A":
       // "G07 - COMO v JUVENTUS", "G05 Atalanta v Como", "G02_20260830_NAPOLI-COMO"
       const pz = cartella.split("/");
-      const iM = pz.findIndex((z) => /^matchdays?$|^matchday_/i.test(z));
-      const cp = iM >= 0 ? (pz[iM + 1] || "") : "";
+      const iM = pz.findIndex((z) => /^matchdays?$|^matchday_/i.test(z)), iG0 = pz.findIndex((z) => /^G\s?\d{1,2}(?!\d)/i.test(z));
+      const cp = iM >= 0 ? (pz[iM + 1] || "") : iG0 >= 0 ? pz[iG0] : "";
       const comp = iM >= 0 ? (pz[iM].replace(/^matchdays?_?/i, "").trim()) : "";
       const g = (/^G\s?(\d{1,2})(?!\d)/i.exec(cp) || [])[1] || "";
       const dataC = (/(20\d{6})/.exec(cp) || [])[1] || "";
@@ -7706,7 +7716,7 @@ function carica1907() {
       const sa = /(20\d\d)\s*-\s*(20)?(\d\d)/.exec(pz[0]) || /(\d\d)\s*-\s*(\d\d)/.exec(pz[0]);
       const stagione = sa ? (sa[1].length === 4 ? sa[1] + "/" + sa[3] : "20" + sa[1] + "/" + sa[2]) : pz[0];
       voci.push({ via, nome, cartella, peso: x[1] || 0, g: g ? "G" + ("0" + g).slice(-2) : "", data: dataC || String(x[3] || ""), partita, comp,
-                  stagione, slow: /slow ?mo|rallent/i.test(nome), gol: /\/gol\b|\bgol\b|\bgoal\b/i.test(via),
+                  stagione, slow: /slow ?mo|rallent/i.test(nome), gol: /\/gol\b|\bgol\b|\bgoal\b/i.test(via), tipo: tipoClub1907(via),
                   t: senzaAccenti(via.replace(/[_./-]+/g, " ")).toLowerCase() });
     });
   });
@@ -7715,18 +7725,21 @@ function carica1907() {
   return ARCH1907;
 }
 const VUOTE_1907 = new Set("di del della dei il lo la le i gli un una e tutti tutte tutto che con per in a da su".split(" "));
-function cerca1907(q, quante) {
+function cerca1907(q, quante, tipo) {
   const A = carica1907();
   let parole = senzaAccenti(String(q || "")).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !VUOTE_1907.has(w));
-  if (!parole.length) return { ok: true, n: 0, clip: [] };
+  if (!parole.length && !tipo) return { ok: true, n: 0, clip: [], tipi: {} };
   // gol e goal sono la stessa cosa; slow motion si scrive in tanti modi
   const varianti = (w) => w === "gol" || w === "goal" || w === "gols" ? ["gol", "goal"] : /^slow|^rallent/.test(w) ? ["slowmo", "slow mo", "slow"] : [w];
-  const trovate = A.voci.filter((v) => parole.every((w) => varianti(w).some((x) => v.t.indexOf(x) >= 0)));
+  const tutte = A.voci.filter((v) => parole.every((w) => varianti(w).some((x) => v.t.indexOf(x) >= 0)));
+  // quante per tipo (la fila di scelte della pagina), poi il tipo scelto
+  const tipi = {}; tutte.forEach((v) => { if (v.gol) tipi.Gol = (tipi.Gol || 0) + 1; if (v.slow) tipi["Slow motion"] = (tipi["Slow motion"] || 0) + 1; if (v.tipo) tipi[v.tipo] = (tipi[v.tipo] || 0) + 1; });
+  const trovate = !tipo ? tutte : tutte.filter((v) => tipo === "Gol" ? v.gol : tipo === "Slow motion" ? v.slow : v.tipo === tipo);
   const voto = (v) => (v.gol ? 4 : 0) + (v.slow ? 2 : 0) + (/materiale serie a|archivio/i.test(v.cartella) ? 1 : 0);
   trovate.sort((a, b) => voto(b) - voto(a) || String(b.data).localeCompare(String(a.data)));
   const n = Math.min(Math.max(+quante || 60, 1), 300);
-  return { ok: true, n: trovate.length, clip: trovate.slice(0, n).map((v) => ({ via: v.via, nome: v.nome, cartella: v.cartella, peso: v.peso, g: v.g, data: v.data,
-    partita: v.partita, comp: v.comp, stagione: v.stagione, slow: v.slow, gol: v.gol, k: crypto.createHash("sha1").update(v.via).digest("hex").slice(0, 16) })) };
+  return { ok: true, n: trovate.length, tutte: tutte.length, tipi, clip: trovate.slice(0, n).map((v) => ({ via: v.via, nome: v.nome, cartella: v.cartella, peso: v.peso, g: v.g, data: v.data,
+    partita: v.partita, comp: v.comp, stagione: v.stagione, slow: v.slow, gol: v.gol, tipo: v.tipo, k: crypto.createHash("sha1").update(v.via).digest("hex").slice(0, 16) })) };
 }
 function scriviArchivio() {
   try {
@@ -14492,51 +14505,101 @@ async function allineaLingua(recIta, l) {
 const FILE_1907 = process.env.COMOTV_1907_INDICE || "/var/lib/comotv-1907/pub/file.json";
 let CLUB = { mt: -1, perGiorno: new Map() };
 const CLUB_ORDINE = [/HL.*ITA/i, /HL.*ENG/i, /HL.*INT/i, /INTERVIEW|INTERVIST/i, /PRESS|CONFERENZA/i, /CAMERA OFFLOAD|SCARICHI/i, /RAW CAM/i, /GIONNI/i, /PHONE/i, /EXPORT/i, /CLIPS/i];
+// la stagione di un giorno (luglio-giugno) e quella scritta in un percorso: "2025/26"
+function stagioneDiGiorno(g) { const y = +String(g).slice(0, 4), m = +String(g).slice(4, 6); if (!y) return ""; const s = m >= 7 ? y : y - 1; return s + "/" + String((s + 1) % 100).padStart(2, "0"); }
+function stagioneDiPercorso(p) { const m = /(20\d\d)\s*[-_/]\s*(20)?(\d\d)/.exec(p); return m ? m[1] + "/" + m[3] : ""; }
+// le squadre dal nome della cartella: "G14 - INTER v COMO", "G02_20260830_NAPOLI-COMO", "G29 Milan Como"
+function squadreDaCartella(n) {
+  const t = String(n).replace(/^G\d+\s*[-_ ]\s*/i, "").replace(/^20\d\d-\d\d-\d\d\s*[-_ ]\s*/, "").replace(/\s+LEG\s*\d+\s*$/i, "").replace(/_/g, " ").replace(/(^|\s)20\d{6}(?=\s|$)/g, " ").trim();
+  let q = t.split(/\s+v(?:s)?\.?\s+|\s+-\s+|(?<=\S)-(?=\S)/i).map((x) => x.trim()).filter(Boolean);
+  if (q.length < 2) { const w = t.split(/\s+/); const i = w.findIndex((x) => /^como$/i.test(x)); if (i === 0) q = ["COMO", w.slice(1).join(" ")]; else if (i > 0) q = [w.slice(0, i).join(" "), "COMO"]; }
+  return q.slice(0, 2);
+}
+// "JUVE" e "JUVENTUS", "INTER" e "INTER MILAN", "HELLAS VERONA" e "VERONA": basta una parola comune (anche solo l'inizio, da 4 lettere)
+function paroleSquadra(n) {
+  let w = senzaAccenti(String(n || "")).toUpperCase().split(/[^A-Z]+/).filter((x) => x.length >= 3 && !/^(FC|AC|US|SSC|CALCIO|HELLAS|CLUB)$/.test(x));
+  if (w.indexOf("INTER") >= 0) w = w.filter((x) => x !== "MILAN");        // "Inter Milan" non e' il Milan
+  return w;
+}
+function stessaSquadra(a, b) {
+  const pa = paroleSquadra(a), pb = paroleSquadra(b);
+  return pa.some((x) => pb.some((y) => x === y || (x.length >= 4 && y.length >= 4 && (x.startsWith(y) || y.startsWith(x)))));
+}
 function materialeClub() {
   let mt = 0; try { mt = fs.statSync(FILE_1907).mtimeMs; } catch (e) { return CLUB.perGiorno; }
   if (mt === CLUB.mt) return CLUB.perGiorno;
-  const per = new Map();
+  const per = new Map(), giornate = new Map();
   try {
     const L = JSON.parse(fs.readFileSync(FILE_1907, "utf8"));
-    // la data della giornata: quella della maggior parte dei suoi file (Gionni's
-    // Cam e la conferenza stampa spesso non la portano), o quella nel nome
-    const dataG = new Map();
+    const giornataDi = (cartella) => {
+      const pz = String(cartella || "").split("/"), iT = pz.findIndex((x) => /first team/i.test(x)); if (iT < 0) return null;
+      const iG = pz.findIndex((x, i) => i > iT && (/^G\d+[\s_-]/i.test(x) || /^20\d\d-\d\d-\d\d[\s_-]/.test(x) && /matchday/i.test(pz[i - 1] || ""))); if (iG < 0) return null;
+      return { pz, iG, k: pz.slice(0, iG + 1).join("/") };
+    };
+    // la data della giornata: quella della maggior parte dei suoi file (Gionni's Cam e la
+    // conferenza stampa spesso non la portano), ma solo se cade nella stagione della cartella:
+    // G36-G38 della 25-26 portavano riprese del 2024 e si agganciavano a niente
+    const dateG = new Map();
     L.forEach(([cartella, files]) => {
-      const pz = String(cartella || "").split("/"), iT = pz.findIndex((x) => /first team/i.test(x)); if (iT < 0) return;
-      const iG = pz.findIndex((x, i) => i > iT && /^G\d+[\s_-]/i.test(x)); if (iG < 0) return;
-      const k = pz.slice(0, iG + 1).join("/"); if (!dataG.has(k)) dataG.set(k, {});
-      const c = dataG.get(k); (files || []).forEach((f) => { if (/^20\d{6}$/.test(String(f[3] || ""))) c[f[3]] = (c[f[3]] || 0) + 1; });
+      const g = giornataDi(cartella); if (!g) return;
+      if (!dateG.has(g.k)) dateG.set(g.k, {});
+      const c = dateG.get(g.k); (files || []).forEach((f) => { if (/^20\d{6}$/.test(String(f[3] || ""))) c[f[3]] = (c[f[3]] || 0) + 1; });
     });
-    const giornoDi = (k) => { const c = dataG.get(k) || {}; const m = Object.keys(c).sort((x, y) => c[y] - c[x])[0]; return m || (/(20\d{6})/.exec(k.split("/").pop()) || [])[1] || ""; };
     L.forEach(([cartella, files]) => {
-      const pz = String(cartella || "").split("/");
-      const iT = pz.findIndex((x) => /first team/i.test(x)); if (iT < 0) return;
-      const iG = pz.findIndex((x, i) => i > iT && /^G\d+[\s_-]/i.test(x)); if (iG < 0) return;
-      const sotto = pz.slice(iG + 1).filter((x) => !/^BROADCAST/i.test(x));
+      const g = giornataDi(cartella); if (!g) return;
+      if (!giornate.has(g.k)) {
+        const nome = g.pz[g.iG], stag = stagioneDiPercorso(g.k), c = dateG.get(g.k) || {};
+        const dn = /(20\d\d)-?(\d\d)-?(\d\d)/.exec(nome), dalNome = dn ? dn[1] + dn[2] + dn[3] : "";
+        const buone = Object.keys(c).filter((d) => !stag || stagioneDiGiorno(d) === stag).sort((x, y) => c[y] - c[x]);
+        const giorno = dalNome && (!stag || stagioneDiGiorno(dalNome) === stag) ? dalNome : (buone[0] || "");
+        const sq = squadreDaCartella(nome);
+        giornate.set(g.k, { cartella: g.k, nome, stag, giorno, squadre: sq, casaComo: /^como$/i.test(String(sq[0] || "").trim()),
+          donne: /femminil|women|\bw\b/i.test(g.k + " " + nome), gruppi: new Map() });
+      }
+      const x = giornate.get(g.k);
+      const sotto = g.pz.slice(g.iG + 1).filter((y) => !/^BROADCAST/i.test(y));
       // i LIVE sono la partita intera: stanno gia' nelle lingue (ITA/ENG/INT)
-      if (sotto.some((x) => /^LIVE\b/i.test(x))) return;
+      if (sotto.some((y) => /^LIVE\b/i.test(y))) return;
       const gruppo = sotto.join(" › ") || "Cartella della partita";
       (files || []).forEach((f) => {
         if (!F1907_VIDEO.test(f[0])) return;
-        const g = String(giornoDi(pz.slice(0, iG + 1).join("/")));
-        if (!/^20\d{6}$/.test(g)) return;
-        if (!per.has(g)) per.set(g, { cartella: pz.slice(0, iG + 1).join("/"), gruppi: new Map() });
-        const x = per.get(g); if (!x.gruppi.has(gruppo)) x.gruppi.set(gruppo, []);
+        if (!x.gruppi.has(gruppo)) x.gruppi.set(gruppo, []);
         x.gruppi.get(gruppo).push({ via: cartella + "/" + f[0], nome: f[0], peso: f[1] || 0 });
       });
     });
+    giornate.forEach((x) => { if (x.giorno && !x.donne && x.gruppi.size && !per.has(x.giorno)) per.set(x.giorno, x); });
   } catch (e) { console.log("[clip] materiale del club: " + e.message); }
-  CLUB = { mt, perGiorno: per };
+  CLUB = { mt, perGiorno: per, giornate: [...giornate.values()] };
   return per;
+}
+// la giornata del club di una partita: per giorno; se no per stagione, avversario e casa/trasferta
+function giornataClubDi(a, g) {
+  const per = materialeClub(), gn = giornoNumero(String(g));
+  const x = per.get(String(g)) || [...per.values()].find((y) => Math.abs(giornoNumero(y.giorno) - gn) <= 1 && y.squadre.some((s) => /^como$/i.test(String(s).trim()))
+    && (() => { const pp = String(a.partita || "").toUpperCase(); return y.squadre.some((s) => !/^como$/i.test(String(s).trim()) && paroleSquadra(s).some((w) => pp.indexOf(w.slice(0, 4)) >= 0)); })());
+  if (x) return x;
+  // senza data buona si cerca solo per la Serie A della prima squadra: le coppe e le giovanili
+  // hanno altre cartelle (Coppa Italia Como-Sassuolo non e' la G13 di campionato)
+  const comp = String(a.competizione || "") + " " + String(a.compVista || "");
+  if (!/serie a|prima squadra/i.test(comp) || /under|primavera|women|femminil|\bu\s?\d\d\b|coppa|cup/i.test(comp + " " + (a.partita || ""))) return null;
+  const stag = stagioneDiGiorno(g), p = String(a.partita || "").replace(/\[[^\]]*\]/g, " ").replace(/\b\d+\s*[-–]\s*\d+\b/g, " ");
+  const sq = p.split(/\s*[-–.]\s*|\s+v(?:s)?\.?\s+/i).map((y) => y.trim()).filter(Boolean);
+  const iComo = sq.findIndex((y) => /^como$/i.test(y)); if (iComo < 0 || sq.length < 2) return null;
+  const avv = sq[iComo === 0 ? 1 : 0], casa = iComo === 0;
+  // una cartella con la sua data vale solo a pochi giorni dalla partita (recuperi, date spostate)
+  const lontana = (y) => y.giorno && Math.abs(giornoNumero(y.giorno) - giornoNumero(String(g))) > 3;
+  const cand = (CLUB.giornate || []).filter((y) => !y.donne && y.gruppi.size && y.stag === stag && !lontana(y) && y.squadre.some((s) => stessaSquadra(s, avv)) && y.casaComo === casa);
+  // cartelle doppie (G30_COMO v PISA e G30 - COMO v PISA): la piu' piena
+  return cand.sort((u, v) => [...v.gruppi.values()].reduce((t, f) => t + f.length, 0) - [...u.gruppi.values()].reduce((t, f) => t + f.length, 0))[0] || null;
 }
 function clubDi(recIta) {
   const a = ARCHIVIO[recIta]; if (!primaSquadraComo(a)) return null;
   const g = a.giorno || (Date.parse(a.quando) ? giornoRoma(Date.parse(a.quando)) : "");
-  const x = materialeClub().get(String(g)); if (!x) return null;
+  const x = giornataClubDi(a, g); if (!x) return null;
   const voto = (n) => { const i = CLUB_ORDINE.findIndex((re) => re.test(n)); return i < 0 ? 99 : i; };
   const gruppi = [...x.gruppi.entries()].map(([nome, file]) => ({ nome, file: file.sort((u, v) => u.nome.localeCompare(v.nome)) }))
     .sort((u, v) => voto(u.nome) - voto(v.nome) || u.nome.localeCompare(v.nome));
-  return { cartella: x.cartella, giorno: g, gruppi, n: gruppi.reduce((t, y) => t + y.file.length, 0) };
+  return { cartella: x.cartella, giorno: x.giorno || g, gruppi, n: gruppi.reduce((t, y) => t + y.file.length, 0) };
 }
 // quanti file del club ha una partita (per il tasto CLUB nei risultati)
 const CLUB_N = { mt: -2, n: new Map() };
@@ -16626,7 +16689,7 @@ const AZIONI = {
   },
   "clip-nas-aggiunte": () => importaAggiunteNas(),
   "clip-archivio-correggi": (p) => correggiArchivio(p.voci),
-  "clip-1907-cerca": (p) => cerca1907(p.q, p.quante),
+  "clip-1907-cerca": (p) => cerca1907(p.q, p.quante, p.genere ? String(p.genere) : ""),
   // RILEGGERE DA CAPO (28/09/2026): cronometro, tabellone, boati e momenti di
   // queste partite via, e il giro della casa li rifa'. Le durate restano
   "clip-archivio-rileggi": (p) => {
