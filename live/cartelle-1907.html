@@ -523,7 +523,7 @@
       x.sid = j.id; x.ric = j.ricevuti || 0; disegnaCarichi();
       var tentativi = 0;
       function manda() {
-        if (x.ric >= x.f.size) return fine();
+        if (x.ric >= x.f.size) return Promise.resolve();
         var pezzo = x.f.slice(x.ric, Math.min(x.f.size, x.ric + BLOCCO));
         return api("PUT", x.sid + "?da=" + x.ric, pezzo, "application/octet-stream").then(function (r) {
           if (r.ok) { x.ric = r.ricevuti; tentativi = 0; disegnaCarichi(); return manda(); }
@@ -532,7 +532,8 @@
         }).catch(function (e) { if (++tentativi > 5) throw e; x.stato = "riprovo"; disegnaCarichi(); return new Promise(function (ok) { setTimeout(ok, 3000 * tentativi); }).then(function () { return api("GET", x.sid).then(function (r) { if (r.ok) x.ric = r.ricevuti; x.stato = "carico"; return manda(); }); }); });
       }
       function fine() { x.stato = "controllo l’integrità"; disegnaCarichi(); return api("POST", x.sid + "/fine", "{}", "application/json").then(function (r) { if (!r.ok) throw new Error(r.errore || "controllo non riuscito"); x.stato = "fatto"; }); }
-      return manda();
+      // il controllo finale sta fuori dai tentativi: se il file non e' integro si dice perche'
+      return manda().then(fine);
     }).catch(function (e) { x.stato = "errore"; x.err = e.message; })
       .then(function () { ATTIVO = false; disegnaCarichi(); delete CACHE[x.dest]; if (x.dest === QUI || padre(x.dest) === QUI) ricarica(); prossimo(); });
   }
