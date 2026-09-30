@@ -27,7 +27,7 @@
     { k: "live", nome: "Live", largo: true, gruppi: [
       { nome: "Strumenti", voci: [["live/classifiche.html", "Catalogo grafiche"], ["live/vademecum.html", "Vademecum"], ["live/telecronaca.html", "Telecronaca"],
         ["live/redazione.html", "Controllo redazione"], ["live/regia.html", "Regia"]] },
-      { nome: "Partita", voci: [["live/formazioni-premium.html", "Formazioni Premium con foto"], ["live/formazioni-premium.html?maglie=1", "Formazioni Premium solo maglie"],
+      { nome: "Partita", voci: [["live/formazioni-premium.html", "Formazioni Premium con foto"], ["live/formazioni-premium.html?maglie=1", "Formazioni Premium solo maglie"], ["live/formazioni-premium.html?probabili=1", "Le probabili"],
         ["live/formazioni.html", "Formazioni"], ["live/cambi.html", "Cambi"], ["live/risultati.html", "Risultati"], ["live/classifiche-campionati.html", "Classifiche"],
         ["live/marcatori.html", "Marcatori"], ["live/marcatori-giovani.html", "Marcatori più giovani"], ["live/tiri.html", "Mappa dei tiri"],
         ["live/passaggi.html", "Mappa dei passaggi"], ["live/heatmap.html", "Heatmap"], ["live/precedenti.html", "I precedenti"], ["live/forma.html", "Come arrivano"]] },

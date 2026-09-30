@@ -48,6 +48,7 @@
     { nome: "Partita", voci: [
       ["formazioni-premium.html",    "Formazioni Premium con foto"],
       ["formazioni-premium.html?maglie=1", "Formazioni Premium solo maglie"],
+      ["formazioni-premium.html?probabili=1", "Le probabili"],
       ["formazioni.html",            "Formazioni"],
       ["cambi.html",                 "Cambi"],
       ["risultati.html",             "Risultati"],

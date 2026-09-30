@@ -401,12 +401,18 @@
   // gli avversari di cui le foto non ce le ha nessuno, dove il premium con
   // le caselle vuote fa peggio che bene. Una pagina sola e non due: il
   // giorno che si tocca la compilazione, si tocca una volta.
-  var SOLO_MAGLIE = new URLSearchParams(location.search).get("maglie") === "1";
+  // LE PROBABILI (30/09/2026) — la stessa pagina con ?probabili=1: gli
+  // undici senza panchina, con le maglie (le foto per una formazione che
+  // ancora non c'e' non servono), stessi dati e stesso invio in regia. In
+  // onda la testata dice LE PROBABILI.
+  var PROBABILI = new URLSearchParams(location.search).get("probabili") === "1";
+  var SOLO_MAGLIE = PROBABILI || new URLSearchParams(location.search).get("maglie") === "1";
   var STILE_PV = (function(){try{return localStorage.getItem("comotv.premium.pv")||"foto";}catch(e){return "foto";}})();
   document.addEventListener("DOMContentLoaded", function(){
     if (SOLO_MAGLIE) {
-      document.title = "Formazioni Premium solo maglie \u00b7 Como TV";
-      var t = document.getElementById("titSoloMaglie"); if (t) t.hidden = false;
+      document.title = (PROBABILI ? "Le probabili" : "Formazioni Premium solo maglie") + " \u00b7 Como TV";
+      var t = document.getElementById("titSoloMaglie");
+      if (t) { t.hidden = false; if (PROBABILI) t.textContent = " \u00b7 le probabili"; }
       var sg = document.getElementById("segStile"); if (sg) sg.style.display = "none";
     }
     var seg = document.getElementById("segStile");
@@ -997,6 +1003,8 @@
   }
 
   function renderBenches() {
+    // le probabili sono gli undici: la panchina non si prepara e non si manda
+    if (PROBABILI) { el.benches.innerHTML = ""; el.benches.style.display = "none"; return; }
     var h = "";
     sides.forEach(function (side, si) {
       var n = side.pan.filter(function (v) {
@@ -1755,6 +1763,7 @@
       k: side.kit,
       pv: STILE_PV,
       sm: SOLO_MAGLIE ? 1 : undefined,
+      pr: PROBABILI ? 1 : undefined,
       mg: side.maglia ? magliaUrl(side, side.maglia) || undefined : undefined,
       l: (function () {
         if (side.logoFisso) return side.logoFisso;   // ripresa dalla scaletta: lo stemma era quello
@@ -1775,7 +1784,7 @@
       af: side.teamName ? "/loghi/foto-premium-coach-" + slugCog(side.teamEspn || side.teamName) + ".png" : undefined,
       g: side.posGraf || undefined,
       t: side.tit.map(tri),
-      p: side.pan.map(function (v) { return resolve(side, v); })
+      p: PROBABILI ? [] : side.pan.map(function (v) { return resolve(side, v); })
         .filter(function (d) { return d && (d.cognome || d.nome); })
         .map(function (d) { return [d.num || "", d.nome || "", d.cognome || "", "", d.pid || ""]; })
     };
@@ -2071,7 +2080,7 @@
     if (!cfg) return;
 
     // il nome in scaletta lo decide chi invia (proposta modificabile)
-    var proposto = "FORMAZIONE " + String(payload.n || sides[si].label).toUpperCase();
+    var proposto = (PROBABILI ? "LE PROBABILI " : "FORMAZIONE ") + String(payload.n || sides[si].label).toUpperCase();
     var titolo = window.prompt("Nome in scaletta di regia:", proposto);
     if (titolo === null) return;
     titolo = titolo.trim() || proposto;
@@ -2083,7 +2092,7 @@
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(Object.assign({ token: cfg.token }, Destinazione.corpo({
-                             grafica: SOLO_MAGLIE ? "formazione-premium-maglie" : "formazione-premium",
+                             grafica: PROBABILI ? "formazione-probabili" : (SOLO_MAGLIE ? "formazione-premium-maglie" : "formazione-premium"),
                              titolo: titolo, dati: payload })))
     })
       .then(function (r) { return r.json(); })
