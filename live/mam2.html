@@ -1224,7 +1224,7 @@
   .attrezzi button:hover{background:rgba(245,241,230,.08);}
   .attrezzi button.on{background:var(--oro);color:var(--navy);border-color:var(--oro);}
 
-  .ed-pista.lametta,.ed-pista.lametta .ed-pezzo{cursor:crosshair;}
+  .ed-pista.lametta,.ed-pista.lametta .ed-pezzo,.ed-pista.lametta .ed-audio,.ed-pista.lametta .ed-audio *{cursor:crosshair;}
   /* FUORI SINCRONO (come in Premiere): il numero rosso, in fotogrammi, sul video e sul suo audio; clic = rimetti in sincrono */
   .ed-sync{position:absolute;top:2px;left:2px;z-index:5;background:#C8252C;color:#fff;font:700 10px/12px ui-monospace,Menlo,monospace;padding:0 3px;border:1px solid rgba(255,255,255,.9);border-radius:4px;cursor:pointer;pointer-events:auto;box-shadow:0 1px 2px rgba(0,0,0,.5);}
   .ed-pezzo .cima .ed-sync{position:static;display:inline-block;margin-right:4px;vertical-align:1px;}
@@ -5051,6 +5051,21 @@
       .then(function(d){ BUCO_SEL = null; ricaricaSeq(d.seq); avviso("ok", "Spazio vuoto chiuso: " + tc(lung) + "."); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   }
+  function tagliaAudioQui(nodo, e){
+    var au = AUD.filter(function(z){ return z.id === nodo.dataset.a; })[0]; if (!au || !SEQ) return;
+    if (traccaBloccata(au.traccia)) return avviso("err", "La traccia " + (au.traccia || "A1") + " e' bloccata.");
+    if (au.legato && COLLEGATI) {
+      var iV = -1; PZ.forEach(function(z, i){ if (z.id === au.legato) iV = i; });
+      if (iV >= 0) return tagliaQui({ dataset: { i: String(iV) } }, e);
+    }
+    var t = tDiX(e.clientX - el("pista").getBoundingClientRect().left);
+    var pzA = au.legato ? PZ.filter(function(z){ return z.id === au.legato; })[0] : null;
+    var t0a = pzA ? (pzA.t0 || 0) + (+au.sfaso || 0) : (au.t0 || 0), fin = t0a + (au.fuori - au.dentro);
+    if (!(t > t0a + 0.15 && t < fin - 0.15)) return avviso("err", "Il taglio cadrebbe sul bordo.");
+    post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"dividi", audio: au.id, a: Math.round(t * 1000) / 1000 })
+      .then(function(d){ ricaricaSeq(d.seq); ONDE_CHIESTE = 0; chiediOnde(); avviso("ok", "Audio diviso a " + tc(t) + (au.legato ? " (solo l\u2019audio: ora e\u2019 staccato dal video)" : "") + "."); })
+      .catch(function(er){ avviso("err", esc(er.message)); });
+  }
   function tagliaQui(pz, e){
     var i = +pz.dataset.i, x = PZ[i]; if (!x || !SEQ) return;
     var t = tDiX(e.clientX - el("pista").getBoundingClientRect().left);
@@ -5532,6 +5547,11 @@
       disegnaEditor(); return;
     }
     if (!(e.shiftKey || e.metaKey || e.ctrlKey)) { SELGS = []; SELAS = []; }
+    // LA LAMETTA ANCHE SULL'AUDIO (30/09/2026, come in Premiere): con Collegati
+    // acceso un audio legato si taglia insieme al suo video; spento, o su un
+    // audio staccato, si taglia solo lui
+    var adL = STRUMENTO === "lametta" ? e.target.closest(".ed-audio[data-a]") : null;
+    if (adL) { tagliaAudioQui(adL, e); e.preventDefault(); return; }
     // le due prese della dissolvenza stanno SOPRA la clip audio: vanno
     // guardate per prime, se no si prende la clip e la si sposta invece di
     // allungare la rampa

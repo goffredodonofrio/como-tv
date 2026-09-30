@@ -3951,6 +3951,9 @@ function hlAudio(p) {
     const copia = JSON.parse(JSON.stringify(a));
     copia.id = nuovoId("a");
     delete copia.legato; delete copia.sfaso; delete copia.grafica;
+    // l'audio di un file di casa (sigla, clip da telefono): la copia si porta
+    // dietro il file, se no suonerebbe la partita allo stesso secondo
+    if (x && x.media) copia.media = x.media;
     copia.traccia = n;
     copia.t0 = Math.round(Math.max(0, num(p.t0, 0, 86400, a.t0 || 0)) * 1000) / 1000;
     q.audio.push(copia);
@@ -5036,7 +5039,7 @@ function costruisciMix(q, iBase) {
     if (a.muto || !suona[a.traccia]) return;
     const t = (q.tracce && q.tracce[a.traccia]) || {};
     const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
-    const mioA = mediaVia(suoP) || (a.animata ? viaAnimata(a.animata, "wav") : null);
+    const mioA = mediaVia(suoP) || mediaVia(a) || (a.animata ? viaAnimata(a.animata, "wav") : null);
     // OGNI PEZZO CON LA SUA PARTITA (26/09/2026): canali e materiale di
     // riserva erano sempre quelli di q.reg, anche per un pezzo di un'altra
     // partita in una gol collection
@@ -17291,7 +17294,7 @@ const AZIONI = {
     let mancano = 0, fatte = 0;
     for (const a of (q.audio || [])) {
       const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
-      const mioW = mediaVia(suoP) || (a.animata ? viaAnimata(a.animata, "wav") : null);
+      const mioW = mediaVia(suoP) || mediaVia(a) || (a.animata ? viaAnimata(a.animata, "wav") : null);
       const k = mioW ? ("media-" + path.basename(mioW) + "-" + a.dentro.toFixed(2) + "-" + a.fuori.toFixed(2)).replace(/[^A-Za-z0-9._-]/g, "_")
                      : chiavePezzo(idRegDi(q, suoP || a), a.dentro, a.fuori);
       const via = path.join(cartellaOnde(), k + ".json");
