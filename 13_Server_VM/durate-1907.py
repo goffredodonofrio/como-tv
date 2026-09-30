@@ -77,7 +77,8 @@ def main():
         if d is None and via.lower().endswith(QT): d = durata_ff(p)
         with LOCK: cache[via] = [dim, mt, d]
 
-    with ThreadPoolExecutor(8) as ex:
+    # 3 alla volta: con 8 la VM (2 core) andava a carico 18
+    with ThreadPoolExecutor(3) as ex:
         for i, _ in enumerate(ex.map(uno, da_fare)):
             if i and i % 5000 == 0:
                 with LOCK: copia = dict(cache)
