@@ -43,7 +43,7 @@
       ["live/mam2.html?montaggio=1", "Editing"], ["live/magazzino.html", "Magazzino"]] },
     { k: "1907", nome: "MAM e Magazzino Como 1907", voci: [["live/mam-1907.html", "MAM Como 1907"], ["live/mam-1907.html#raccolte", "Raccolte 1907"],
       ["live/cartelle-1907.html", "Cartelle 1907"], ["live/doppioni-1907.html", "Doppioni 1907"], [null, "Magazzino 1907", "in arrivo"]] },
-    { k: "dipendenti", nome: "Dipendenti e documenti VMIX", voci: [["index.html#presenze-dipendenti", "Presenze Dipendenti"], ["index.html#vmix", "Documenti VMIX"]] },
+    { k: "dipendenti", nome: "Dipendenti e documenti VMIX", voci: [["index.html#presenze-dipendenti", "Presenze Dipendenti"], ["live/turni.html", "Turni"], ["index.html#vmix", "Documenti VMIX"]] },
     { k: "guida", nome: "Guida", voci: [["guida/index.html", "Guida"], ["guida/palestra.html", "Palestra"]] }
   ];
   // le pagine "figlie" appartengono alla voce del capofila
@@ -64,6 +64,7 @@
     if (file === "mam2.html" || file === "magazzino.html" || file === "qnap.html") return "mam";
     if (cartella === "guida") return "guida";
     if (cartella === "1. Contratti & HR") return "dipendenti";
+    if (file === "turni.html") return "dipendenti";          // sta in live/, ma e' roba della redazione
     if (cartella === "10_Look&Feel" || file === "uefa-club-channel.html") return "grafiche";
     if (cartella === "live") return "live";
     return (file === "index.html" && !cartella) ? "home" : "";
