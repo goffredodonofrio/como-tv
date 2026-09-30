@@ -4,7 +4,7 @@
  *
  * Home, poi le sei aree della home, nello stesso ordine, ognuna con la sua
  * tendina che si apre al clic: Live · Grafiche statiche e Social Media ·
- * MAM e Magazzino Como TV · MAM e Magazzino Como 1907 · Dipendenti e documenti
+ * MAM Como TV · MAM Como 1907 · Dipendenti e documenti
  * VMIX · Guida. "Live" e' una tendina larga a colonne con tutte le grafiche
  * (Partita, Editoriali, Data Viz, Tabelloni, Crawl) e gli strumenti.
  * A destra c'e' il posto per chi e' entrato (utente.js) e per i tasti della
@@ -39,9 +39,9 @@
       { nome: "Crawl", voci: [["live/ticker.html", "Ticker"], ["live/sottopancia.html", "Sottopancia"], ["live/sfondi.html", "Sfondi per i box"], ["live/contributi.html", "Contributi video"]] }
     ] },
     { k: "grafiche", nome: "Grafiche statiche e Social Media", voci: [[OTT, "Grafiche Statiche"], [OTT + "?solo=social", "Social Video e Maschere"], ["uefa-club-channel.html", "UEFA Club Channel"]] },
-    { k: "mam", nome: "MAM e Magazzino Como TV", voci: [["live/mam2.html", "MAM Como TV"], ["live/mam2.html?raccolte=1", "Raccolte / Macchie"], ["live/mam2.html?live=1", "MAM Como TV | Live"],
+    { k: "mam", nome: "MAM Como TV", voci: [["live/mam2.html", "MAM Como TV"], ["live/mam2.html?raccolte=1", "Raccolte / Macchie"], ["live/mam2.html?live=1", "MAM Como TV | Live"],
       ["live/mam2.html?montaggio=1", "Editing"], ["live/magazzino.html", "Magazzino"]] },
-    { k: "1907", nome: "MAM e Magazzino Como 1907", voci: [["live/mam-1907.html", "MAM Como 1907"], ["live/mam2.html?montaggio=1&ambito=1907", "Editor 1907"], ["live/mam-1907.html#raccolte", "Raccolte 1907"],
+    { k: "1907", nome: "MAM Como 1907", voci: [["live/mam-1907.html", "MAM Como 1907"], ["live/mam2.html?montaggio=1&ambito=1907", "Editor 1907"], ["live/mam-1907.html#raccolte", "Raccolte 1907"],
       ["live/cartelle-1907.html", "Cartelle 1907"], ["live/doppioni-1907.html", "Doppioni 1907"], [null, "Magazzino 1907", "in arrivo"]] },
     { k: "dipendenti", nome: "Dipendenti e documenti VMIX", voci: [["index.html#presenze-dipendenti", "Presenze Dipendenti"], ["live/turni.html", "Turni"], ["index.html#vmix", "Documenti VMIX"]] },
     { k: "guida", nome: "Guida", voci: [["guida/index.html", "Guida"], ["guida/palestra.html", "Palestra"]] }
@@ -153,7 +153,7 @@
     window.addEventListener("resize", chiudi);
     window.addEventListener("scroll", function (e) { if (!(e.target && e.target.closest && e.target.closest(".ms-sotto"))) chiudi(); }, true);
     BARRE.push({ nav: nav, sotto: sotto });
-    // IL CLUB (@comofootball.com) vede solo "MAM e Magazzino Como 1907" e la Guida: le altre
+    // IL CLUB (@comofootball.com) vede solo "MAM Como 1907" e la Guida: le altre
     // tendine spariscono (le pagine le blocca comunque il server)
     fetch("/auth/chi", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) {
       if (!j || j.ruolo !== "club") return;

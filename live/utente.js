@@ -72,7 +72,7 @@
   // il lucchetto "Area personale" della home e' solo del super utente
   function areaPersonale(j) {
     var a = document.querySelector(".area-personale"); if (a && !(j && j.admin)) a.style.display = "none";
-    // il club (@comofootball.com): in home solo i blocchi "Guida" e "MAM e Magazzino Como 1907"
+    // il club (@comofootball.com): in home solo i blocchi "Guida" e "MAM Como 1907"
     if (j && j.ruolo === "club") [].forEach.call(document.querySelectorAll(".hub-blocco"), function (b) {
       var t = b.querySelector(".hub-titolo"); if (!t || !/1907|^\s*Guida\s*$/.test(t.textContent)) b.style.display = "none";
     });
