@@ -14200,6 +14200,7 @@ function cartellaGrafiche() {
 //  l'intervallo: -217 s nel primo tempo, -1065 s nel secondo).
 //  lingue.json: { recIta: { taglio, eng: {rec?, file, o1, o2, stato}, int: {...} } }
 const LINGUE_FILE = () => path.join(DIR, "lingue.json");
+const LINGUE_INSIEME = 2;
 let LINGUE = null, LINGUA_ORA = null, LINGUE_INDICE = { quando: 0, int: new Map() };
 function lingue() {
   if (!LINGUE) { try { LINGUE = JSON.parse(fs.readFileSync(LINGUE_FILE(), "utf8")) || {}; } catch (e) { LINGUE = {}; } }
@@ -14316,11 +14317,18 @@ async function allineaLingua(recIta, l) {
   const g1 = altro && +altro.inizio1 > 0 && +oro.inizio1 > 0 ? altro.inizio1 - oro.inizio1 : null;
   const g2 = altro && +altro.inizio2 > 0 && +oro.inizio2 > 0 ? altro.inizio2 - oro.inizio2 : null;
   const dentro = (x) => x.filter((t) => t > 30 && t < dur - 90);
-  const t1 = await scartoDelTempo(fIta, v.file, dentro([i1 + 420, i1 + 1200, i1 + 2100]), (t, o) =>
+  // il cronometro dell'altra versione puo' essere letto male (Genoa-Como ENG:
+  // diceva +327 s, lo scarto vero e' -0,4): se la finestra stretta non trova
+  // niente si riprova larga
+  const punti1 = dentro([i1 + 420, i1 + 1200, i1 + 2100]), punti2 = dentro([i2 + 420, i2 + 1500, i2 + 2400]);
+  let t1 = await scartoDelTempo(fIta, v.file, punti1, (t, o) =>
     o !== null ? { da: t + o - 20, dur: 46 } : g1 !== null ? { da: t + g1 - 90, dur: 186 } : { da: t - 1500, dur: 1806 });
+  if (t1.o === null && g1 !== null) t1 = await scartoDelTempo(fIta, v.file, punti1, (t, o) => o !== null ? { da: t + o - 20, dur: 46 } : { da: t - 1500, dur: 1806 });
   const base2 = t1.o !== null ? t1.o : g1;
-  const t2 = await scartoDelTempo(fIta, v.file, dentro([i2 + 420, i2 + 1500, i2 + 2400]), (t, o) =>
-    o !== null ? { da: t + o - 20, dur: 46 } : g2 !== null ? { da: t + g2 - 90, dur: 186 } : base2 !== null ? { da: t + base2 - 1500, dur: 1566 } : { da: t - 2800, dur: 3106 });
+  const largo2 = (t) => base2 !== null ? { da: t + base2 - 1500, dur: 1566 } : { da: t - 2800, dur: 3106 };
+  let t2 = await scartoDelTempo(fIta, v.file, punti2, (t, o) =>
+    o !== null ? { da: t + o - 20, dur: 46 } : g2 !== null ? { da: t + g2 - 90, dur: 186 } : largo2(t));
+  if (t2.o === null && g2 !== null) t2 = await scartoDelTempo(fIta, v.file, punti2, (t, o) => o !== null ? { da: t + o - 20, dur: 46 } : largo2(t));
   v.o1 = t1.o; v.o2 = t2.o; v.prove = t1.prove.concat(t2.prove).slice(0, 12); v.quando = new Date().toISOString();
   v.stato = t1.o !== null || t2.o !== null ? "fatto" : "no";
   if (v.stato === "no") v.motivo = "nessun tratto ritrovato con sicurezza";
@@ -14385,16 +14393,24 @@ function lingueDi(recIta) {
 async function giroLingue() {
   if (CODE_SPENTE || LINGUA_ORA) return;
   try { await coppieLingue(); } catch (e) { console.log("[clip] lingue: " + e.message); return; }
-  const L = lingue();
-  const prossima = () => { for (const k of Object.keys(L)) for (const l of ["eng", "int"]) if (L[k][l] && L[k][l].stato === "da fare") return [k, l]; return null; };
+  // DUE PER VOLTA (Goffredo 30/09/2026: "non ci sono dirette, spingi al
+  // massimo"): una per core; con una diretta o una regia si fermano tutte e due
+  const L = lingue(), inCorso = new Set();
+  const prossima = () => { for (const k of Object.keys(L)) for (const l of ["eng", "int"]) if (L[k][l] && L[k][l].stato === "da fare" && !inCorso.has(k + l)) return [k, l]; return null; };
+  let vivi = 0;
   const avanti = async () => {
-    const x = prossima(); if (!x) { LINGUA_ORA = null; return; }
-    if (inDiretta() || regiaInCorso() || whisperGira()) { LINGUA_ORA = null; setTimeout(giroLingue, 600000); return; }
-    LINGUA_ORA = x;
+    const x = prossima();
+    if (!x || inDiretta() || regiaInCorso() || whisperGira()) {
+      if (--vivi <= 0) { LINGUA_ORA = null; if (x) setTimeout(giroLingue, 600000); }
+      return;
+    }
+    inCorso.add(x[0] + x[1]); LINGUA_ORA = [...inCorso];
     try { await allineaLingua(x[0], x[1]); } catch (e) { L[x[0]][x[1]].stato = "no"; L[x[0]][x[1]].motivo = String(e.message).slice(0, 120); scriviLingue(); }
-    setTimeout(avanti, 5000);
+    inCorso.delete(x[0] + x[1]); LINGUA_ORA = [...inCorso];
+    setTimeout(avanti, 1000);
   };
-  avanti();
+  LINGUA_ORA = [];
+  for (let i = 0; i < LINGUE_INSIEME; i++) { vivi++; avanti(); }
 }
 setTimeout(giroLingue, 420000);
 setInterval(giroLingue, 3 * 3600000);
