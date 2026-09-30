@@ -29,6 +29,10 @@
   :focus-visible{outline:2px solid var(--oro);outline-offset:2px;}
   #pagina{padding:18px clamp(12px,2vw,26px) 30px;}
   .testa{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px;}
+  .torna{align-self:center;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:9px;border:1px solid rgba(201,162,75,.45);color:var(--oro2);font:700 13px/1 'Mazzard',sans-serif;text-decoration:none;background:rgba(201,162,75,.08);}
+  .torna:hover,.torna:focus-visible{background:rgba(201,162,75,.2);outline:none;}
+  .finestra .rosso{background:var(--rosso);color:#fff;border-color:var(--rosso);} .finestra .rosso:disabled{opacity:.4;}
+  .finestra ul.via{margin:0;padding-left:18px;font-size:13px;color:var(--ivory2);max-height:160px;overflow:auto;}
   .testa h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;} .testa h1 span{color:var(--oro);}
   .testa p{color:var(--fumo);font-size:12.5px;}
   /* la finestra del Finder */
@@ -135,7 +139,7 @@
 <body>
 <script src="nav-mam.js"></script>
 <div id="pagina">
-  <div class="testa"><h1>Cartelle <span>Como 1907</span></h1><p>La NAS del club come nel Finder. Clic destro per le azioni · ⌘1–4 le viste · Spazio l’anteprima · trascina i file dal Mac per caricarli.</p></div>
+  <div class="testa"><a class="torna" href="mam-1907.html" title="Torna alla schermata principale del MAM">‹ Torna al MAM</a><h1>Cartelle <span>Como 1907</span></h1><p>La NAS del club come nel Finder. Clic destro per le azioni · ⌘1–4 le viste · Spazio l’anteprima · trascina i file dal Mac per caricarli.</p></div>
   <div class="fin" id="fin">
     <div class="fin-tb">
       <span class="frecce"><button type="button" id="indietro" title="Indietro (⌘[)">‹</button> <button type="button" id="avanti" title="Avanti (⌘])">›</button></span>
@@ -207,9 +211,28 @@
     leggi(QUI).then(function (j) { DATI = j; PUOI = !!j.puoi; disegna(); })
       .catch(function (e) { if (e === 404 && QUI) { toast("Questa cartella non c’è più: torno a quella sopra.", true); vai(padre(QUI), "no"); return; } $("corpo").innerHTML = '<div class="vuoto">La NAS del club non risponde. Riprova tra poco.</div>'; });
   }
+  // I nomi delle cartelle in Title Case, come nel MAM (Goffredo, 30/09/2026: "fai lo stesso lavoro dei title
+  // case anche nel finder"). Solo come si vedono: sulla NAS restano come sono; Rinomina propone gia' il nome
+  // sistemato, cosi' chi vuole lo rende vero sulla NAS con un Invio. I file restano col loro nome.
+  // (copia di mam-1907.html)
+  var SIGLE = /^(TV|BTS|FC|AC|SSC|UEFA|EFL|PL|ITA|ENG|POV|OTT|HD|UHD|MVP|USA|UK|VIP|DJ|GK|VR|UCL|UEL|UECL|NAS|MAM|SRT|PR|ID|OK|DOP|ADV|UGC|CEO|HR)$/;
+  var PICCOLE = /^(di|del|della|dei|degli|delle|e|al|alla|in|con|per|da|of|the|and|vs|v|on|at|for|to|de|la|le|il)$/i;
+  function tc(t) {
+    var k = 0;
+    return String(t || "").replace(/[^\s_\-.\/()\[\]&+,:|–]+/g, function (w) {
+      var primo = k++ === 0;
+      if (/\d/.test(w)) return w.replace(/[a-z]/g, function (c) { return w.replace(/\d/g, "").length <= 2 ? c.toUpperCase() : c; });
+      if (w.length === 1) return !primo && /^[ev]$/i.test(w) ? w.toLowerCase() : w.toUpperCase();
+      if (SIGLE.test(w.toUpperCase()) && (w === w.toUpperCase())) return w;
+      if (/[a-z]/.test(w.slice(1)) && /[A-Z]/.test(w.slice(1))) return w;   // gia' misto: McKennie, iPhone
+      if (!primo && PICCOLE.test(w)) return w.toLowerCase();
+      return w.toLowerCase().replace(/^([^a-zà-ÿ]*)([a-zà-ÿ])/, function (m, a, b) { return a + b.toUpperCase(); }).replace(/^([A-Za-z])'([a-zà-ÿ])/, function (m, a, b) { return a + "'" + b.toUpperCase(); });
+    });
+  }
+  function nv(x) { return x.dir ? tc(x.nome) : x.nome; }
   function disegnaPercorso() {
     var pp = QUI ? QUI.split("/") : [], h = '<a data-dir="" class="' + (QUI ? "" : "qui") + '">Como 1907</a>';
-    pp.forEach(function (x, i) { var v = pp.slice(0, i + 1).join("/"); h += "<i>›</i><a data-dir=\"" + esc(v) + '" class="' + (i === pp.length - 1 ? "qui" : "") + '">' + esc(x) + "</a>"; });
+    pp.forEach(function (x, i) { var v = pp.slice(0, i + 1).join("/"); h += "<i>›</i><a data-dir=\"" + esc(v) + '" class="' + (i === pp.length - 1 ? "qui" : "") + '">' + esc(tc(x)) + "</a>"; });
     $("percorso").innerHTML = h;
     $("indietro").disabled = !STORIA.length; $("avanti").disabled = !AVANTI.length;
     document.querySelectorAll("[data-vista]").forEach(function (b) { b.classList.toggle("on", b.dataset.vista === VISTA); });
@@ -219,8 +242,8 @@
     if (!radice) { leggi("").then(disegnaLato).catch(function () {}); return; }
     var nomi = radice.cartelle.map(function (c) { return c.nome; });
     var st = nomi.filter(function (x) { return /(20\d\d)\s*[-\/_]\s*(20)?\d\d|\b\d\d[-\/]\d\d\b/.test(x); }).sort().reverse(), al = nomi.filter(function (x) { return st.indexOf(x) < 0; }).sort(function (a, b) { return a.localeCompare(b, "it", { sensitivity: "base" }); });
-    var voce = function (x) { return '<a data-dir="' + esc(x) + '" class="' + (QUI === x || QUI.indexOf(x + "/") === 0 ? "on" : "") + '">' + DIR_SVG + "<span>" + esc(x) + "</span></a>"; };
-    $("lato").innerHTML = "<h3>Posizioni</h3>" + '<a data-dir="" class="' + (QUI ? "" : "on") + '">' + DIR_SVG + "<span>Como 1907</span></a><h3>Stagioni</h3>" + st.map(voce).join("") + "<hr><h3>Cartelle</h3>" + al.map(voce).join("") +
+    var voce = function (x) { return '<a data-dir="' + esc(x) + '" class="' + (QUI === x || QUI.indexOf(x + "/") === 0 ? "on" : "") + '">' + DIR_SVG + "<span>" + esc(tc(x)) + "</span></a>"; };
+    $("lato").innerHTML = "<h3>Posizioni</h3>" + '<a data-dir="" class="' + (QUI ? "" : "on") + '">' + DIR_SVG + "<span>Como 1907</span></a><h3>Stagioni</h3>" + st.map(voce).join("") + "<hr><h3>Altri progetti</h3>" + al.map(voce).join("") +
       '<hr><h3>Collegamenti</h3><a href="mam-1907.html"><span>↗ MAM Como 1907</span></a><a href="doppioni-1907.html"><span>↗ Doppioni 1907</span></a>';
   }
   function disegna() {
@@ -244,12 +267,12 @@
   function cls(x) { return "ogg" + (x.dir ? " dir" : "") + (SCELTI.indexOf(x.v) >= 0 ? " scelto" : ""); }
   function vuota() { return '<div class="vuoto">' + ($("filtro").value ? "Niente con «" + esc($("filtro").value) + "» in questa cartella." : "Cartella vuota." + (PUOI ? " Trascina qui dei file dal Mac per caricarli." : "")) + "</div>"; }
   // COME ICONE
-  function vistaIcone() { $("corpo").innerHTML = VOCI.length ? '<div class="icone">' + VOCI.map(function (x) { return '<div class="' + cls(x) + '" ' + attr(x) + ' title="' + esc(x.nome) + '">' + icona(x) + '<span class="etich">' + esc(x.nome) + "</span></div>"; }).join("") + "</div>" : vuota(); }
+  function vistaIcone() { $("corpo").innerHTML = VOCI.length ? '<div class="icone">' + VOCI.map(function (x) { return '<div class="' + cls(x) + '" ' + attr(x) + ' title="' + esc(x.nome) + '">' + icona(x) + '<span class="etich">' + esc(nv(x)) + "</span></div>"; }).join("") + "</div>" : vuota(); }
   // COME ELENCO (con le cartelle che si aprono dal triangolino)
   function righeElenco(l, liv) {
     return l.map(function (x) {
       var aperta = x.dir && APERTE[x.v];
-      var r = '<tr class="' + cls(x) + '" ' + attr(x) + '><td><div class="nomec" style="padding-left:' + (liv * 18) + 'px"><span class="tri"' + (x.dir ? ' data-tri="' + esc(x.v) + '"' : "") + ">" + (x.dir ? (aperta ? "▼" : "▶") : "") + "</span>" + icona(x) + "<span>" + esc(x.nome) + "</span></div></td>" +
+      var r = '<tr class="' + cls(x) + '" ' + attr(x) + '><td><div class="nomec" style="padding-left:' + (liv * 18) + 'px"><span class="tri"' + (x.dir ? ' data-tri="' + esc(x.v) + '"' : "") + ">" + (x.dir ? (aperta ? "▼" : "▶") : "") + "</span>" + icona(x) + "<span>" + esc(nv(x)) + "</span></div></td>" +
         '<td class="n c-data">' + data(x.quando) + '</td><td class="n">' + (x.dir ? "—" : x.peso ? gb(x.peso) : '<span style="color:#E5484D">vuoto</span>') + '</td><td class="n c-tipo">' + esc(tipoNome(x)) + "</td></tr>";
       if (aperta) { var j = CACHE[x.v]; r += j ? righeElenco(vociDi(j, x.v), liv + 1) : '<tr><td colspan="4" class="n" style="padding-left:' + ((liv + 1) * 18 + 30) + 'px">Carico…</td></tr>'; }
       return r;
@@ -266,10 +289,10 @@
     if (mancano.length) { Promise.all(mancano.map(leggi)).then(vistaColonne).catch(function () {}); return; }
     var h = livelli.map(function (lv, i) {
       var l = lv === QUI ? VOCI : vociDi(CACHE[lv], lv), prossimo = livelli[i + 1];
-      return '<div class="col" data-col="' + esc(lv) + '">' + l.map(function (x) { return '<div class="' + cls(x) + (x.v === prossimo ? " via" : "") + '" ' + attr(x) + ' title="' + esc(x.nome) + '">' + icona(x) + '<span class="nm">' + esc(x.nome) + "</span>" + (x.dir ? '<span class="fr">▶</span>' : "") + "</div>"; }).join("") + "</div>";
+      return '<div class="col" data-col="' + esc(lv) + '">' + l.map(function (x) { return '<div class="' + cls(x) + (x.v === prossimo ? " via" : "") + '" ' + attr(x) + ' title="' + esc(x.nome) + '">' + icona(x) + '<span class="nm">' + esc(nv(x)) + "</span>" + (x.dir ? '<span class="fr">▶</span>' : "") + "</div>"; }).join("") + "</div>";
     }).join("");
     var s = SCELTI.length === 1 ? VOCI.filter(function (x) { return x.v === SCELTI[0] && !x.dir; })[0] : null;
-    if (s) h += '<div class="col anteprima"><div class="grande"' + (tipo(s.nome) !== "altro" ? ' data-mini="' + esc(s.v) + '"' : "") + ">" + (tipo(s.nome) === "altro" ? '<span class="ico-est" style="font-size:22px">' + esc((s.nome.split(".").pop() || "").toUpperCase()) + "</span>" : "") + "</div><b>" + esc(s.nome) + "</b><dl><dt>Tipo</dt><dd>" + esc(tipoNome(s)) + "</dd><dt>Dimensione</dt><dd>" + gb(s.peso) + "</dd><dt>Modificato</dt><dd>" + data(s.quando) + "</dd></dl>" +
+    if (s) h += '<div class="col anteprima"><div class="grande"' + (tipo(s.nome) !== "altro" ? ' data-mini="' + esc(s.v) + '"' : "") + ">" + (tipo(s.nome) === "altro" ? '<span class="ico-est" style="font-size:22px">' + esc((s.nome.split(".").pop() || "").toUpperCase()) + "</span>" : "") + "</div><b>" + esc(nv(s)) + "</b><dl><dt>Tipo</dt><dd>" + esc(tipoNome(s)) + "</dd><dt>Dimensione</dt><dd>" + gb(s.peso) + "</dd><dt>Modificato</dt><dd>" + data(s.quando) + "</dd></dl>" +
       '<div class="az"><button type="button" data-az="anteprima">Anteprima</button><button type="button" data-az="scarica">Scarica</button><button type="button" data-az="condividi">Condividi</button></div></div>';
     $("corpo").innerHTML = '<div class="colonne">' + h + "</div>";
     var c = $("corpo").querySelector(".colonne"); c.scrollLeft = c.scrollWidth;
@@ -281,7 +304,7 @@
     if (!SCELTI.length) SCELTI = [s.v];
     var t = s.dir ? "dir" : tipo(s.nome);
     var palco = t === "dir" ? '<div class="grande" style="background:none">' + DIR_SVG.replace("<svg", '<svg style="width:40%"') + "</div>" : t === "altro" ? '<div class="grande"><span class="ico-est" style="font-size:30px">' + esc((s.nome.split(".").pop() || "").toUpperCase()) + "</span></div>" : '<div class="grande" data-mini="' + esc(s.v) + '"></div>';
-    $("corpo").innerHTML = '<div class="galleria"><div class="palco">' + palco + '</div><div class="didascalia"><b>' + esc(s.nome) + "</b> · " + (s.dir ? "Cartella" : gb(s.peso) + " · " + data(s.quando)) + (t === "video" ? ' · <a href="#" data-az="anteprima" style="color:var(--oro2)">▶ riproduci</a>' : "") + "</div>" +
+    $("corpo").innerHTML = '<div class="galleria"><div class="palco">' + palco + '</div><div class="didascalia"><b>' + esc(nv(s)) + "</b> · " + (s.dir ? "Cartella" : gb(s.peso) + " · " + data(s.quando)) + (t === "video" ? ' · <a href="#" data-az="anteprima" style="color:var(--oro2)">▶ riproduci</a>' : "") + "</div>" +
       '<div class="striscia">' + VOCI.map(function (x) { return '<div class="' + cls(x) + '" ' + attr(x) + ' title="' + esc(x.nome) + '">' + icona(x) + "</div>"; }).join("") + "</div></div>";
     var sc = $("corpo").querySelector(".striscia .scelto"); if (sc) sc.scrollIntoView({ inline: "center", block: "nearest" });
   }
@@ -335,7 +358,7 @@
     if (a === "link" && uno) copia(location.origin + "/como-tv/live/mam-1907.html#" + (uno.dir ? "fv=" : "apri=") + encodeURIComponent(uno.v), "Link interno copiato: si apre nel MAM, per chi entra con Google.");
     if (a === "condividi" && l.length) condividi(l);
     if (a === "scarica") l.filter(function (x) { return !x.dir; }).forEach(function (x, k) { setTimeout(function () { var d = document.createElement("a"); d.href = url(x.v); d.download = x.nome; document.body.appendChild(d); d.click(); d.remove(); }, k * 900); });
-    if (a === "elimina") elimina(l.filter(function (x) { return !x.dir; }));
+    if (a === "elimina") elimina(l);
     if (a === "tutto") { SCELTI = VOCI.map(function (x) { return x.v; }); disegna(); }
     if (/^vista-/.test(a)) cambiaVista(a.slice(6));
   }
@@ -347,7 +370,7 @@
       ["apri", uno && uno.dir ? "Apri" : "Apri l’anteprima", "⌘↓", !uno], ["anteprima", "Anteprima rapida", "Spazio", !uno || uno.dir], ["mam", "Mostra nel MAM", "", !uno], null,
       ["rinomina", "Rinomina…", "↩", !PUOI || !uno], ["sposta", "Sposta in…", "", !PUOI], null,
       ["link", "Copia il link", "", !uno], ["condividi", "Condividi (link esterno)…", "", false], ["scarica", "Scarica", "", !soloFile], null,
-      ["elimina", "Elimina dalla NAS…", "⌘⌫", !ELIM || !soloFile, "rosso"]
+      ["elimina", "Elimina dalla NAS…", "⌘⌫", !ELIM || !l.length, "rosso"]
     ] : [
       ["nuova", "Nuova cartella", "⌘⇧N", !PUOI], ["carica", "Carica dei file…", "", !PUOI], null,
       ["vista-icone", "Come icone", "⌘1"], ["vista-elenco", "Come elenco", "⌘2"], ["vista-colonne", "Come colonne", "⌘3"], ["vista-galleria", "Come galleria", "⌘4"], null, ["tutto", "Seleziona tutto", "⌘A"]
@@ -418,8 +441,8 @@
   }
   $("nuova").onclick = nuovaCartella;
   function rinomina(v) {
-    var vecchio = ultimo(v);
-    finestraApri('<h2>Rinomina</h2><input type="text" id="nomeRin" value="' + esc(vecchio) + '" maxlength="200"><p class="nota">Raccolte, commenti e link seguono il nome nuovo.</p><div class="az"><button data-chiudi>Annulla</button><button class="oro" id="okRin">Rinomina</button></div>');
+    var vecchio = ultimo(v), el = elemento(v), proposto = el && el.dir ? tc(vecchio) : vecchio;
+    finestraApri('<h2>Rinomina</h2><input type="text" id="nomeRin" value="' + esc(proposto) + '" maxlength="200"><p class="nota">Raccolte, commenti e link seguono il nome nuovo.</p><div class="az"><button data-chiudi>Annulla</button><button class="oro" id="okRin">Rinomina</button></div>');
     var i = $("nomeRin"), p = vecchio.lastIndexOf("."); if (p > 0) i.setSelectionRange(0, p);
     var ok = function () { var nuovo = i.value.trim(); if (!nuovo || nuovo === vecchio) { chiudi(); return; } manda({ azione: "rinomina", via: v, nome: nuovo }).then(function () { chiudi(); toast("Rinominato."); SCELTI = [unisci(padre(v), nuovo)]; ricarica(); }).catch(function (e) { toast(esc(e.message), true); }); };
     $("okRin").onclick = ok; i.onkeydown = function (e) { if (e.key === "Enter") ok(); };
@@ -439,7 +462,7 @@
       leggi(dove).then(function (j) {
         var pp = dove ? dove.split("/") : [];
         finestraApri("<h2>Sposta " + vie.length + (vie.length === 1 ? " elemento" : " elementi") + ' in…</h2><div class="percorso"><a data-su="">Como 1907</a>' + pp.map(function (x, i) { return "<i>›</i><a data-su=\"" + esc(pp.slice(0, i + 1).join("/")) + '">' + esc(x) + "</a>"; }).join("") + "</div>" +
-          '<div class="scegli-dir">' + (j.cartelle.filter(function (c) { return vie.indexOf(unisci(dove, c.nome)) < 0; }).map(function (c) { return '<a data-giu="' + esc(unisci(dove, c.nome)) + '">' + DIR_SVG.replace("<svg", '<svg width="20"') + esc(c.nome) + "</a>"; }).join("") || '<p class="nota" style="padding:12px">Nessuna sottocartella.</p>') + "</div>" +
+          '<div class="scegli-dir">' + (j.cartelle.filter(function (c) { return vie.indexOf(unisci(dove, c.nome)) < 0; }).map(function (c) { return '<a data-giu="' + esc(unisci(dove, c.nome)) + '">' + DIR_SVG.replace("<svg", '<svg width="20"') + esc(tc(c.nome)) + "</a>"; }).join("") || '<p class="nota" style="padding:12px">Nessuna sottocartella.</p>') + "</div>" +
           '<div class="az"><button data-chiudi>Annulla</button><button class="oro" id="okSposta">Sposta qui</button></div>');
         $("velo").querySelectorAll("[data-giu],[data-su]").forEach(function (a) { a.onclick = function () { dove = a.dataset.giu != null ? a.dataset.giu : a.dataset.su; giro(); }; });
         $("okSposta").onclick = function () { chiudi(); sposta(vie, dove); };
@@ -461,12 +484,32 @@
         .catch(function (e) { b.disabled = false; toast(esc(e.message), true); });
     };
   }
+  // eliminare: file e cartelle (30/09/2026). Prima si conta cosa c'e' dentro le cartelle, poi una finestra
+  // dice quanto va via; se ci sono cartelle non vuote bisogna scrivere ELIMINA. Il servizio ricontrolla il
+  // numero dei file: se nel frattempo e' cambiato, non tocca niente.
+  function post(corpo) { return fetch(BASE + "elimina-clip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j.ok = r.ok && j.ok; return j; }); }); }
   function elimina(l) {
     if (!l.length || !ELIM) return;
-    if (!confirm("Eliminare DEFINITIVAMENTE dalla NAS del club " + (l.length === 1 ? "«" + l[0].nome + "»" : l.length + " file") + "?\n\nNon si recupera.")) return;
-    var fatti = 0, errori = [];
-    l.reduce(function (p, x) { return p.then(function () { return fetch(BASE + "elimina-clip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ via: x.v }) }).then(function (r) { return r.json().then(function (j) { if (r.ok && j.ok) fatti++; else errori.push(x.nome + ": " + (j.errore || r.status)); }); }); }); }, Promise.resolve())
-      .then(function () { toast("Eliminati: " + fatti + (errori.length ? "<br>" + errori.slice(0, 4).map(esc).join("<br>") : ""), errori.length > 0); SCELTI = []; ricarica(); });
+    var dirs = l.filter(function (x) { return x.dir; }), files = l.filter(function (x) { return !x.dir; });
+    Promise.all(dirs.map(function (d) { return post({ via: d.v, cartella: 1, prova: 1 }).then(function (j) { d.n = j.ok ? j.file : null; d.peso = j.peso || 0; d.err = j.ok ? "" : (j.errore || "non leggibile"); return d; }); })).then(function () {
+      var bloccate = dirs.filter(function (d) { return d.err; });
+      if (bloccate.length) { toast(bloccate.map(function (d) { return esc(d.nome) + ": " + esc(d.err); }).join("<br>"), true); return; }
+      var nFile = files.length + dirs.reduce(function (a, d) { return a + d.n; }, 0);
+      var peso = files.reduce(function (a, x) { return a + (x.peso || 0); }, 0) + dirs.reduce(function (a, d) { return a + d.peso; }, 0);
+      var pieno = dirs.some(function (d) { return d.n > 0; });
+      finestraApri("<h2>Eliminare dalla NAS del club?</h2>" +
+        '<ul class="via">' + l.slice(0, 40).map(function (x) { return "<li>" + (x.dir ? "📁 " : "") + esc(nv(x)) + (x.dir ? " — " + x.n + " file, " + gb(x.peso) : "") + "</li>"; }).join("") + (l.length > 40 ? "<li>… e altri " + (l.length - 40) + "</li>" : "") + "</ul>" +
+        '<p class="nota">In tutto <b>' + nFile + " file" + (peso ? ", " + gb(peso) : "") + "</b>. È definitivo: non si recupera.</p>" +
+        (pieno ? '<label>Per confermare scrivi ELIMINA <input type="text" id="elConf" autocomplete="off" value=""></label>' : "") +
+        '<div class="az"><button data-chiudi>Annulla</button><button class="rosso" id="elOk"' + (pieno ? " disabled" : "") + ">Elimina</button></div>");
+      if (pieno) { $("elConf").focus(); $("elConf").oninput = function () { $("elOk").disabled = this.value.trim().toUpperCase() !== "ELIMINA"; }; }
+      $("elOk").onclick = function () {
+        this.disabled = true; this.textContent = "Elimino…";
+        var fatti = 0, errori = [];
+        l.reduce(function (p, x) { return p.then(function () { return post(x.dir ? { via: x.v, cartella: 1, conferma: x.n } : { via: x.v }).then(function (j) { if (j.ok) fatti++; else errori.push(x.nome + ": " + (j.errore || "non riuscito")); }); }); }, Promise.resolve())
+          .then(function () { chiudi(); toast("Eliminati: " + fatti + (errori.length ? "<br>" + errori.slice(0, 4).map(esc).join("<br>") : ""), errori.length > 0); SCELTI = []; ricarica(); });
+      };
+    });
   }
 
   // ── trascinare: spostare quello che c'e', o caricare i file dal Mac ──
@@ -543,5 +586,6 @@
   QUI = daIndirizzo(); carica(); $("corpo").focus();
 })();
 </script>
+<script src="lingua-1907.js"></script>
 </body>
 </html>

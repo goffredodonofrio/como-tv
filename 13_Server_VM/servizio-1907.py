@@ -700,6 +700,7 @@ def elimina_clip(p, chi):
     if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento. Riprova tra poco."}
     via = _rel(p.get("via")); pieno = os.path.join(RW, via)
     if not via or not _dentro_frame(pieno): return 400, {"ok": False, "errore": "Percorso non valido."}
+    if p.get("cartella"): return elimina_cartella(via, pieno, p, chi)
     if not os.path.isfile(pieno): return 404, {"ok": False, "errore": "Il file non c'e' piu' (o e' una cartella: si eliminano solo i file)."}
     peso = os.path.getsize(pieno)
     try: os.remove(pieno)
@@ -710,6 +711,32 @@ def elimina_clip(p, chi):
         _scrivi(ELIMINATI_MANO, r)
     ripara_indice([via])
     return 200, {"ok": True, "via": via, "peso": peso}
+
+
+def elimina_cartella(via, pieno, p, chi):
+    """Una cartella intera, dal Finder (Goffredo, 30/09/2026: "dammi la possibilita' di cancellare le
+    cartelle"). Due passi: {prova:1} conta file e peso; poi {conferma: <numero dei file>} elimina, solo se il
+    numero e' ancora quello (se nel frattempo qualcuno ha caricato o spostato, si ricomincia). Mai la radice,
+    mai con un caricamento in corso dentro."""
+    if not os.path.isdir(pieno) or os.path.islink(pieno): return 404, {"ok": False, "errore": "La cartella non c'e' piu'."}
+    if os.path.basename(via).startswith(("@", ".")): return 400, {"ok": False, "errore": "Cartella di sistema: non si tocca."}
+    n = peso = 0
+    for d, ds, fs in os.walk(pieno):
+        for f in fs:
+            if f.startswith(".caricamento-"): return 409, {"ok": False, "errore": "Dentro c'e' un caricamento in corso: aspetta che finisca."}
+            try: peso += os.path.getsize(os.path.join(d, f)); n += 1
+            except OSError: pass
+    if p.get("prova"): return 200, {"ok": True, "via": via, "file": n, "peso": peso}
+    if p.get("conferma") != n: return 409, {"ok": False, "errore": "Nel frattempo il contenuto e' cambiato (%d file ora): riprova." % n, "file": n, "peso": peso}
+    errori = []
+    shutil.rmtree(pieno, onerror=lambda f, x, e: errori.append("%s: %s" % (os.path.relpath(x, RW), e[1])))
+    with S_LOCK:
+        r = _leggi(ELIMINATI_MANO, {"voci": []})
+        r["voci"].append({"via": via, "cartella": True, "file": n, "peso": peso, "chi": chi, "quando": int(time.time())}); del r["voci"][:-20000]
+        _scrivi(ELIMINATI_MANO, r)
+    ripara_indice([via])
+    if errori: return 500, {"ok": False, "errore": "Eliminata in parte: " + "; ".join(errori[:3])}
+    return 200, {"ok": True, "via": via, "file": n, "peso": peso}
 
 
 # ── I COMMENTI SUI VIDEO, COME SU FRAME.IO (Goffredo, 29/09/2026) ──────
