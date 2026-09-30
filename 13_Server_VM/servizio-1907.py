@@ -564,7 +564,7 @@ def cartella(v):
     try:
         with os.scandir(pieno) as it:
             for e in it:
-                if e.name.startswith((".", "@", "#")): continue
+                if e.name.startswith((".", "@", "#")) or e.name == CESTINO_NOME: continue
                 try:
                     st = e.stat(follow_symlinks=False)
                     if e.is_dir(follow_symlinks=False): cc.append({"nome": e.name, "quando": int(st.st_mtime)})
@@ -605,7 +605,7 @@ def organizza(p, chi):
             if os.path.exists(dest): return 409, {"ok": False, "errore": "C'e' gia' una cartella con questo nome."}
             try: os.makedirs(dest)
             except OSError as e: return 500, {"ok": False, "errore": "Non riuscito: %s" % (e.strerror or e)}
-            _registra(chi, "nuova", "", _rel(os.path.join(dentro, nome)))
+            _registra(chi, "nuova", "", _rel(os.path.join(dentro, nome))); _ricorda(chi, {"tipo": "nuova", "via": _rel(os.path.join(dentro, nome))})
             return 200, {"ok": True, "via": _rel(os.path.join(dentro, nome))}
         if az == "rinomina":
             via, nome = _rel(p.get("via")), _nome_ok(p.get("nome"))
@@ -616,9 +616,10 @@ def organizza(p, chi):
             if os.path.exists(dest): return 409, {"ok": False, "errore": "C'e' gia' qualcosa con questo nome."}
             try: os.rename(src, dest)
             except OSError as e: return 500, {"ok": False, "errore": "Non riuscito: %s" % (e.strerror or e)}
-            nuovo = _rel(os.path.relpath(dest, RW)); _registra(chi, "rinomina", via, nuovo)
+            nuovo = _rel(os.path.relpath(dest, RW)); _registra(chi, "rinomina", via, nuovo); _ricorda(chi, {"tipo": "sposta", "coppie": [[via, nuovo]], "detto": "Rinomina"})
             return 200, {"ok": True, "via": nuovo}
         if az == "sposta":
+            fatti = []
             dentro = _rel(p.get("in")); dd = os.path.join(RW, dentro) if dentro else RW
             if not os.path.isdir(dd) or not (dentro == "" or _dentro_frame(dd)): return 400, {"ok": False, "errore": "La cartella di arrivo non c'e'."}
             for via in [_rel(v) for v in (p.get("vie") or [])][:500]:
@@ -631,9 +632,304 @@ def organizza(p, chi):
                 if os.path.exists(dest): esiti.append([via, "nella cartella di arrivo c'e' gia' qualcosa con questo nome"]); continue
                 try: os.rename(src, dest)
                 except OSError as e: esiti.append([via, "non riuscito: %s" % (e.strerror or e)]); continue
-                nuovo = _rel(os.path.relpath(dest, RW)); _registra(chi, "sposta", via, nuovo); esiti.append([via, "ok"])
+                nuovo = _rel(os.path.relpath(dest, RW)); _registra(chi, "sposta", via, nuovo); esiti.append([via, "ok"]); fatti.append([via, nuovo])
+            if fatti: _ricorda(chi, {"tipo": "sposta", "coppie": fatti, "detto": "Sposta"})
             return 200, {"ok": True, "spostati": sum(1 for x in esiti if x[1] == "ok"), "esiti": esiti}
+    if az in ("copia", "duplica"): return copia(p, chi, az)
+    if az == "cestino": return al_cestino([_rel(v) for v in (p.get("vie") or [])][:2000], chi)
+    if az == "ripristina": return ripristina([str(x) for x in (p.get("ids") or [])][:2000], chi)
+    if az == "svuota": return svuota([str(x) for x in (p.get("ids") or [])][:5000], chi, bool(p.get("tutto")))
+    if az == "annulla": return annulla(chi)
+    if az == "ferma":
+        L = LAVORI.get(str(p.get("lavoro") or ""))
+        if not L or L["chi"] != chi and not _admin(chi): return 404, {"ok": False, "errore": "Lavoro non trovato."}
+        L["ferma"] = True; return 200, {"ok": True}
     return 400, {"ok": False, "errore": "azione sconosciuta"}
+
+
+# ── COME UN HARD DISK (Goffredo, 30/09/2026: "tutte le funzioni possibili di un Finder o di un Esplora
+# risorse") ────────────────────────────────────────────────────────────────────────────────────────
+# COPIA e DUPLICA: un lavoro in un filo a parte, con la barra (byte copiati sul totale); il file cresce con
+# un nome nascosto (".copia-…") e prende il suo nome solo quando e' completo; un nome gia' usato diventa
+# "nome copia", "nome copia 2" come nel Finder. Si puo' fermare.
+# CESTINO: "Sposta nel Cestino" per tutto il team (non si perde niente): va in "_CESTINO COMO 1907/<quando>
+# <chi>/<percorso di prima>", si ripristina dov'era; svuotarlo (definitivo) solo chi puo' eliminare.
+# ANNULLA: l'ultima operazione di ognuno (sposta, rinomina, nuova cartella, copia, cestino) si disfa.
+# INFORMAZIONI: peso e numero di file di una cartella, date, durata di un video.
+CESTINO_NOME = "_CESTINO COMO 1907"
+CESTINO_REG = os.path.join(CASA, "cestino.json")
+LAVORI = {}
+ANNULLA, A_LOCK = {}, threading.Lock()
+
+
+def _ricorda(chi, op):
+    with A_LOCK:
+        l = ANNULLA.setdefault(chi, []); op["quando"] = int(time.time()); l.append(op); del l[:-30]
+
+
+def _libero(dd, nome, suff="copia"):
+    """un nome che nella cartella dd non c'e': "nome copia", "nome copia 2" (prima dell'estensione per i file)"""
+    if not os.path.exists(os.path.join(dd, nome)): return nome
+    base, ext = os.path.splitext(nome) if os.path.isfile(os.path.join(dd, nome)) else (nome, "")
+    for i in range(1, 1000):
+        n = "%s %s%s%s" % (base, suff, "" if i == 1 else " %d" % i, ext)
+        if not os.path.exists(os.path.join(dd, n)): return n
+    return None
+
+
+def _peso_di(p, limite=None):
+    if os.path.isfile(p): return os.path.getsize(p), 1
+    t = n = 0; t0 = time.time()
+    for d, ds, fs in os.walk(p):
+        ds[:] = [x for x in ds if not x.startswith((".", "@"))]
+        for f in fs:
+            if f.startswith("."): continue
+            try: t += os.path.getsize(os.path.join(d, f)); n += 1
+            except OSError: pass
+        if limite and time.time() - t0 > limite: return t, -n
+    return t, n
+
+
+def copia(p, chi, az):
+    vie = [_rel(v) for v in (p.get("vie") or [])][:500]
+    coppie, esiti = [], []
+    for via in vie:
+        src = os.path.join(RW, via)
+        if not via or not _dentro_frame(src) or not os.path.exists(src): esiti.append([via, "non c'e' piu'"]); continue
+        dentro = os.path.dirname(via) if az == "duplica" else _rel(p.get("in"))
+        dd = os.path.join(RW, dentro) if dentro else RW
+        if not os.path.isdir(dd) or not (dentro == "" or _dentro_frame(dd)): esiti.append([via, "la cartella di arrivo non c'e'"]); continue
+        if os.path.isdir(src) and (dentro == via or dentro.startswith(via + "/")): esiti.append([via, "non si copia una cartella dentro se stessa"]); continue
+        nome = _libero(dd, os.path.basename(via))
+        if not nome: esiti.append([via, "troppe copie con questo nome"]); continue
+        coppie.append((src, os.path.join(dd, nome)))
+    if not coppie: return 400, {"ok": False, "errore": "; ".join("%s: %s" % (os.path.basename(a), b) for a, b in esiti[:3]) or "Niente da copiare."}
+    tot = sum(_peso_di(s, limite=20)[0] for s, d in coppie)
+    lid = secrets.token_hex(6)
+    L = LAVORI[lid] = {"id": lid, "chi": chi, "tipo": az, "stato": "in corso", "tot": tot, "fatti": 0, "ora": "", "inizio": time.time(),
+                       "risultati": [], "errori": [x[0] + ": " + x[1] for x in esiti], "ferma": False, "n": len(coppie)}
+    threading.Thread(target=_copia_lavoro, args=(L, coppie), daemon=True).start()
+    for k in [k for k, v in LAVORI.items() if v["stato"] != "in corso" and time.time() - v["inizio"] > 86400]: LAVORI.pop(k, None)
+    return 200, {"ok": True, "lavoro": lid, "tot": tot, "n": len(coppie)}
+
+
+class _Fermato(Exception): pass
+
+
+def _copia_lavoro(L, coppie):
+    def un_file(s, d):
+        tmp = os.path.join(os.path.dirname(d), ".copia-%s-%s" % (L["id"], os.path.basename(d)))
+        try:
+            with open(s, "rb") as a, open(tmp, "wb") as b:
+                while True:
+                    if L["ferma"]: raise _Fermato()
+                    x = a.read(8 << 20)
+                    if not x: break
+                    b.write(x); L["fatti"] += len(x)
+            os.replace(tmp, d)
+            try: shutil.copystat(s, d)
+            except OSError: pass
+        except BaseException:
+            try: os.remove(tmp)
+            except OSError: pass
+            raise
+    try:
+        for s, d in coppie:
+            L["ora"] = os.path.relpath(s, RW)
+            try:
+                if os.path.isdir(s):
+                    os.makedirs(d)
+                    for rad, cc, ff in os.walk(s):
+                        cc[:] = [c for c in cc if not c.startswith((".", "@"))]
+                        dr = os.path.join(d, os.path.relpath(rad, s))
+                        for c in cc: os.makedirs(os.path.join(dr, c), exist_ok=True)
+                        for f in ff:
+                            if f.startswith("."): continue
+                            L["ora"] = os.path.relpath(os.path.join(rad, f), RW)
+                            un_file(os.path.join(rad, f), os.path.join(dr, f))
+                else:
+                    un_file(s, d)
+                L["risultati"].append(_rel(os.path.relpath(d, RW)))
+            except _Fermato:
+                raise
+            except OSError as e:
+                L["errori"].append("%s: %s" % (os.path.basename(s), e.strerror or e))
+        L["stato"] = "fatto"
+    except _Fermato:
+        L["stato"] = "fermato"
+    L["fine"] = time.time()
+    if L["risultati"]:
+        _ricorda(L["chi"], {"tipo": "copia", "vie": list(L["risultati"]), "detto": "Copia" if L["tipo"] == "copia" else "Duplica"})
+        reg = _leggi(CARTELLE_REG, {"voci": []})
+        for v in L["risultati"]: reg["voci"].append([int(time.time()), L["chi"], L["tipo"], "", v])
+        del reg["voci"][:-5000]; _scrivi(CARTELLE_REG, reg)
+        ripara_indice(L["risultati"])
+
+
+def al_cestino(vie, chi, ricorda=True):
+    if not puo_segnare(chi): return 403, {"ok": False, "errore": "Spostare nel Cestino puo' il team del Como 1907."}
+    quando = time.strftime("%Y-%m-%d %H.%M.%S"); base = os.path.join(RW, CESTINO_NOME, "%s %s" % (quando, (chi.split("@")[0] or "anonimo")))
+    esiti, ids = [], []
+    with S_LOCK:
+        reg = _leggi(CESTINO_REG, {"voci": {}})
+        for via in vie:
+            src = os.path.join(RW, via)
+            if not via or not _dentro_frame(src) or via.split("/")[0] == CESTINO_NOME: esiti.append([via, "percorso non valido"]); continue
+            if not os.path.exists(src): esiti.append([via, "non c'e' piu'"]); continue
+            dest = os.path.join(base, via)
+            try:
+                peso, n = _peso_di(src, limite=5)
+                os.makedirs(os.path.dirname(dest), exist_ok=True); os.rename(src, dest)
+            except OSError as e:
+                esiti.append([via, "non riuscito: %s" % (e.strerror or e)]); continue
+            k = secrets.token_hex(6); ids.append(k)
+            reg["voci"][k] = {"orig": via, "dove": _rel(os.path.relpath(dest, RW)), "chi": chi, "quando": int(time.time()), "peso": peso, "file": abs(n), "dir": os.path.isdir(dest)}
+            esiti.append([via, "ok"])
+        _scrivi(CESTINO_REG, reg)
+    ok = [x[0] for x in esiti if x[1] == "ok"]
+    if ok:
+        r2 = _leggi(CARTELLE_REG, {"voci": []})
+        for v in ok: r2["voci"].append([int(time.time()), chi, "cestino", v, ""])
+        del r2["voci"][:-5000]; _scrivi(CARTELLE_REG, r2)
+        ripara_indice(ok)
+        if ricorda: _ricorda(chi, {"tipo": "cestino", "ids": ids, "detto": "Sposta nel Cestino"})
+    return 200, {"ok": True, "spostati": len(ok), "esiti": esiti, "ids": ids}
+
+
+def cestino_leggi():
+    reg = _leggi(CESTINO_REG, {"voci": {}})
+    vv = sorted(({"id": k, **v} for k, v in reg["voci"].items()), key=lambda x: -x["quando"])
+    return 200, {"ok": True, "voci": vv, "peso": sum(x.get("peso", 0) for x in vv)}
+
+
+def ripristina(ids, chi, ricorda=True):
+    if not puo_segnare(chi): return 403, {"ok": False, "errore": "Ripristinare puo' il team del Como 1907."}
+    esiti, fatti = [], []
+    with S_LOCK:
+        reg = _leggi(CESTINO_REG, {"voci": {}})
+        for k in ids:
+            x = reg["voci"].get(k)
+            if not x: esiti.append([k, "non e' nel Cestino"]); continue
+            src = os.path.join(RW, x["dove"]); orig = x["orig"]; dd = os.path.dirname(os.path.join(RW, orig))
+            if not os.path.exists(src): reg["voci"].pop(k, None); esiti.append([orig, "non c'e' piu' nel Cestino"]); continue
+            try:
+                os.makedirs(dd, exist_ok=True)
+                nome = _libero(dd, os.path.basename(orig), "ripristinato")
+                os.rename(src, os.path.join(dd, nome))
+            except OSError as e:
+                esiti.append([orig, "non riuscito: %s" % (e.strerror or e)]); continue
+            nuovo = _rel(os.path.relpath(os.path.join(dd, nome), RW)); fatti.append(nuovo); reg["voci"].pop(k, None); esiti.append([orig, "ok"])
+            # la cartella "<quando> <chi>" rimasta vuota se ne va
+            su = os.path.dirname(src)
+            while su.startswith(os.path.join(RW, CESTINO_NOME) + "/"):
+                try: os.rmdir(su)
+                except OSError: break
+                su = os.path.dirname(su)
+        _scrivi(CESTINO_REG, reg)
+    if fatti: ripara_indice(fatti)
+    return 200, {"ok": True, "ripristinati": len(fatti), "esiti": esiti, "vie": fatti}
+
+
+def svuota(ids, chi, tutto=False):
+    if not puo_eliminare(chi): return 403, {"ok": False, "errore": "Svuotare il Cestino (definitivo) puo' solo chi e' autorizzato (Gionata Medeot)."}
+    with S_LOCK:
+        reg = _leggi(CESTINO_REG, {"voci": {}})
+        if tutto: ids = list(reg["voci"].keys())
+        via_, errori = 0, []
+        for k in ids:
+            x = reg["voci"].get(k)
+            if not x: continue
+            src = os.path.join(RW, x["dove"])
+            if not src.startswith(os.path.join(RW, CESTINO_NOME) + "/"): continue
+            try:
+                if os.path.isdir(src) and not os.path.islink(src): shutil.rmtree(src)
+                elif os.path.exists(src): os.remove(src)
+                reg["voci"].pop(k, None); via_ += 1
+                r = _leggi(ELIMINATI_MANO, {"voci": []}); r["voci"].append({"via": x["orig"], "peso": x.get("peso", 0), "chi": chi, "quando": int(time.time()), "dal_cestino": True}); del r["voci"][:-20000]; _scrivi(ELIMINATI_MANO, r)
+            except OSError as e:
+                errori.append("%s: %s" % (x["orig"], e.strerror or e))
+        _scrivi(CESTINO_REG, reg)
+    return 200, {"ok": not errori, "eliminati": via_, "errore": "; ".join(errori[:3])}
+
+
+def annulla(chi):
+    with A_LOCK:
+        l = ANNULLA.get(chi) or []
+        op = l.pop() if l else None
+    if not op: return 400, {"ok": False, "errore": "Niente da annullare."}
+    t = op["tipo"]
+    if t == "sposta":
+        esiti = []
+        with S_LOCK:
+            for da, a in reversed(op["coppie"]):
+                src, dest = os.path.join(RW, a), os.path.join(RW, da)
+                if not os.path.exists(src): esiti.append([a, "non c'e' piu'"]); continue
+                if os.path.exists(dest): esiti.append([da, "al suo posto c'e' gia' qualcosa"]); continue
+                try: os.makedirs(os.path.dirname(dest), exist_ok=True); os.rename(src, dest); _registra(chi, "sposta", a, da); esiti.append([a, "ok"])
+                except OSError as e: esiti.append([a, "non riuscito: %s" % (e.strerror or e)])
+        return 200, {"ok": True, "annullato": op.get("detto", "Sposta"), "esiti": esiti}
+    if t == "nuova":
+        try: os.rmdir(os.path.join(RW, op["via"])); ripara_indice([op["via"]])
+        except OSError: return 409, {"ok": False, "errore": "La cartella non e' piu' vuota: non la tolgo."}
+        return 200, {"ok": True, "annullato": "Nuova cartella"}
+    if t == "cestino":
+        cod, r = ripristina(op["ids"], chi); r["annullato"] = "Sposta nel Cestino"; return cod, r
+    if t == "copia":
+        cod, r = al_cestino(op["vie"], chi, ricorda=False); r["annullato"] = op.get("detto", "Copia") + " (le copie sono nel Cestino)"; return cod, r
+    return 400, {"ok": False, "errore": "Non so annullare questa operazione."}
+
+
+_DUR = {"t": 0, "m": {}}
+
+
+def info(via):
+    via = _rel(via); p = os.path.join(RW, via) if via else RW
+    if via and not _dentro_frame(p) or not os.path.exists(p): return 404, {"ok": False, "errore": "Non c'e' piu'."}
+    st = os.stat(p); out = {"ok": True, "via": via, "nome": os.path.basename(via) or "Como 1907", "cartella": os.path.isdir(p),
+                            "modificato": int(st.st_mtime), "creato": int(getattr(st, "st_birthtime", st.st_ctime)), "percorsoMac": "/Volumes/COMOTV - FRAME/" + via}
+    if os.path.isdir(p):
+        peso, n = _peso_di(p, limite=20); out.update(peso=peso, file=abs(n), parziale=n < 0)
+        try: out["elementi"] = len([x for x in os.listdir(p) if not x.startswith((".", "@"))])
+        except OSError: pass
+    else:
+        out["peso"] = st.st_size
+        f = os.path.join(CASA, "durate.json")
+        try:
+            if os.path.getmtime(f) != _DUR["t"]: _DUR.update(t=os.path.getmtime(f), m=json.load(open(f)))
+            d = (_DUR["m"].get(via) or [None, None, None])[2]
+            if d: out["durata"] = d
+        except (OSError, ValueError): pass
+        dn = _leggi(os.path.join(CASA, "pub", "danneggiati.json"), {}).get("danneggiati", {}).get(via)
+        if dn: out["danneggiato"] = dn
+    return 200, out
+
+
+def zip_stream(h, vie):
+    """lo ZIP di cartelle e file, senza comprimere (i video non si comprimono), scritto mentre si legge"""
+    import zipfile
+    vie = [v for v in (_rel(x) for x in vie) if v and _dentro_frame(os.path.join(RW, v)) and os.path.exists(os.path.join(RW, v))][:200]
+    if not vie: return h.rispondi(404, {"ok": False, "errore": "Niente da scaricare."})
+    nome = (os.path.basename(vie[0]) if len(vie) == 1 else "Como 1907 (%d elementi)" % len(vie)) + ".zip"
+    h.send_response(200); h.send_header("Content-Type", "application/zip")
+    h.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + urllib.parse.quote(nome))
+    h.send_header("X-Accel-Buffering", "no"); h.send_header("Cache-Control", "no-store"); h.end_headers()
+    class _Sock:
+        def __init__(s, w): s.w, s.n = w, 0
+        def write(s, b): s.w.write(b); s.n += len(b); return len(b)
+        def tell(s): return s.n
+        def flush(s): s.w.flush()
+    try:
+        with zipfile.ZipFile(_Sock(h.wfile), "w", zipfile.ZIP_STORED, allowZip64=True) as z:
+            for v in vie:
+                p = os.path.join(RW, v); base = os.path.dirname(p)
+                if os.path.isfile(p): z.write(p, os.path.relpath(p, base)); continue
+                for rad, cc, ff in os.walk(p):
+                    cc[:] = [c for c in cc if not c.startswith((".", "@"))]
+                    for f in ff:
+                        if f.startswith("."): continue
+                        z.write(os.path.join(rad, f), os.path.relpath(os.path.join(rad, f), base))
+    except (BrokenPipeError, ConnectionResetError):
+        pass
 
 
 # Qui si GUARDA anche, in sola lettura: un segnato che non c'e' piu' diventa "cancellato" (se
@@ -707,7 +1003,7 @@ def _ripara():
         nuove = []
         for t in sorted(tops):
             if not os.path.isdir(os.path.join(R, t)): continue
-            out = subprocess.run(["nice", "-n", "10", "ionice", "-c3", "find", t, "-mindepth", "1", "(", "-name", "@*", "-o", "-name", ".*", "-o", "-name", "_CESTINO COMO TV", ")",
+            out = subprocess.run(["nice", "-n", "10", "ionice", "-c3", "find", t, "-mindepth", "1", "(", "-name", "@*", "-o", "-name", ".*", "-o", "-name", "_CESTINO COMO TV", "-o", "-name", "_CESTINO COMO 1907", ")",
                                   "-prune", "-o", "-type", "f", "-printf", "%s\t%T@\t%p\n"], cwd=R, capture_output=True, timeout=3600)
             nuove.append(out.stdout.decode("utf-8", "surrogateescape"))
         tmp = el + ".ripara.tmp"
@@ -1333,6 +1629,23 @@ class H(BaseHTTPRequestHandler):
                 davanti = CODA.index(k) if k in CODA else 0
             return self.rispondi(200, {"ok": True, "k": k, "stato": s["stato"], "avanzamento": round(s.get("avanzamento", 0), 3),
                                        "davanti": davanti, "errore": s.get("errore", "")})
+        if u.path == "/cartelle" and (q.get("zip") or []):
+            return zip_stream(self, q.get("zip"))
+        if u.path == "/cartelle" and (q.get("lavoro") or q.get("lavori")):
+            chi = self.headers.get("X-Utente") or ""
+            if q.get("lavoro"):
+                L = LAVORI.get(q["lavoro"][0])
+                if not L: return self.rispondi(404, {"ok": False})
+                return self.rispondi(200, {"ok": True, **{k: v for k, v in L.items() if k != "ferma"}}, extra={"Cache-Control": "no-store"})
+            return self.rispondi(200, {"ok": True, "lavori": [{k: v for k, v in L.items() if k != "ferma"} for L in LAVORI.values() if L["chi"] == chi and (L["stato"] == "in corso" or time.time() - L.get("fine", 0) < 600)]}, extra={"Cache-Control": "no-store"})
+        if u.path == "/cartelle" and (q.get("cestino") or []):
+            cod, r = cestino_leggi(); r["puoi"] = puo_segnare(self.headers.get("X-Utente") or ""); r["elimina"] = puo_eliminare(self.headers.get("X-Utente") or "")
+            return self.rispondi(cod, r, extra={"Cache-Control": "no-store"})
+        if u.path == "/cartelle" and (q.get("info") or []):
+            cod, r = info(q["info"][0]); return self.rispondi(cod, r, extra={"Cache-Control": "no-store"})
+        if u.path == "/cartelle" and (q.get("annulla") or []):
+            with A_LOCK: l = ANNULLA.get(self.headers.get("X-Utente") or "") or []
+            return self.rispondi(200, {"ok": True, "ultima": (l[-1].get("detto") or l[-1]["tipo"]) if l else ""}, extra={"Cache-Control": "no-store"})
         if u.path == "/cartelle":
             c = cartella((q.get("v") or [""])[0])
             if c is None: return self.rispondi(404, {"ok": False, "errore": "cartella non trovata"})

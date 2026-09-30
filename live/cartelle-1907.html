@@ -32,6 +32,10 @@
   .torna{align-self:center;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:9px;border:1px solid rgba(201,162,75,.45);color:var(--oro2);font:700 13px/1 'Mazzard',sans-serif;text-decoration:none;background:rgba(201,162,75,.08);}
   .torna:hover,.torna:focus-visible{background:rgba(201,162,75,.2);outline:none;}
   .finestra .rosso{background:var(--rosso);color:#fff;border-color:var(--rosso);} .finestra .rosso:disabled{opacity:.4;}
+  .ogg.tagliato{opacity:.42;}
+  .cest td{font-size:13px;} .cest .orig{color:var(--fumo);font-size:11.5px;}
+  .info-dl{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:13px;} .info-dl dt{color:var(--fumo);} .info-dl dd{margin:0;word-break:break-all;}
+  .lav{border-top:1px solid var(--riga2);padding-top:8px;margin-top:6px;}
   .avanz-bar{height:8px;border-radius:4px;background:var(--riga2);overflow:hidden;} .avanz-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--rosso),#f07a7e);transition:width .3s;}
   .finestra ul.via{margin:0;padding-left:18px;font-size:13px;color:var(--ivory2);max-height:160px;overflow:auto;}
   .testa h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;} .testa h1 span{color:var(--oro);}
@@ -162,6 +166,8 @@
   </div>
 </div>
 <div id="carichi" hidden></div>
+<div id="lavori" hidden style="position:fixed;right:18px;bottom:18px;z-index:60;width:min(380px,92vw);background:var(--pan);border:1px solid rgba(201,162,75,.4);border-radius:12px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.45)"></div>
+<input type="file" id="cartellaScelta" webkitdirectory multiple hidden>
 <div class="velo" id="velo" hidden></div>
 <script>
 (function () {
@@ -170,6 +176,13 @@
   var $ = function (id) { return document.getElementById(id); };
   var QUI = "", DATI = null, PUOI = false, ELIM = false, SCELTI = [], VOCI = [], CACHE = {}, APERTE = {};
   var VISTA = "elenco", ORD = { k: "nome", su: true }, STORIA = [], AVANTI = [];
+  // COME UN HARD DISK (Goffredo, 30/09/2026: "tutte le funzioni possibili di un Finder o di un Esplora risorse"):
+  // gli appunti (Copia, Taglia, Incolla, anche fra schede e col MAM), Duplica, il Cestino, Annulla, Informazioni,
+  // Scarica come ZIP, trascinare con ⌥ per copiare, un file trascinato sulla scrivania si scarica, le cartelle
+  // intere dal Mac si caricano con le loro sottocartelle.
+  var CEST = "\u00a7cestino", CESTINO = null;
+  function appunti() { try { var a = JSON.parse(localStorage.getItem("c1907-appunti") || "null"); return a && a.vie && a.vie.length ? a : null; } catch (e) { return null; } }
+  function metti(modo, vie) { try { localStorage.setItem("c1907-appunti", JSON.stringify({ modo: modo, vie: vie, quando: Date.now() })); } catch (e) {} }
   try { VISTA = localStorage.getItem("cart1907-vista") || "elenco"; ORD = JSON.parse(localStorage.getItem("cart1907-ord") || "null") || ORD; } catch (e) {}
   var DIR_SVG = '<svg viewBox="0 0 32 26" fill="none"><path d="M1 4a3 3 0 0 1 3-3h7.5l3 3H28a3 3 0 0 1 3 3v15a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3z" fill="#5A9BE0"/><path d="M1 8h30v14a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3z" fill="#7DB4EE"/></svg>';
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -208,6 +221,7 @@
   $("indietro").onclick = function () { if (!STORIA.length) return; AVANTI.push(QUI); vai(STORIA.pop(), "no"); };
   $("avanti").onclick = function () { if (!AVANTI.length) return; STORIA.push(QUI); vai(AVANTI.pop(), "no"); };
   function carica() {
+    if (QUI === CEST) { caricaCestino(); return; }
     if (VISTA !== "colonne") $("corpo").innerHTML = '<div class="vuoto">Carico…</div>';
     leggi(QUI).then(function (j) { DATI = j; PUOI = !!j.puoi; disegna(); })
       .catch(function (e) { if (e === 404 && QUI) { toast("Questa cartella non c’è più: torno a quella sopra.", true); vai(padre(QUI), "no"); return; } $("corpo").innerHTML = '<div class="vuoto">La NAS del club non risponde. Riprova tra poco.</div>'; });
@@ -232,6 +246,7 @@
   }
   function nv(x) { return x.dir ? tc(x.nome) : x.nome; }
   function disegnaPercorso() {
+    if (QUI === CEST) { $("percorso").innerHTML = '<a data-dir="">Como 1907</a><i>›</i><a class="qui">Cestino</a>'; $("indietro").disabled = !STORIA.length; $("avanti").disabled = !AVANTI.length; return; }
     var pp = QUI ? QUI.split("/") : [], h = '<a data-dir="" class="' + (QUI ? "" : "qui") + '">Como 1907</a>';
     pp.forEach(function (x, i) { var v = pp.slice(0, i + 1).join("/"); h += "<i>›</i><a data-dir=\"" + esc(v) + '" class="' + (i === pp.length - 1 ? "qui" : "") + '">' + esc(tc(x)) + "</a>"; });
     $("percorso").innerHTML = h;
@@ -245,15 +260,18 @@
     var st = nomi.filter(function (x) { return /(20\d\d)\s*[-\/_]\s*(20)?\d\d|\b\d\d[-\/]\d\d\b/.test(x); }).sort().reverse(), al = nomi.filter(function (x) { return st.indexOf(x) < 0; }).sort(function (a, b) { return a.localeCompare(b, "it", { sensitivity: "base" }); });
     var voce = function (x) { return '<a data-dir="' + esc(x) + '" class="' + (QUI === x || QUI.indexOf(x + "/") === 0 ? "on" : "") + '">' + DIR_SVG + "<span>" + esc(tc(x)) + "</span></a>"; };
     $("lato").innerHTML = "<h3>Posizioni</h3>" + '<a data-dir="" class="' + (QUI ? "" : "on") + '">' + DIR_SVG + "<span>Como 1907</span></a><h3>Stagioni</h3>" + st.map(voce).join("") + "<hr><h3>Altri progetti</h3>" + al.map(voce).join("") +
+      '<hr><a data-dir="' + CEST + '" class="' + (QUI === CEST ? "on" : "") + '"><span>🗑 Cestino' + (CESTINO && CESTINO.voci.length ? " · " + CESTINO.voci.length : "") + '</span></a>' +
       '<hr><h3>Collegamenti</h3><a href="mam-1907.html"><span>↗ MAM Como 1907</span></a><a href="doppioni-1907.html"><span>↗ Doppioni 1907</span></a>';
   }
   function disegna() {
+    if (QUI === CEST) { disegnaCestino(); return; }
     disegnaPercorso(); disegnaLato();
     VOCI = vociDi(DATI, QUI);
     ({ icone: vistaIcone, elenco: vistaElenco, colonne: vistaColonne, galleria: vistaGalleria })[VISTA]();
     stato(); miniature();
   }
   function stato() {
+    if (QUI === CEST) return;
     var nd = DATI.cartelle.length, nf = DATI.file.length, peso = DATI.file.reduce(function (t, x) { return t + x.peso; }, 0);
     var sel = SCELTI.length ? " · <b>" + SCELTI.length + (SCELTI.length === 1 ? " elemento scelto" : " elementi scelti") + "</b>" : "";
     $("stato").innerHTML = nd + (nd === 1 ? " cartella" : " cartelle") + ", " + nf + " file" + (peso ? " · " + gb(peso) : "") + sel + (PUOI ? "" : " · puoi guardare: organizzano e caricano le persone del team del Como 1907");
@@ -265,7 +283,7 @@
     return '<div class="miniatura"' + (t !== "altro" ? ' data-mini="' + esc(x.v) + '"' : "") + ">" + (t === "altro" ? '<span class="ico-est">' + esc((x.nome.split(".").pop() || "").toUpperCase().slice(0, 5)) + "</span>" : "") + "</div>";
   }
   function attr(x) { return 'data-v="' + esc(x.v) + '"' + (x.dir ? " data-dir-v" : "") + (PUOI ? ' draggable="true"' : ""); }
-  function cls(x) { return "ogg" + (x.dir ? " dir" : "") + (SCELTI.indexOf(x.v) >= 0 ? " scelto" : ""); }
+  function cls(x) { var a = appunti(); return "ogg" + (x.dir ? " dir" : "") + (SCELTI.indexOf(x.v) >= 0 ? " scelto" : "") + (a && a.modo === "taglia" && a.vie.indexOf(x.v) >= 0 ? " tagliato" : ""); }
   function vuota() { return '<div class="vuoto">' + ($("filtro").value ? "Niente con «" + esc($("filtro").value) + "» in questa cartella." : "Cartella vuota." + (PUOI ? " Trascina qui dei file dal Mac per caricarli." : "")) + "</div>"; }
   // COME ICONE
   function vistaIcone() { $("corpo").innerHTML = VOCI.length ? '<div class="icone">' + VOCI.map(function (x) { return '<div class="' + cls(x) + '" ' + attr(x) + ' title="' + esc(x.nome) + '">' + icona(x) + '<span class="etich">' + esc(nv(x)) + "</span></div>"; }).join("") + "</div>" : vuota(); }
@@ -338,7 +356,7 @@
     if (VISTA === "colonne" && !o.hasAttribute("data-dir-v")) { var col = o.closest(".col").dataset.col; if (col !== QUI) { QUI = col; DATI = CACHE[col]; VOCI = vociDi(DATI, QUI); } }
     scegli(o.dataset.v, e);
   });
-  $("corpo").addEventListener("dblclick", function (e) { var o = e.target.closest(".ogg"); if (!o) return; if (o.hasAttribute("data-dir-v")) vai(o.dataset.v); else anteprima(o.dataset.v); });
+  $("corpo").addEventListener("dblclick", function (e) { var o = e.target.closest(".ogg"); if (!o || QUI === CEST) return; if (o.hasAttribute("data-dir-v")) vai(o.dataset.v); else anteprima(o.dataset.v); });
   $("percorso").addEventListener("click", function (e) { var a = e.target.closest("[data-dir]"); if (a) vai(a.dataset.dir); });
   $("lato").addEventListener("click", function (e) { var a = e.target.closest("a[data-dir]"); if (a) { e.preventDefault(); vai(a.dataset.dir); } });
   document.querySelector(".viste").addEventListener("click", function (e) { var b = e.target.closest("[data-vista]"); if (b) cambiaVista(b.dataset.vista); });
@@ -358,22 +376,40 @@
     if (a === "sposta" && l.length) spostaIn(l.map(function (x) { return x.v; }));
     if (a === "link" && uno) copia(location.origin + "/como-tv/live/mam-1907.html#" + (uno.dir ? "fv=" : "apri=") + encodeURIComponent(uno.v), "Link interno copiato: si apre nel MAM, per chi entra con Google.");
     if (a === "condividi" && l.length) condividi(l);
+    if (a === "scarica" && l.some(function (x) { return x.dir; })) { scaricaZip(l.map(function (x) { return x.v; })); return; }
     if (a === "scarica") l.filter(function (x) { return !x.dir; }).forEach(function (x, k) { setTimeout(function () { var d = document.createElement("a"); d.href = url(x.v); d.download = x.nome; document.body.appendChild(d); d.click(); d.remove(); }, k * 900); });
     if (a === "elimina") elimina(l);
+    if (a === "copia" && l.length) { metti("copia", l.map(function (x) { return x.v; })); toast("Copiati " + l.length + (l.length === 1 ? " elemento" : " elementi") + ": vai dove vuoi e ⌘V per incollare."); }
+    if (a === "taglia" && l.length && PUOI) { metti("taglia", l.map(function (x) { return x.v; })); disegna(); toast("Tagliati " + l.length + (l.length === 1 ? " elemento" : " elementi") + ": vai dove vuoi e ⌘V per spostarli lì."); }
+    if (a === "incolla" || a === "incolla-sposta") incolla(a === "incolla-sposta");
+    if (a === "duplica" && l.length && PUOI) lavoro({ azione: "duplica", vie: l.map(function (x) { return x.v; }) }, "Duplico");
+    if (a === "cestino" && l.length && PUOI) alCestino(l.map(function (x) { return x.v; }));
+    if (a === "annulla") annulla();
+    if (a === "info") (uno ? [uno] : l.length ? l.slice(0, 1) : [{ v: QUI, dir: 1, nome: ultimo(QUI) || "Como 1907" }]).forEach(function (x) { info(x.v); });
+    if (a === "zip") scaricaZip(l.length ? l.map(function (x) { return x.v; }) : [QUI]);
+    if (a === "vai-a") vaiA();
+    if (a === "carica-cartella") $("cartellaScelta").click();
+    if (a === "percorso-mac" && uno) copia("/Volumes/COMOTV - FRAME/" + uno.v, "Percorso copiato: nel Finder Vai › Vai alla cartella (⌘⇧G) e incolla.");
     if (a === "tutto") { SCELTI = VOCI.map(function (x) { return x.v; }); disegna(); }
     if (/^vista-/.test(a)) cambiaVista(a.slice(6));
   }
   // il menu del clic destro
   function menu(x, y, suElemento) {
     chiudiMenu();
+    if (QUI === CEST) { menuCestino(x, y); return; }
     var l = scelti(), uno = l.length === 1 ? l[0] : null, soloFile = l.length && l.every(function (z) { return !z.dir; });
+    var ap = appunti(), nAp = ap ? ap.vie.length : 0;
     var voci = suElemento ? [
       ["apri", uno && uno.dir ? "Apri" : "Apri l’anteprima", "⌘↓", !uno], ["anteprima", "Anteprima rapida", "Spazio", !uno || uno.dir], ["mam", "Mostra nel MAM", "", !uno], null,
-      ["rinomina", "Rinomina…", "↩", !PUOI || !uno], ["sposta", "Sposta in…", "", !PUOI], null,
-      ["link", "Copia il link", "", !uno], ["condividi", "Condividi (link esterno)…", "", false], ["scarica", "Scarica", "", !soloFile], null,
-      ["elimina", "Elimina dalla NAS…", "⌘⌫", !ELIM || !l.length, "rosso"]
+      ["rinomina", "Rinomina…", "↩", !PUOI || !uno], ["duplica", "Duplica", "⌘D", !PUOI], ["sposta", "Sposta in…", "", !PUOI], null,
+      ["taglia", "Taglia", "⌘X", !PUOI], ["copia", "Copia", "⌘C", false], ["incolla", nAp ? "Incolla " + nAp + (nAp === 1 ? " elemento" : " elementi") : "Incolla", "⌘V", !PUOI || !nAp], null,
+      ["info", "Informazioni", "⌘I", !l.length], ["percorso-mac", "Copia il percorso della NAS", "⌥⌘C", !uno], ["link", "Copia il link", "", !uno], ["condividi", "Condividi (link esterno)…", "", false],
+      ["scarica", soloFile ? "Scarica" : "Scarica come ZIP", "", !l.length], null,
+      ["cestino", "Sposta nel Cestino", "⌘⌫", !PUOI || !l.length], ["elimina", "Elimina subito (definitivo)…", "⌥⌘⌫", !ELIM || !l.length, "rosso"]
     ] : [
-      ["nuova", "Nuova cartella", "⌘⇧N", !PUOI], ["carica", "Carica dei file…", "", !PUOI], null,
+      ["nuova", "Nuova cartella", "⌘⇧N", !PUOI], ["carica", "Carica dei file…", "", !PUOI], ["carica-cartella", "Carica una cartella…", "", !PUOI], null,
+      ["incolla", nAp ? (ap.modo === "taglia" ? "Sposta qui " : "Incolla ") + nAp + (nAp === 1 ? " elemento" : " elementi") : "Incolla", "⌘V", !PUOI || !nAp], ["annulla", "Annulla l’ultima operazione", "⌘Z", !PUOI], null,
+      ["info", "Informazioni su questa cartella", "⌘I", false], ["zip", "Scarica la cartella come ZIP", "", !QUI], ["vai-a", "Vai alla cartella…", "⌘⇧G", false], null,
       ["vista-icone", "Come icone", "⌘1"], ["vista-elenco", "Come elenco", "⌘2"], ["vista-colonne", "Come colonne", "⌘3"], ["vista-galleria", "Come galleria", "⌘4"], null, ["tutto", "Seleziona tutto", "⌘A"]
     ];
     var m = document.createElement("div"); m.className = "menu"; m.id = "menu"; m.setAttribute("role", "menu");
@@ -402,7 +438,26 @@
     if (cmd && e.key === "ArrowDown") { e.preventDefault(); azione("apri"); return; }
     if (cmd && e.key === "[") { e.preventDefault(); $("indietro").click(); return; }
     if (cmd && e.key === "]") { e.preventDefault(); $("avanti").click(); return; }
-    if (cmd && e.key === "Backspace") { e.preventDefault(); if (ELIM) azione("elimina"); return; }
+    if (QUI === CEST) { tastiCestino(e); return; }
+    var kk = e.key.toLowerCase();
+    if (cmd && e.altKey && e.key === "Backspace") { e.preventDefault(); if (ELIM) azione("elimina"); return; }
+    if (cmd && e.key === "Backspace") { e.preventDefault(); if (PUOI) azione("cestino"); return; }
+    if (cmd && e.altKey && (kk === "c" || e.code === "KeyC")) { e.preventDefault(); azione("percorso-mac"); return; }
+    if (cmd && e.altKey && (kk === "v" || e.code === "KeyV")) { e.preventDefault(); azione("incolla-sposta"); return; }
+    if (cmd && kk === "c") { e.preventDefault(); azione("copia"); return; }
+    if (cmd && kk === "x") { e.preventDefault(); azione("taglia"); return; }
+    if (cmd && kk === "v") { e.preventDefault(); azione("incolla"); return; }
+    if (cmd && kk === "d") { e.preventDefault(); azione("duplica"); return; }
+    if (cmd && kk === "z") { e.preventDefault(); azione("annulla"); return; }
+    if (cmd && kk === "i") { e.preventDefault(); azione("info"); return; }
+    if (cmd && e.shiftKey && kk === "g") { e.preventDefault(); azione("vai-a"); return; }
+    // scrivere le prime lettere di un nome lo sceglie, come nel Finder
+    if (!cmd && !e.altKey && e.key.length === 1 && /\S/.test(e.key) && e.key !== " ") {
+      clearTimeout(window.__tpT); window.__tp = (window.__tp || "") + e.key.toLowerCase(); window.__tpT = setTimeout(function () { window.__tp = ""; }, 900);
+      var tr = VOCI.filter(function (x) { return norm(nv(x)).indexOf(norm(window.__tp)) === 0; })[0];
+      if (tr) { scegli(tr.v); var elx = document.querySelector('#corpo .ogg[data-v="' + CSS.escape(tr.v) + '"]'); if (elx) elx.scrollIntoView({ block: "nearest" }); }
+      return;
+    }
     if (e.key === " ") { e.preventDefault(); azione("anteprima"); return; }
     if (e.key === "Enter" && SCELTI.length === 1 && PUOI) { e.preventDefault(); rinomina(SCELTI[0]); return; }
     if (/^Arrow/.test(e.key) && VOCI.length && VISTA !== "colonne") {
@@ -522,7 +577,10 @@
   $("corpo").addEventListener("dragstart", function (e) {
     var o = e.target.closest(".ogg"); if (!o || !PUOI) return;
     if (SCELTI.indexOf(o.dataset.v) < 0) scegli(o.dataset.v);
-    PRESI = SCELTI.slice(); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", PRESI.join("\n"));
+    PRESI = SCELTI.slice(); e.dataTransfer.effectAllowed = "copyMove"; e.dataTransfer.setData("text/plain", PRESI.join("\n"));
+    // un file solo trascinato sulla scrivania del Mac si scarica (Chrome)
+    var x1 = PRESI.length === 1 ? elemento(PRESI[0]) : null;
+    if (x1 && !x1.dir) try { e.dataTransfer.setData("DownloadURL", "application/octet-stream:" + x1.nome + ":" + location.origin + url(x1.v)); } catch (er) {}
   });
   function bersaglio(e) { return e.target.closest && (e.target.closest(".ogg[data-dir-v]") || e.target.closest("#percorso a[data-dir]") || e.target.closest("#lato a[data-dir]")); }
   function destDi(b) { return b.dataset.v != null ? b.dataset.v : b.dataset.dir; }
@@ -531,15 +589,161 @@
     var b = bersaglio(e), mac = daMac(e);
     document.querySelectorAll(".bersaglio").forEach(function (x) { if (x !== b) x.classList.remove("bersaglio"); });
     if (mac && PUOI) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; if (b) b.classList.add("bersaglio"); $("corpo").classList.toggle("sopra", !b && !!e.target.closest("#corpo")); return; }
-    if (!b || !PRESI.length || PRESI.indexOf(destDi(b)) >= 0) return; e.preventDefault(); b.classList.add("bersaglio");
+    if (!b || !PRESI.length || PRESI.indexOf(destDi(b)) >= 0) return; e.preventDefault(); e.dataTransfer.dropEffect = e.altKey ? "copy" : "move"; b.classList.add("bersaglio");
   });
   document.addEventListener("dragleave", function (e) { if (!e.relatedTarget || !$("fin").contains(e.relatedTarget)) { $("corpo").classList.remove("sopra"); document.querySelectorAll(".bersaglio").forEach(function (x) { x.classList.remove("bersaglio"); }); } });
   document.addEventListener("drop", function (e) {
     var b = bersaglio(e), mac = daMac(e); $("corpo").classList.remove("sopra"); document.querySelectorAll(".bersaglio").forEach(function (x) { x.classList.remove("bersaglio"); });
-    if (mac) { e.preventDefault(); if (!PUOI) { toast("Caricare possono le persone del team del Como 1907.", true); return; } var dest = b ? destDi(b) : QUI; caricaFile(Array.prototype.slice.call(e.dataTransfer.files), dest); return; }
-    if (!b || !PRESI.length) return; e.preventDefault(); var vie = PRESI.slice(); PRESI = []; sposta(vie, destDi(b));
+    if (mac) { e.preventDefault(); if (!PUOI) { toast("Caricare possono le persone del team del Como 1907.", true); return; } var dest = b ? destDi(b) : QUI; caricaDaMac(e.dataTransfer, dest); return; }
+    if (!b || !PRESI.length) return; e.preventDefault(); var vie = PRESI.slice(); PRESI = [];
+    if (e.altKey) lavoro({ azione: "copia", vie: vie, in: destDi(b) }, "Copio"); else sposta(vie, destDi(b));
   });
   document.addEventListener("dragend", function () { PRESI = []; document.querySelectorAll(".bersaglio").forEach(function (x) { x.classList.remove("bersaglio"); }); });
+
+  // ── COPIA, INCOLLA, DUPLICA: un lavoro sul servizio, con la sua barra ──
+  function incolla(sposta_) {
+    var a = appunti(); if (!a || !PUOI) return;
+    if (QUI === CEST) { toast("Nel Cestino non si incolla.", true); return; }
+    if (a.modo === "taglia" || sposta_) { var vie = a.vie.filter(function (v) { return padre(v) !== QUI; }); if (a.modo === "taglia") try { localStorage.removeItem("c1907-appunti"); } catch (e) {} if (vie.length) sposta(vie, QUI); else toast("Sono già in questa cartella."); return; }
+    lavoro({ azione: "copia", vie: a.vie, in: QUI }, "Copio");
+  }
+  var LAVORI_V = {};
+  function lavoro(corpo, detto) {
+    manda(corpo).then(function (j) { LAVORI_V[j.lavoro] = { detto: detto, n: j.n }; disegnaLavori(); segui(j.lavoro); if (j.tot > 50e9) toast(detto + " " + gb(j.tot) + ": ci vorrà un po’, la barra è in basso a destra."); })
+      .catch(function (e) { toast(esc(e.message), true); });
+  }
+  function segui(id) {
+    fetch(BASE + "cartelle?lavoro=" + encodeURIComponent(id), { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (L) {
+      LAVORI_V[id] = Object.assign(LAVORI_V[id] || {}, L); disegnaLavori();
+      if (L.stato === "in corso") { setTimeout(function () { segui(id); }, 1500); return; }
+      toast((L.stato === "fatto" ? "Fatto: " : "Fermato: ") + L.risultati.length + " di " + L.n + (L.errori && L.errori.length ? "<br>" + L.errori.slice(0, 3).map(esc).join("<br>") : "") + (L.risultati.length ? ' · <a href="#" data-annulla>Annulla (⌘Z)</a>' : ""), !!(L.errori && L.errori.length));
+      if (L.risultati.length) { SCELTI = L.risultati.filter(function (v) { return padre(v) === QUI; }); ricarica(); }
+      setTimeout(function () { delete LAVORI_V[id]; disegnaLavori(); }, 8000);
+    }).catch(function () { setTimeout(function () { segui(id); }, 4000); });
+  }
+  function disegnaLavori() {
+    var c = $("lavori"); var ids = Object.keys(LAVORI_V);
+    if (!ids.length) { c.hidden = true; c.innerHTML = ""; return; }
+    c.hidden = false;
+    c.innerHTML = "<h4><span>Copie in corso</span></h4>" + ids.map(function (id) {
+      var L = LAVORI_V[id], pc = L.tot ? Math.min(100, Math.round((L.fatti || 0) / L.tot * 100)) : 0;
+      return '<div class="car lav ' + (L.stato === "fatto" ? "fatto" : L.stato === "fermato" ? "errore" : "") + '"><b>' + esc(L.detto || "Copio") + " " + (L.n || "") + (L.n === 1 ? " elemento" : " elementi") + '</b><div class="bar"><i style="width:' + (L.stato === "fatto" ? 100 : pc) + '%"></i></div><small>' +
+        (L.stato === "in corso" || !L.stato ? pc + "% · " + gb(L.fatti || 0) + " di " + gb(L.tot || 0) + (L.ora ? " · " + esc(ultimo(L.ora)) : "") + ' · <a href="#" data-ferma="' + esc(id) + '">Ferma</a>' : L.stato === "fatto" ? "fatto" : "fermato") + "</small></div>";
+    }).join("");
+  }
+  document.addEventListener("click", function (e) {
+    var f = e.target.closest("[data-ferma]"); if (f) { e.preventDefault(); manda({ azione: "ferma", lavoro: f.dataset.ferma }).catch(function () {}); f.textContent = "mi fermo…"; return; }
+    var u = e.target.closest("[data-annulla]"); if (u) { e.preventDefault(); annulla(); }
+  });
+  function annulla() {
+    if (!PUOI) return;
+    manda({ azione: "annulla" }).then(function (j) { var no = (j.esiti || []).filter(function (x) { return x[1] !== "ok"; }); toast("Annullato: " + esc(j.annullato || "") + (no.length ? "<br>Non annullati: " + no.slice(0, 4).map(function (x) { return esc(ultimo(x[0])) + " (" + esc(x[1]) + ")"; }).join(", ") : ""), no.length > 0); CACHE = {}; caricaCestinoConto(); ricarica(); })
+      .catch(function (e) { toast(esc(e.message), true); });
+  }
+  // ── IL CESTINO ──
+  function alCestino(vie) {
+    manda({ azione: "cestino", vie: vie }).then(function (j) {
+      var no = (j.esiti || []).filter(function (x) { return x[1] !== "ok"; });
+      toast("Nel Cestino: " + j.spostati + ' · <a href="#" data-annulla>Annulla (⌘Z)</a>' + (no.length ? "<br>Non spostati: " + no.slice(0, 4).map(function (x) { return esc(ultimo(x[0])) + " (" + esc(x[1]) + ")"; }).join(", ") : ""), no.length > 0);
+      SCELTI = []; caricaCestinoConto(); ricarica();
+    }).catch(function (e) { toast(esc(e.message), true); });
+  }
+  function caricaCestinoConto() { return fetch(BASE + "cartelle?cestino=1", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) { CESTINO = j; if (!ELIM && j.elimina) ELIM = true; disegnaLato(); return j; }).catch(function () {}); }
+  function caricaCestino() {
+    $("corpo").innerHTML = '<div class="vuoto">Carico il Cestino…</div>';
+    caricaCestinoConto().then(function () { DATI = { cartelle: [], file: [] }; disegnaCestino(); });
+  }
+  function menuCestino(x, y) {
+    var m = document.createElement("div"); m.className = "menu"; m.id = "menu";
+    m.innerHTML = '<button type="button" data-mc="rip"' + (PUOI && SCELTI.length ? "" : " disabled") + '>Ripristina</button><hr><button type="button" class="rosso" data-mc="via"' + (ELIM && SCELTI.length ? "" : " disabled") + ">Elimina definitivamente…<kbd>⌘⌫</kbd></button>";
+    document.body.appendChild(m); m.style.left = Math.min(x, innerWidth - m.offsetWidth - 8) + "px"; m.style.top = Math.min(y, innerHeight - m.offsetHeight - 8) + "px";
+    m.addEventListener("click", function (e) { var b = e.target.closest("[data-mc]"); if (!b || b.disabled) return; chiudiMenu(); if (b.dataset.mc === "rip") ripristina(SCELTI); else svuota(SCELTI, false); });
+  }
+  function disegnaCestino() {
+    var j = CESTINO || { voci: [], peso: 0 };
+    (function () {
+      disegnaPercorso(); disegnaLato();
+      var vv = (j && j.voci) || [];
+      $("stato").innerHTML = vv.length + (vv.length === 1 ? " elemento" : " elementi") + " nel Cestino · " + gb(j.peso || 0) + " · si ripristinano dov’erano; svuotare (definitivo) può solo chi è autorizzato";
+      $("corpo").innerHTML = (vv.length ? '<div class="az" style="padding:10px 14px;display:flex;gap:8px"><button type="button" id="cRip">↩ Ripristina</button>' + (j.elimina ? '<button type="button" class="rosso" id="cVia">Elimina definitivamente…</button><button type="button" class="rosso" id="cSvuota">Svuota il Cestino…</button>' : "") + "</div>" : "") +
+        (vv.length ? '<table class="elenco cest"><thead><tr><th>Nome</th><th>Era in</th><th>Chi</th><th>Quando</th><th>Dimensione</th></tr></thead><tbody>' + vv.map(function (x) {
+          return '<tr class="ogg' + (x.dir ? " dir" : "") + '" data-v="' + esc(x.id) + '"><td><div class="nomec">' + (x.dir ? DIR_SVG : "") + "<span>" + esc(ultimo(x.orig)) + '</span></div></td><td class="orig">' + esc(padre(x.orig) || "Como 1907") + '</td><td class="n">' + esc(String(x.chi).split("@")[0]) + '</td><td class="n">' + data(x.quando) + '</td><td class="n">' + gb(x.peso) + (x.dir ? " · " + x.file + " file" : "") + "</td></tr>";
+        }).join("") + "</tbody></table>" : '<div class="vuoto">Il Cestino è vuoto.</div>');
+      VOCI = vv.map(function (x) { return { v: x.id, nome: ultimo(x.orig) }; });
+      var sc = function () { return SCELTI.length ? SCELTI : []; };
+      if ($("cRip")) $("cRip").onclick = function () { ripristina(sc()); };
+      if ($("cVia")) $("cVia").onclick = function () { svuota(sc(), false); };
+      if ($("cSvuota")) $("cSvuota").onclick = function () { svuota([], true); };
+      document.querySelectorAll("#corpo .ogg").forEach(function (o) { o.classList.toggle("scelto", SCELTI.indexOf(o.dataset.v) >= 0); });
+    })();
+  }
+  function ripristina(ids) {
+    if (!ids.length) { toast("Scegli cosa ripristinare.", true); return; }
+    manda({ azione: "ripristina", ids: ids }).then(function (j) { toast("Ripristinati: " + j.ripristinati + " · sono tornati dov’erano"); SCELTI = []; CACHE = {}; caricaCestino(); }).catch(function (e) { toast(esc(e.message), true); });
+  }
+  function svuota(ids, tutto) {
+    if (!tutto && !ids.length) { toast("Scegli cosa eliminare.", true); return; }
+    var n = tutto ? (CESTINO ? CESTINO.voci.length : 0) : ids.length;
+    if (!confirm((tutto ? "Svuotare il Cestino" : "Eliminare definitivamente " + n + (n === 1 ? " elemento" : " elementi")) + " dalla NAS del club?\n\nNon si recupera.")) return;
+    manda({ azione: "svuota", ids: ids, tutto: tutto }).then(function (j) { toast("Eliminati definitivamente: " + j.eliminati); SCELTI = []; caricaCestino(); }).catch(function (e) { toast(esc(e.message), true); });
+  }
+  function tastiCestino(e) {
+    var cmd = e.metaKey || e.ctrlKey;
+    if (cmd && e.key.toLowerCase() === "a") { e.preventDefault(); SCELTI = VOCI.map(function (x) { return x.v; }); document.querySelectorAll("#corpo .ogg").forEach(function (o) { o.classList.add("scelto"); }); return; }
+    if (cmd && e.key === "Backspace") { e.preventDefault(); if (ELIM) svuota(SCELTI, false); return; }
+    if (cmd && e.key.toLowerCase() === "z") { e.preventDefault(); annulla(); return; }
+    if (cmd && e.key === "ArrowUp") { e.preventDefault(); vai(""); }
+  }
+  // ── INFORMAZIONI (⌘I) ──
+  var INFO_ORA = null;
+  function info(v) {
+    INFO_ORA = v;   // conta solo l'ultima richiesta (due risposte in gara scrivevano il percorso sbagliato)
+    finestraApri('<h2>Informazioni</h2><div id="infoC" class="nota">Leggo…</div><div class="az"><button data-chiudi>Chiudi</button></div>');
+    fetch(BASE + "cartelle?info=" + encodeURIComponent(v), { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) {
+      if (INFO_ORA !== v || !$("infoC")) return;
+      if (!j.ok) { $("infoC").textContent = j.errore || "Non trovato."; return; }
+      var dur = j.durata ? Math.floor(j.durata / 60) + ":" + ("0" + Math.round(j.durata % 60)).slice(-2) : "";
+      $("infoC").outerHTML = '<dl class="info-dl"><dt>Nome</dt><dd><b>' + esc(j.nome) + "</b></dd><dt>Tipo</dt><dd>" + (j.cartella ? "Cartella" : esc(tipoNome({ nome: j.nome }))) + "</dd>" +
+        "<dt>Dimensione</dt><dd>" + gb(j.peso) + " (" + (j.peso || 0).toLocaleString("it-IT") + " byte)" + (j.parziale ? " · conteggio parziale" : "") + "</dd>" +
+        (j.cartella ? "<dt>Contiene</dt><dd>" + (j.elementi || 0) + " elementi, " + (j.file || 0).toLocaleString("it-IT") + " file in tutto</dd>" : "") + (dur ? "<dt>Durata</dt><dd>" + dur + "</dd>" : "") +
+        "<dt>Creato</dt><dd>" + data(j.creato) + "</dd><dt>Modificato</dt><dd>" + data(j.modificato) + "</dd>" +
+        '<dt>Sulla NAS</dt><dd><code>' + esc(j.percorsoMac) + '</code> <a href="#" id="infoCp" style="color:var(--oro2)">copia</a></dd>' + (j.danneggiato ? '<dt>Attenzione</dt><dd style="color:#F08A8D">' + esc(j.danneggiato) + "</dd>" : "") + "</dl>";
+      $("infoCp").onclick = function (e) { e.preventDefault(); copia(j.percorsoMac, "Percorso copiato."); };
+    }).catch(function () { $("infoC").textContent = "La NAS non risponde."; });
+  }
+  // ── SCARICA COME ZIP (cartelle intere, piu' elementi insieme) ──
+  function scaricaZip(vie) {
+    vie = vie.filter(function (v) { return v; }); if (!vie.length) return;
+    var d = document.createElement("a"); d.href = BASE + "cartelle?" + vie.map(function (v) { return "zip=" + encodeURIComponent(v); }).join("&"); d.download = ""; document.body.appendChild(d); d.click(); d.remove();
+    toast("Lo ZIP si scarica mentre si prepara (i video non si comprimono: pesa quanto la cartella).");
+  }
+  // ── VAI ALLA CARTELLA (⌘⇧G) ──
+  function vaiA() {
+    finestraApri('<h2>Vai alla cartella</h2><input type="text" id="vaiP" placeholder="es. 2025-2026 Season/Men First Team" value="' + esc(QUI) + '"><p class="nota">Il percorso dentro Como 1907, oppure incolla quello del Mac (/Volumes/COMOTV - FRAME/…).</p><div class="az"><button data-chiudi>Annulla</button><button class="oro" id="vaiOk">Vai</button></div>');
+    var ok = function () { var v = $("vaiP").value.trim().replace(/^\/Volumes\/COMOTV - FRAME\/?/, "").replace(/^\/+|\/+$/g, ""); chiudi(); leggi(v).then(function () { vai(v); }).catch(function () { toast("Non trovo «" + esc(v) + "».", true); }); };
+    $("vaiOk").onclick = ok; $("vaiP").onkeydown = function (e) { if (e.key === "Enter") ok(); };
+  }
+  // ── CARTELLE INTERE DAL MAC: si ricrea l'albero, poi si caricano i file dove vanno ──
+  function caricaDaMac(dt, dest) {
+    var items = dt.items ? Array.prototype.slice.call(dt.items) : [], entries = items.map(function (it) { return it.webkitGetAsEntry ? it.webkitGetAsEntry() : null; }).filter(Boolean);
+    if (!entries.some(function (en) { return en.isDirectory; })) { caricaFile(Array.prototype.slice.call(dt.files), dest); return; }
+    var lista = [];
+    function giro(en, rel) {
+      if (en.isFile) return new Promise(function (ok) { en.file(function (f) { lista.push({ f: f, rel: rel }); ok(); }, function () { ok(); }); });
+      var r = en.createReader(), tutte = [];
+      return new Promise(function (ok) { (function leggiT() { r.readEntries(function (ee) { if (!ee.length) { Promise.all(tutte.map(function (x) { return giro(x, rel ? rel + "/" + en.name : en.name); })).then(ok); return; } tutte = tutte.concat(ee); leggiT(); }, function () { ok(); }); })(); });
+    }
+    Promise.all(entries.map(function (en) { return en.isDirectory ? giro(en, "") : giro(en, ""); })).then(function () { caricaAlbero(lista, dest); });
+  }
+  $("cartellaScelta").onchange = function () { caricaAlbero(Array.prototype.map.call(this.files, function (f) { return { f: f, rel: f.webkitRelativePath.split("/").slice(0, -1).join("/") }; }), QUI); this.value = ""; };
+  function caricaAlbero(lista, dest) {
+    lista = lista.filter(function (x) { return x.f.size > 0 && !/^\./.test(x.f.name); });
+    var cartelle = {}; lista.forEach(function (x) { var pp = x.rel ? x.rel.split("/") : []; for (var i = 1; i <= pp.length; i++) cartelle[pp.slice(0, i).join("/")] = 1; });
+    var ordine = Object.keys(cartelle).sort(function (a, b) { return a.split("/").length - b.split("/").length; });
+    toast("Creo " + ordine.length + (ordine.length === 1 ? " cartella" : " cartelle") + ", poi carico " + lista.length + " file…");
+    ordine.reduce(function (p, c) { return p.then(function () { return manda({ azione: "nuova", in: unisci(dest, padre(c)), nome: ultimo(c) }).catch(function () {}); }); }, Promise.resolve())
+      .then(function () { var per = {}; lista.forEach(function (x) { var d = x.rel ? unisci(dest, x.rel) : dest; (per[d] = per[d] || []).push(x.f); }); Object.keys(per).forEach(function (d) { caricaFile(per[d], d); }); ricarica(); });
+  }
 
   // ── CARICARE (a blocchi da 8 MB, si riprende; alla fine il servizio controlla che il file sia integro) ──
   var BLOCCO = 8 * 1024 * 1024, CODA_C = [], ATTIVO = false;
@@ -588,6 +792,7 @@
 
   // chi puo' eliminare: lo dice il servizio (con i conti dei commenti)
   fetch(BASE + "commenti?conti=1", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) { ELIM = !!j.elimina; }).catch(function () {});
+  caricaCestinoConto();
   QUI = daIndirizzo(); carica(); $("corpo").focus();
 })();
 </script>
