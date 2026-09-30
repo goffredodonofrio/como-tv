@@ -1022,7 +1022,10 @@ def stati_scrivi(p, chi):
         if "assegnato" in p:
             a = str(p.get("assegnato") or "").strip().lower()
             if a and not re.fullmatch(r"[a-z0-9._%+-]+@(comofootball\.com|sent\.tv)", a): return 400, {"ok": False, "errore": "Si assegna a un indirizzo @comofootball.com o @sent.tv."}
-            if a != x.get("assegnato", ""): x["assegnato_quando"] = int(time.time()); x["assegnato_da"] = chi
+            if a != x.get("assegnato", ""):
+                x["assegnato_quando"] = int(time.time()); x["assegnato_da"] = chi
+                if a: posta([a], chi, "%s ti ha assegnato una clip nel MAM Como 1907" % _nome_mail(chi),
+                            ["%s ti ha assegnato questa clip · assigned this clip to you." % _nome_mail(chi)] + (["Stato · status: " + str(p.get("stato") or x.get("stato"))] if (p.get("stato") or x.get("stato")) else []), via)
             x["assegnato"] = a
         x.update(chi=chi, quando=int(time.time()))
         if not x.get("stato") and not x.get("assegnato"): c["per"].pop(via, None)
@@ -1035,6 +1038,11 @@ def commenti_leggi(q, chi):
     chi = (chi or "").lower()
     c = _leggi(COMMENTI, {"per": {}, "lette": {}})
     per = c.get("per", {})
+    if (q.get("provaposta") or [""])[0]:
+        if not _admin(chi): return 403, {"ok": False}
+        if not os.path.exists(POSTA_CONF): return 200, {"ok": False, "errore": "manca " + POSTA_CONF}
+        posta([chi], "", "Prova · MAM Como 1907", ["Mail di prova: le notifiche del MAM Como 1907 funzionano.", "Test email: MAM Como 1907 notifications work."], "Drone Footage/prova.mp4")
+        return 200, {"ok": True, "a": chi}
     if (q.get("conti") or [""])[0]:
         return 200, {"ok": True, "elimina": puo_eliminare(chi), "conti": {v: [len(l), sum(1 for x in l if not x.get("risolto"))] for v, l in per.items() if l}}
     if (q.get("menzioni") or [""])[0]:
@@ -1054,6 +1062,60 @@ def commenti_leggi(q, chi):
         return 200, {"ok": True, "menzioni": fuori[:300], "nuove": sum(1 for z in fuori if not z["letta"])}
     v = _rel((q.get("v") or [""])[0])
     return 200, {"ok": True, "via": v, "commenti": per.get(v, []), "io": chi, "persone": _persone_note(), "admin": _admin(chi), "elimina": puo_eliminare(chi)}
+
+
+# ── LE EMAIL A CHI E' TAGGATO O ASSEGNATO (Goffredo, 30/09/2026: "account da cui spedire e'
+# redazione.comotv@sent.tv") ──────────────────────────────────────────────────────────────────────────
+# Chi viene taggato (@nome@comofootball.com) in un commento o in una risposta, e chi riceve una clip
+# assegnata, riceve una mail con il testo e il link che apre la clip al punto giusto. Si spedisce da
+# redazione.comotv@sent.tv via smtp.gmail.com con una password per le app, che sta SOLO in
+# /etc/comotv/posta-1907.json ({"utente": ..., "password": ...}, chmod 600): senza quel file non parte
+# niente e la menzione resta comunque in "Menzioni". Mai a se stessi. Registro in posta-inviate.jsonl.
+import smtplib, ssl
+from email.message import EmailMessage
+from email.utils import formataddr
+POSTA_CONF = "/etc/comotv/posta-1907.json"
+POSTA_REG = os.path.join(CASA, "posta-inviate.jsonl")
+MAM_URL = "https://projects-cloud.it/como-tv/live/mam-1907.html"
+
+
+def _nome_mail(e):
+    return " ".join(w.capitalize() for w in re.split(r"[._]", (e or "").split("@")[0]) if w)
+
+
+def _tc_sec(t):
+    t = int(t or 0); return "%d:%02d" % (t // 60, t % 60) if t < 3600 else "%d:%02d:%02d" % (t // 3600, t % 3600 // 60, t % 60)
+
+
+def posta(dest, chi, oggetto, righe, via, t=0):
+    """in un filo a parte: la pagina non aspetta la posta"""
+    dest = sorted({d.lower() for d in dest if d and d.lower() != (chi or "").lower()})
+    if not dest: return
+    threading.Thread(target=_posta, args=(dest, chi, oggetto, righe, via, t), daemon=True).start()
+
+
+def _posta(dest, chi, oggetto, righe, via, t):
+    try: conf = json.load(open(POSTA_CONF))
+    except (OSError, ValueError): print("[posta] manca %s: non spedisco (%s)" % (POSTA_CONF, ", ".join(dest)), flush=True); return
+    link = MAM_URL + "#apri=" + urllib.parse.quote(via, safe="") + ("&s=%d" % int(t) if t else "")
+    nome_file = via.split("/")[-1]; dove = " › ".join(via.split("/")[:-1][-3:])
+    testo = "\n".join(righe) + "\n\n" + nome_file + (" · " + _tc_sec(t) if t else "") + "\n" + dove + "\n\nApri nel MAM Como 1907 / Open in the MAM:\n" + link + "\n\n— MAM Como 1907"
+    html = ('<div style="font-family:Helvetica,Arial,sans-serif;font-size:15px;color:#1b1c20;max-width:560px">' +
+            "".join('<p style="margin:0 0 10px">' + xesc(r) + "</p>" for r in righe) +
+            '<p style="margin:16px 0 4px;font-weight:700">' + xesc(nome_file) + (" · " + _tc_sec(t) if t else "") + '</p><p style="margin:0 0 18px;color:#6b6d75;font-size:13px">' + xesc(dove) + "</p>" +
+            '<p><a href="' + xesc(link) + '" style="display:inline-block;background:#C9A24B;color:#10131c;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:8px">Apri nel MAM · Open in the MAM</a></p>' +
+            '<p style="margin-top:22px;color:#8e9096;font-size:12px">MAM Como 1907 · ricevi questa mail perche\' ti hanno taggato o assegnato una clip · you get this email because you were tagged or assigned a clip</p></div>')
+    utente = conf.get("utente") or "redazione.comotv@sent.tv"
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as s:
+            s.starttls(context=ssl.create_default_context()); s.login(utente, conf["password"])
+            for d in dest:
+                m = EmailMessage(); m["From"] = formataddr(("MAM Como 1907", utente)); m["To"] = d; m["Subject"] = oggetto
+                if chi: m["Reply-To"] = chi
+                m.set_content(testo); m.add_alternative(html, subtype="html"); s.send_message(m)
+                with open(POSTA_REG, "a") as f: f.write(json.dumps({"a": d, "da": chi, "oggetto": oggetto, "via": via, "quando": int(time.time())}, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print("[posta] non spedita a %s: %s" % (", ".join(dest), e), flush=True)
 
 
 def commenti_scrivi(p, chi):
@@ -1085,11 +1147,15 @@ def commenti_scrivi(p, chi):
             x = {"id": "c" + secrets.token_hex(5), "chi": chi, "quando": ora, "t": t, "fino": fino, "testo": testo,
                  "menzioni": _menzioni(testo), "risposte": [], "risolto": None}
             lst.append(x); lst.sort(key=lambda k: (k.get("t", 0), k["quando"]))
+            posta(x["menzioni"], chi, "%s ti ha taggato nel MAM Como 1907" % _nome_mail(chi),
+                  ["%s ti ha taggato in un commento · tagged you in a comment:" % _nome_mail(chi), "«" + testo + "»"], via, t)
         elif not x:
             return 404, {"ok": False, "errore": "Il commento non c'e' piu'."}
         elif az == "risposta":
             if not testo: return 400, {"ok": False, "errore": "La risposta e' vuota."}
             x.setdefault("risposte", []).append({"id": "r" + secrets.token_hex(5), "chi": chi, "quando": ora, "testo": testo, "menzioni": _menzioni(testo)})
+            posta(_menzioni(testo), chi, "%s ti ha taggato nel MAM Como 1907" % _nome_mail(chi),
+                  ["%s ti ha taggato in una risposta · tagged you in a reply:" % _nome_mail(chi), "«" + testo + "»"], via, x.get("t", 0))
         elif az in ("risolvi", "riapri"):
             x["risolto"] = {"chi": chi, "quando": ora} if az == "risolvi" else None
         elif az in ("modifica", "cancella"):
@@ -1098,7 +1164,10 @@ def commenti_scrivi(p, chi):
             if y["chi"] != chi and not _admin(chi): return 403, {"ok": False, "errore": "Si modifica e si cancella solo quello che si e' scritto."}
             if az == "modifica":
                 if not testo: return 400, {"ok": False, "errore": "Il testo e' vuoto."}
+                prima = set(y.get("menzioni", []))
                 y.update(testo=testo, menzioni=_menzioni(testo), modificato=ora)
+                posta([m for m in y["menzioni"] if m not in prima], chi, "%s ti ha taggato nel MAM Como 1907" % _nome_mail(chi),
+                      ["%s ti ha taggato in un commento · tagged you in a comment:" % _nome_mail(chi), "«" + testo + "»"], via, x.get("t", 0))
             elif rid: x["risposte"] = [k for k in x["risposte"] if k["id"] != rid]
             else: lst[:] = [k for k in lst if k["id"] != x["id"]]
         else:
