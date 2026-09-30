@@ -10723,6 +10723,18 @@ async function orologioDallaMappa(rec) {
   if (!buoni.length) return null;
   const H = durataTempoDi(a);
   const minC = (g) => Math.min.apply(null, g.p.map((z) => z.c)), maxC = (g) => Math.max.apply(null, g.p.map((z) => z.c));
+  // UN FILE CHE E' SOLO IL SECONDO TEMPO (Inter-Como di Coppa Italia, 30/09/2026: "- SECONDO TEMPO"):
+  // il primo tempo non c'e' e cercarlo faceva fallire tutto. Si ancora la ripresa al primo gruppo che
+  // riparte dalla durata del tempo; il primo tempo si mette prima dell'inizio del file, cosi' le sue
+  // azioni non ci cadono dentro
+  if (/SECONDO TEMPO|\b2[°º]? ?TEMPO\b|\b2T\b|SECOND HALF|2ND HALF/i.test(String(a.partita || "") + " " + String(a.dove || ""))) {
+    const r2 = buoni.find((g) => minC(g) >= H - 60 && minC(g) < H + 2400);
+    if (!r2) return null;
+    const inizio2 = Math.round(r2.o + H);
+    return { letti: punti.length * 2, quando: new Date().toISOString(), fonte: "cronometro", mappa: true, soloSecondo: true,
+             inizio2, inizio1: inizio2 - H - 900, punti: punti.length, verificato: r2.p.length >= 3,
+             gruppi: buoni.map((g) => ({ o: Math.round(g.o), n: g.p.length, da: minC(g), a: maxC(g) })) };
+  }
   // il primo tempo: il primo gruppo che parte da poco (entro mezz'ora di gioco)
   const g1 = buoni.find((g) => minC(g) < Math.min(1800, H));
   if (!g1) return null;
