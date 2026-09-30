@@ -3823,12 +3823,22 @@ function hlAudio(p) {
     delete a.legato; delete a.sfaso;
     a.titolo = (a.titolo || "audio") + " · scollegato";
   } else if (azione === "lega") {
-    // si riattacca al video che sta sotto: quello che comincia prima di
-    // qui e finisce dopo
-    const sotto = q.pezzi.filter((y) => y.t0 <= a.t0 + 0.05 && y.t0 + (y.fuori - y.dentro) >= a.t0 + 0.05)[0];
+    // COLLEGA COME PREMIERE (30/09/2026): prima si cerca il SUO video, quello
+    // dello stesso tratto di partita (stessa registrazione, stessi punti),
+    // anche se l'audio sta piu' in la' o piu' in qua: si rilega e resta fuori
+    // sincrono di quanto e', col numero rosso. Solo se non c'e' si prende il
+    // video che ci sta sotto, come prima.
+    const libero = (y) => !q.audio.some((z) => z.id !== a.id && z.legato === y.id);
+    const suoi = q.pezzi.filter((y) => libero(y) && (y.reg || "") === (a.reg || "") && !y.media &&
+      Math.abs(y.dentro - a.dentro) < 0.05 && Math.abs(y.fuori - a.fuori) < 0.05)
+      .sort((u, v) => Math.abs((u.t0 || 0) - a.t0) - Math.abs((v.t0 || 0) - a.t0));
+    const suo = suoi[0] || null;
+    const sotto = suo || q.pezzi.filter((y) => y.t0 <= a.t0 + 0.05 && y.t0 + (y.fuori - y.dentro) >= a.t0 + 0.05)[0];
     if (!sotto) throw new Error("qui sotto non c'e' nessun video a cui legarlo");
-    if (q.audio.some((y) => y.id !== a.id && y.legato === sotto.id)) throw new Error("quel video ha gia' il suo audio");
+    if (!libero(sotto)) throw new Error("quel video ha gia' il suo audio");
     a.legato = sotto.id;
+    if (a.titolo) a.titolo = a.titolo.replace(/\s·\sscollegato$/, "");
+    if (suo) { const sf = Math.round(((a.t0 || 0) - (sotto.t0 || 0)) * 1000) / 1000; if (Math.abs(sf) < 0.02) delete a.sfaso; else a.sfaso = sf; }
   } else if (azione === "sposta") {
     if (p.traccia !== undefined) {
       const n = String(p.traccia);

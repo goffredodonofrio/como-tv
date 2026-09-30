@@ -6094,8 +6094,35 @@
     fr.onload = function(){ var im = new Image(); im.onload = function(){ post({ tipo:"clip-hl-grafica", seq: SEQ.id, png: fr.result, w: im.naturalWidth, h: im.naturalHeight, dentro: Math.round(tSeq() * 100) / 100, durata: 5, nome: f.name.replace(/\.png$/i, "") }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Grafica messa a " + tc(tSeq()) + ": 5 secondi, allungala dai bordi."); }).catch(function(er){ avviso("err", esc(er.message)); }); }; im.src = fr.result; };
     fr.readAsDataURL(f);
   });
+  // COLLEGA / SCOLLEGA SU TUTTA LA SCELTA (30/09/2026), come Cmd+L in Premiere:
+  // gli audio scelti, quelli dei video scelti, e l'audio staccato che e' dello
+  // stesso tratto di un video scelto (si rilega al suo, fuori sincrono di quanto e').
+  function audiScelti(){
+    var ids = {}, out = [];
+    function metti(a){ if (a && !ids[a.id]) { ids[a.id] = 1; out.push(a); } }
+    SELAS.concat(SELA ? [SELA] : []).forEach(function(id){ metti(AUD.filter(function(z){ return z.id === id; })[0]); });
+    SELS.concat(SEL && SELS.indexOf(SEL) < 0 ? [SEL] : []).forEach(function(id){
+      var x = PZ.filter(function(z){ return z.id === id; })[0]; if (!x) return;
+      var suo = AUD.filter(function(z){ return z.legato === x.id; })[0];
+      if (!suo) suo = AUD.filter(function(z){ return !z.legato && (z.reg || "") === (x.reg || "") && Math.abs(z.dentro - x.dentro) < 0.05 && Math.abs(z.fuori - x.fuori) < 0.05; })[0];
+      metti(suo);
+    });
+    return out;
+  }
+  function collegaScelti(){
+    if (!SEQ) return;
+    var tutti = audiScelti(); if (!tutti.length) return avviso("err", "Scegli uno o piu' pezzi.");
+    var staccati = tutti.filter(function(a){ return !a.legato; }), lega = staccati.length > 0;
+    var quali = lega ? staccati : tutti, passo = Promise.resolve(null), fatti = 0, errori = [], ultima = null;
+    quali.forEach(function(a){ passo = passo.then(function(){ return post({ tipo:"clip-hl-audio", seq: SEQ.id, azione: lega ? "lega" : "scollega", audio: a.id }).then(function(d){ fatti++; if (d && d.seq) ultima = d.seq; }).catch(function(er){ errori.push(er.message); }); }); });
+    passo.then(function(){
+      if (ultima) ricaricaSeq(ultima);
+      if (errori.length && !fatti) return avviso("err", esc(errori[0]));
+      avviso("ok", (lega ? "Audio legati: " : "Audio staccati: ") + fatti + (errori.length ? " (non riusciti " + errori.length + ": " + esc(errori[0]) + ")" : "") + ".");
+    });
+  }
   function audioScelto(){ if (SELA) return AUD.filter(function(z){ return z.id === SELA; })[0]; if (SEL) return AUD.filter(function(z){ return z.legato === SEL; })[0]; return null; }
-  el("eStacca").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo con l'audio."); if (!au.legato) return avviso("err", "E' gia' staccato."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"scollega", audio: au.id }).then(function(d){ SELA = au.id; ricaricaSeq(d.seq); avviso("ok", "Audio staccato: trascinalo dove vuoi. In anteprima non si sente, nell'export si'."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  el("eStacca").addEventListener("click", function(){ if (!SEQ) return; if (audiScelti().length > 1 || audiScelti().some(function(a){ return !a.legato; })) return collegaScelti(); var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo con l'audio."); if (!au.legato) return avviso("err", "E' gia' staccato."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"scollega", audio: au.id }).then(function(d){ SELA = au.id; ricaricaSeq(d.seq); avviso("ok", "Audio staccato: trascinalo dove vuoi. In anteprima non si sente, nell'export si'."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   el("eMuto").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo o un audio."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"muto", audio: au.id }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   el("eAudioTogli").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo o un audio."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: au.id }).then(function(d){ SELA = null; ricaricaSeq(d.seq); avviso("ok", "Audio tolto: sotto quel video c'e' silenzio."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   // ── LA TASTIERA DI PREMIERE nel montaggio, uguale in tutto ──
@@ -6351,7 +6378,7 @@
       else if (K === "A") { e.preventDefault(); if (e.shiftKey) scegli(null); else { SELS = PZ.map(function(z){ return z.id; }); SEL = SELS[SELS.length - 1] || null; } disegnaEditor(); }
       else if (K === "C" || K === "X") { e.preventDefault(); copiaPezzi(K === "X"); }
       else if (K === "V") { e.preventDefault(); incolla(); }
-      else if (K === "L") { e.preventDefault(); var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione: au.legato ? "scollega" : "lega", audio: au.id }).then(function(d){ ricaricaSeq(d.seq); avviso("ok", au.legato ? "Audio staccato." : "Audio legato."); }).catch(function(er){ avviso("err", esc(er.message)); }); }
+      else if (K === "L") { e.preventDefault(); collegaScelti(); }
       else if (K === "M") { e.preventDefault(); apriEsporta(); }
       else if (K === "S") { e.preventDefault(); avviso("ok", "È già tutto salvato: ogni modifica va sul ponte subito."); }
       return;
