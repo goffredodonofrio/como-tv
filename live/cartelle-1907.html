@@ -32,6 +32,7 @@
   .torna{align-self:center;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:9px;border:1px solid rgba(201,162,75,.45);color:var(--oro2);font:700 13px/1 'Mazzard',sans-serif;text-decoration:none;background:rgba(201,162,75,.08);}
   .torna:hover,.torna:focus-visible{background:rgba(201,162,75,.2);outline:none;}
   .finestra .rosso{background:var(--rosso);color:#fff;border-color:var(--rosso);} .finestra .rosso:disabled{opacity:.4;}
+  .avanz-bar{height:8px;border-radius:4px;background:var(--riga2);overflow:hidden;} .avanz-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--rosso),#f07a7e);transition:width .3s;}
   .finestra ul.via{margin:0;padding-left:18px;font-size:13px;color:var(--ivory2);max-height:160px;overflow:auto;}
   .testa h1{font-family:'Mazzard',sans-serif;font-weight:800;font-size:24px;} .testa h1 span{color:var(--oro);}
   .testa p{color:var(--fumo);font-size:12.5px;}
@@ -501,12 +502,16 @@
         '<ul class="via">' + l.slice(0, 40).map(function (x) { return "<li>" + (x.dir ? "📁 " : "") + esc(nv(x)) + (x.dir ? " — " + x.n + " file, " + gb(x.peso) : "") + "</li>"; }).join("") + (l.length > 40 ? "<li>… e altri " + (l.length - 40) + "</li>" : "") + "</ul>" +
         '<p class="nota">In tutto <b>' + nFile + " file" + (peso ? ", " + gb(peso) : "") + "</b>. È definitivo: non si recupera.</p>" +
         (pieno ? '<label>Per confermare scrivi ELIMINA <input type="text" id="elConf" autocomplete="off" value=""></label>' : "") +
-        '<div class="az"><button data-chiudi>Annulla</button><button class="rosso" id="elOk"' + (pieno ? " disabled" : "") + ">Elimina</button></div>");
+        '<div id="elAv" hidden><div class="avanz-bar"><i id="elAvI"></i></div><p class="nota" id="elAvT" style="margin-top:6px"></p></div>' +
+        '<div class="az"><button data-chiudi id="elNo">Annulla</button><button class="rosso" id="elOk"' + (pieno ? " disabled" : "") + ">Elimina</button></div>");
       if (pieno) { $("elConf").focus(); $("elConf").oninput = function () { $("elOk").disabled = this.value.trim().toUpperCase() !== "ELIMINA"; }; }
       $("elOk").onclick = function () {
-        this.disabled = true; this.textContent = "Elimino…";
-        var fatti = 0, errori = [];
-        l.reduce(function (p, x) { return p.then(function () { return post(x.dir ? { via: x.v, cartella: 1, conferma: x.n } : { via: x.v }).then(function (j) { if (j.ok) fatti++; else errori.push(x.nome + ": " + (j.errore || "non riuscito")); }); }); }, Promise.resolve())
+        this.disabled = true; this.textContent = "Elimino…"; $("elNo").disabled = true; $("elAv").hidden = false;
+        // la barra (30/09/2026): elemento per elemento, col peso liberato
+        var fatti = 0, errori = [], k = 0, lib = 0;
+        var av = function () { var pc = Math.round(k / l.length * 100); $("elAvI").style.width = pc + "%"; $("elAvT").innerHTML = "Elimino <b>" + k + "</b> di <b>" + l.length + "</b> · " + pc + "% · liberati " + gb(lib) + (k < l.length ? " · ora: " + esc(nv(l[k])) : ""); };
+        av();
+        l.reduce(function (p, x) { return p.then(function () { return post(x.dir ? { via: x.v, cartella: 1, conferma: x.n } : { via: x.v }).then(function (j) { if (j.ok) { fatti++; lib += j.peso || 0; } else errori.push(x.nome + ": " + (j.errore || "non riuscito")); k++; av(); }); }); }, Promise.resolve())
           .then(function () { chiudi(); toast("Eliminati: " + fatti + (errori.length ? "<br>" + errori.slice(0, 4).map(esc).join("<br>") : ""), errori.length > 0); SCELTI = []; ricarica(); });
       };
     });

@@ -168,6 +168,18 @@
   .col.anteprima{flex:1 0 340px;padding:14px;display:flex;flex-direction:column;gap:10px;}
   .col.anteprima .due{display:grid;grid-template-columns:1fr 1fr;gap:8px;} .col.anteprima .mini{border-radius:6px;}
   .col.anteprima .az{display:flex;gap:6px;flex-wrap:wrap;}
+  /* LA BARRA SU UNA RIGA (Goffredo, 30/09/2026: "riga unica, colori dei pulsanti diversi"): neutri Deseleziona e
+     Togli il segno, oro Segna da cancellare, rosso pieno solo Elimina; mentre elimina, al posto dei segni la barra */
+  #barra{flex-wrap:nowrap;white-space:nowrap;gap:10px;}
+  #barra #segna{background:rgba(201,162,75,.12);border-color:var(--oro);color:var(--oro2);} #barra #segna:hover:not(:disabled){background:var(--oro);color:#10131c;}
+  #barra #togliSegno{background:none;}
+  #barra #elimina{background:var(--rosso);border-color:var(--rosso);color:#fff;}
+  #barra.elimina-in-corso #segna,#barra.elimina-in-corso #togliSegno{display:none;}
+  #barra.elimina-in-corso #deseleziona{border-color:var(--rosso2);color:var(--rosso2);}
+  .avanz{flex:0 1 380px;display:flex;flex-direction:column;gap:5px;min-width:220px;}
+  .avanz span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .avanz-bar{height:8px;border-radius:4px;background:var(--riga2);overflow:hidden;} .avanz-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--rosso),#f07a7e);transition:width .4s;}
+  .avanz span{font-size:12px;color:var(--ivory2);font-variant-numeric:tabular-nums;} .avanz span b{color:var(--ivory);}
   .menu{position:fixed;z-index:130;min-width:230px;background:#26272d;border:1px solid var(--riga2);border-radius:9px;padding:5px;box-shadow:0 14px 40px rgba(0,0,0,.55);}
   .menu button{display:flex;width:100%;justify-content:space-between;gap:18px;border:0;background:none;border-radius:6px;padding:7px 10px;font:500 13px/1.2 'DM Sans',sans-serif;letter-spacing:0;text-transform:none;color:var(--ivory);}
   .menu button:hover:not(:disabled){background:var(--oro);color:#10131c;} .menu button:disabled{opacity:.4;}
@@ -211,10 +223,10 @@
   </div>
 </div>
 <div id="barra" hidden>
-  <span class="quanti" id="quanti"></span><span class="spazio"></span><span class="nota" id="barraNota"></span>
+  <span class="quanti" id="quanti"></span><div class="avanz" id="avanz" hidden role="progressbar" aria-valuemin="0" aria-valuemax="100"><div class="avanz-bar"><i id="avanzI"></i></div><span id="avanzT"></span></div><span class="spazio"></span><span class="nota" id="barraNota"></span>
   <button type="button" id="deseleziona">Deseleziona</button>
   <button type="button" id="togliSegno">Togli il segno</button>
-  <button type="button" class="rosso" id="segna">Segna da cancellare</button>
+  <button type="button" id="segna">Segna da cancellare</button>
   <button type="button" class="rosso" id="elimina" hidden title="elimina dalla NAS del club, definitivamente">Elimina</button>
 </div>
 <div class="velo" id="velo" hidden></div>
@@ -567,29 +579,44 @@
   function elimina() {
     var sel = Array.from(SCELTI.values()); if (!sel.length) return;
     var peso = sel.reduce(function (t, x) { return t + x.peso; }, 0);
-    if (!confirm("Eliminare DEFINITIVAMENTE " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ") dalla NAS del club?\n\nNon si recupera. La copia che resta non si tocca, e nelle cartelle restano i file che non hanno un'altra copia." + (sel.length > 100 ? "\n\nSi fa a pacchetti da 100: ci vorra' un po', e si puo' fermare." : ""))) return;
+    if (!confirm("Eliminare DEFINITIVAMENTE " + n(sel.length) + (sel.length === 1 ? " doppione" : " doppioni") + " (" + gb(peso) + ") dalla NAS del club?\n\nNon si recupera. La copia che resta non si tocca, e nelle cartelle restano i file che non hanno un'altra copia." + (sel.length > 100 ? "\n\nSi fa a pacchetti, piu' d'uno insieme: la barra dice a che punto e', e si puo' fermare." : ""))) return;
     // A PACCHETTI (29/09/2026): il servizio ne prende al massimo 2.000 per volta e cancellare sulla NAS e' lento;
     // si manda 100 alla volta, uno dopo l'altro, e il bottone dice a che punto si e'. Si puo' fermare.
     eliminaVie(sel.map(function (x) { return x.cartella || x.a; }));
   }
+  // LA BARRA DI AVANZAMENTO (Goffredo, 30/09/2026: "aggiungi barra avanzamento quando elimino"): pacchetti
+  // da 25, dopo ognuno la barra dice quanti, quanto spazio liberato e quanto manca (dalla velocita' vera).
   function eliminaVie(vie) {
-    var tot = { eliminati: 0, esiti: [] }, i = 0, FERMA = false;
-    $("barra").hidden = false;
-    $("elimina").disabled = true;
+    var tot = { eliminati: 0, esiti: [] }, i = 0, FERMA = false, PACCO = 25, t0 = Date.now(), liberati = 0;
+    var peso = function (v) { var x = trova(v); return x ? x.peso || 0 : 0; }, totPeso = vie.reduce(function (t, v) { return t + peso(v); }, 0);
+    $("barra").hidden = false; $("avanz").hidden = false; $("barra").classList.add("elimina-in-corso");
+    $("elimina").disabled = true; $("segna").disabled = true; $("togliSegno").disabled = true;
     $("deseleziona").textContent = "Ferma"; var ferma = function (e) { e.stopImmediatePropagation(); FERMA = true; $("deseleziona").textContent = "Mi fermo alla fine del pacchetto…"; $("deseleziona").disabled = true; }; $("deseleziona").addEventListener("click", ferma, true);
+    function mostra() {
+      var pc = vie.length ? Math.round(i / vie.length * 100) : 100, sec = (Date.now() - t0) / 1000, resto = i ? sec / i * (vie.length - i) : 0;
+      $("avanzI").style.width = pc + "%"; $("avanz").setAttribute("aria-valuenow", pc);
+      $("avanz").title = "Elimino " + n(i) + " di " + n(vie.length) + " · liberati " + gb(liberati) + " di " + gb(totPeso); $("avanzT").innerHTML = "<b>" + n(i) + "</b> / " + n(vie.length) + " · <b>" + pc + "%</b> · <b>" + gb(liberati) + "</b> liberati" +
+        (i && i < vie.length ? " · ~" + (resto < 90 ? Math.max(1, Math.round(resto)) + " s" : Math.round(resto / 60) + " min") : "") + (tot.esiti.filter(function (e) { return !/^ok/.test(e[1]); }).length ? " · non eliminati: " + tot.esiti.filter(function (e) { return !/^ok/.test(e[1]); }).length : "");
+      $("elimina").textContent = "Elimino… " + pc + "%";
+    }
+    mostra();
+    // (30/09/2026) piu' pacchetti insieme: INSIEME richieste in volo, ognuna ne lavora 8 in parallelo sul servizio
+    var INSIEME = 4, prossimo = 0;
     function giro() {
-      if (FERMA || i >= vie.length) return Promise.resolve();
-      var pacco = vie.slice(i, i + 100);
-      $("elimina").textContent = "Elimino… " + n(i) + " / " + n(vie.length);
+      if (FERMA || prossimo >= vie.length) return Promise.resolve();
+      var pacco = vie.slice(prossimo, prossimo + PACCO); prossimo += pacco.length;
       return fetch(BASE + "doppioni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ azione: "elimina", vie: pacco }) })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.ok) throw new Error(j.errore || "Non riuscito (" + r.status + "): riprova, i doppioni gia' eliminati restano nella scheda Eliminati."); return j; }); })
-        .then(function (j) { tot.eliminati += j.eliminati || 0; tot.esiti = tot.esiti.concat(j.esiti || []); pacco.forEach(function (v) { SCELTI.delete(v); }); i += pacco.length; return giro(); });
+        .then(function (j) { tot.eliminati += j.eliminati || 0; tot.esiti = tot.esiti.concat(j.esiti || []);
+          (j.esiti || []).forEach(function (e) { if (/^ok/.test(e[1])) liberati += peso(e[0]); });
+          pacco.forEach(function (v) { SCELTI.delete(v); }); i += pacco.length; mostra(); return giro(); });
     }
-    giro().then(function () {
+    function tutti() { var l = []; for (var k = 0; k < INSIEME; k++) l.push(giro()); return Promise.all(l); }
+    tutti().then(function () {
       var tenuti = tot.esiti.filter(function (e) { return /tenuti/.test(e[1]); }).length;
-      risultato({ esiti: tot.esiti.filter(function (e) { return !/^ok/.test(e[1]); }) }, (FERMA ? "Fermato. " : "") + "Eliminati: " + n(tot.eliminati) + " di " + n(vie.length) + "." + (tenuti ? "\n\nIn " + tenuti + " cartelle sono rimasti i file che non avevano un'altra copia (sottotitoli, progetti, foto piccole)." : ""));
-    }).catch(function (e) { alert("Eliminati finora: " + n(tot.eliminati) + ".\n\n" + e.message); })
-      .then(function () { $("deseleziona").removeEventListener("click", ferma, true); $("deseleziona").textContent = "Deseleziona"; $("deseleziona").disabled = false; $("elimina").textContent = "Elimina"; return caricaSegni(); }).then(disegna);
+      risultato({ esiti: tot.esiti.filter(function (e) { return !/^ok/.test(e[1]); }) }, (FERMA ? "Fermato. " : "") + "Eliminati: " + n(tot.eliminati) + " di " + n(vie.length) + " · liberati " + gb(liberati) + "." + (tenuti ? "\n\nIn " + tenuti + " cartelle sono rimasti i file che non avevano un'altra copia (sottotitoli, progetti, foto piccole)." : ""));
+    }).catch(function (e) { alert("Eliminati finora: " + n(tot.eliminati) + " · liberati " + gb(liberati) + ".\n\n" + e.message); })
+      .then(function () { $("avanz").hidden = true; $("barra").classList.remove("elimina-in-corso"); $("deseleziona").removeEventListener("click", ferma, true); $("deseleziona").textContent = "Deseleziona"; $("deseleziona").disabled = false; $("elimina").textContent = "Elimina"; return caricaSegni(); }).then(disegna);
   }
   function manda(azione) {
     var sel = Array.from(SCELTI.values()).filter(function (x) { return azione === "togli" ? SEGN[x.cartella || x.a] : !SEGN[x.cartella || x.a]; });

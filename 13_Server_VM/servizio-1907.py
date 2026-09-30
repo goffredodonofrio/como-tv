@@ -428,69 +428,107 @@ def _dentro_frame(p):
     return v.startswith(RW + "/") and v.rstrip("/") != RW
 
 
+# ELIMINARE TANTI INSIEME (Goffredo, 30/09/2026: "il limite di cancellazione contemporanea sia infinito"):
+# niente tetto al numero; ogni richiesta lavora 8 doppioni in parallelo (la NAS e' lenta per ognuno, non per
+# tutti), e la pagina ne manda piu' d'una insieme. I registri si scrivono alla fine, sotto il lucchetto.
+# LA PRENOTAZIONE: mentre un doppione si elimina, la sua copia che resta non puo' essere eliminata da un'altra
+# richiesta (e viceversa): con tante eliminazioni insieme non puo' sparire l'ultima copia.
+IN_CORSO = {"via": {}, "tieni": {}}
+IC_LOCK = threading.Lock()
+
+
+def _tocca(x, y): return x == y or x.startswith(y + "/") or y.startswith(x + "/")
+
+
+def _prenota(via, b):
+    with IC_LOCK:
+        if any(_tocca(b, x) for x in IN_CORSO["via"]) or any(_tocca(via, x) for x in IN_CORSO["tieni"]): return False
+        IN_CORSO["via"][via] = IN_CORSO["via"].get(via, 0) + 1; IN_CORSO["tieni"][b] = IN_CORSO["tieni"].get(b, 0) + 1
+        return True
+
+
+def _libera(via, b):
+    with IC_LOCK:
+        for k, v in (("via", via), ("tieni", b)):
+            IN_CORSO[k][v] -= 1
+            if IN_CORSO[k][v] <= 0: IN_CORSO[k].pop(v, None)
+
+
+def _elimina_uno(via, b, via_set):
+    """(esito, record per il registro o None)"""
+    if not via: return "", None
+    if not b: return "non e' nell'elenco dei doppioni", None
+    if any(b == x or b.startswith(x + "/") for x in via_set): return "anche la copia che resta e' tra quelle da eliminare", None
+    src, keep = os.path.join(RW, via), os.path.join(RW, b)
+    if not _dentro_frame(src) or not _dentro_frame(keep): return "percorso non valido", None
+    if not _prenota(via, b): return "la copia che resta e' in uso da un'altra eliminazione in corso: riprova tra poco", None
+    try:
+        if not os.path.exists(src): return "non c'e' piu'", None
+        if not os.path.exists(keep): return "la copia che resta non c'e' piu': non si elimina", None
+        # l'ultimo controllo: tutto quello che se ne va deve stare nella copia che resta
+        cartella = os.path.isdir(src)
+        if cartella:
+            manca = _grandi(src) - _grandi(keep)
+            if manca: return "la copia che resta non ha %d dei suoi file: non si elimina" % len(manca), None
+        elif os.path.getsize(src) != os.path.getsize(keep): return "la copia che resta ha un'altra dimensione: non si elimina", None
+        if not _stesso_contenuto(src, keep, cartella): return "il contenuto della copia che resta e' diverso: non si elimina", None
+        errori, tenuti = [], []
+        try:
+            if cartella:
+                # (29/09/2026) file per file: se ne va solo quello che nella copia che resta c'e' uguale.
+                # Quello che non c'e' (sottotitoli, progetti Premiere, foto piccole) RESTA dov'e', con le sue
+                # cartelle: l'unica copia non si tocca. La copia uguale si cerca OVUNQUE dentro la cartella che
+                # resta: stesso nome e stessa dimensione, e per i file grandi anche inizio e fine uguali.
+                # I "._nome" (metadati del Mac) seguono il loro file.
+                idx = {}
+                for r2, c2, f2 in os.walk(keep):
+                    for f in f2:
+                        try: idx.setdefault((f.lower(), os.path.getsize(os.path.join(r2, f))), []).append(os.path.join(r2, f))
+                        except OSError: pass
+                for radice, cc, ff in os.walk(src, topdown=False):
+                    andati = set()
+                    for f in sorted(ff, key=lambda z: z.startswith("._")):
+                        pf = os.path.join(radice, f)
+                        try:
+                            if f.startswith("._") and f[2:] in andati: os.remove(pf); continue
+                            sz = os.path.getsize(pf)
+                            cand = idx.get((f.lower(), sz)) or []
+                            ip = _impronta(pf) if cand and sz >= 2_000_000 else ""
+                            ok = bool(cand) and (sz < 2_000_000 or (ip is not None and ip == _impronta(cand[0])))
+                            if ok: os.remove(pf); andati.add(f)
+                            else: tenuti.append(os.path.relpath(pf, RW))
+                        except OSError: errori.append(os.path.relpath(pf, RW))
+                    try:
+                        if not os.listdir(radice): os.rmdir(radice)
+                    except OSError: pass
+            else: os.remove(src)
+        except OSError as ex:
+            errori.append(str(ex.strerror or ex))
+        rec = {"via": via, "tieni": b, "cartella": cartella, "errori": errori[:20], "tenuti": tenuti[:50]}
+        return ("eliminato in parte: %d elementi non si sono potuti togliere" % len(errori) if errori else
+                "ok, tenuti %d file che non avevano un'altra copia" % len(tenuti) if tenuti else "ok"), rec
+    finally:
+        _libera(via, b)
+
+
 def elimina(p, chi):
     if not puo_eliminare(chi): return 403, {"ok": False, "errore": "Eliminare dal MAM puo' solo chi e' autorizzato (Gionata Medeot)."}
     if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento: non si elimina niente. Riprova tra poco."}
-    tieni = _tenute(); esiti = []
-    vie = ["/".join(x for x in str(v).split("/") if x and x not in (".", "..")) for v in (p.get("vie") or [])][:2000]
+    tieni = _tenute()
+    vie = ["/".join(x for x in str(v).split("/") if x and x not in (".", "..")) for v in (p.get("vie") or [])]
     via_set = set(vie)
+    with ThreadPoolExecutor(8) as ex:
+        ris = list(ex.map(lambda v: (v,) + _elimina_uno(v, tieni.get(v), via_set), vie))
+    esiti = [[v, e] for v, e, r in ris if v]
     with S_LOCK:
         s = _leggi(SEGNATI, {"segnati": {}, "storia": []}); e_ = _leggi(ELIMINATI, {"voci": {}, "storia": []})
-        for via in vie:
-            if not via: continue
-            b = tieni.get(via)
-            if not b: esiti.append([via, "non e' nell'elenco dei doppioni"]); continue
-            if any(b == x or b.startswith(x + "/") for x in via_set): esiti.append([via, "anche la copia che resta e' tra quelle da eliminare"]); continue
-            src, keep = os.path.join(RW, via), os.path.join(RW, b)
-            if not _dentro_frame(src) or not _dentro_frame(keep): esiti.append([via, "percorso non valido"]); continue
-            if not os.path.exists(src): esiti.append([via, "non c'e' piu'"]); continue
-            if not os.path.exists(keep): esiti.append([via, "la copia che resta non c'e' piu': non si elimina"]); continue
-            # l'ultimo controllo: tutto quello che se ne va deve stare nella copia che resta
-            cartella = os.path.isdir(src)
-            if cartella:
-                manca = _grandi(src) - _grandi(keep)
-                if manca: esiti.append([via, "la copia che resta non ha %d dei suoi file: non si elimina" % len(manca)]); continue
-            elif os.path.getsize(src) != os.path.getsize(keep): esiti.append([via, "la copia che resta ha un'altra dimensione: non si elimina"]); continue
-            if not _stesso_contenuto(src, keep, cartella): esiti.append([via, "il contenuto della copia che resta e' diverso: non si elimina"]); continue
-            errori, tenuti = [], []
-            try:
-                if cartella:
-                    # (29/09/2026) file per file: se ne va solo quello che nella copia che resta c'e' uguale
-                    # (stesso percorso dentro la cartella e stessa dimensione). Quello che non c'e' (sottotitoli,
-                    # progetti Premiere, foto piccole) RESTA dov'e', con le sue cartelle: l'unica copia non si tocca.
-                    # (29/09/2026, sera) la copia uguale si cerca OVUNQUE dentro la cartella che resta (le copie
-                    # hanno spesso le sottocartelle in un altro ordine): stesso nome e stessa dimensione, e per i
-                    # file grandi anche inizio e fine uguali. I "._nome" (metadati del Mac) seguono il loro file.
-                    idx = {}
-                    for r2, c2, f2 in os.walk(keep):
-                        for f in f2:
-                            try: idx.setdefault((f.lower(), os.path.getsize(os.path.join(r2, f))), []).append(os.path.join(r2, f))
-                            except OSError: pass
-                    for radice, cc, ff in os.walk(src, topdown=False):
-                        andati = set()
-                        for f in sorted(ff, key=lambda z: z.startswith("._")):
-                            pf = os.path.join(radice, f)
-                            try:
-                                if f.startswith("._") and f[2:] in andati: os.remove(pf); continue
-                                sz = os.path.getsize(pf)
-                                cand = idx.get((f.lower(), sz)) or []
-                                ip = _impronta(pf) if cand and sz >= 2_000_000 else ""
-                                ok = bool(cand) and (sz < 2_000_000 or (ip is not None and ip == _impronta(cand[0])))
-                                if ok: os.remove(pf); andati.add(f)
-                                else: tenuti.append(os.path.relpath(pf, RW))
-                            except OSError: errori.append(os.path.relpath(pf, RW))
-                        try:
-                            if not os.listdir(radice): os.rmdir(radice)
-                        except OSError: pass
-                else: os.remove(src)
-            except OSError as ex:
-                errori.append(str(ex.strerror or ex))
-            k = next((k0 for k0, v0 in e_["voci"].items() if v0.get("via") == via), None) or hashlib.sha1((via + str(time.time())).encode()).hexdigest()[:12]
-            e_["voci"][k] = {"via": via, "tieni": b, "chi": chi, "quando": int(time.time()), "cartella": cartella,
-                             "segnato_da": (s["segnati"].get(via) or {}).get("chi", ""), "errori": errori[:20], "tenuti": tenuti[:50]}
+        per_via = {v0.get("via"): k0 for k0, v0 in e_["voci"].items()}
+        for via, esito, rec in ris:
+            if not rec: continue
+            k = per_via.get(via) or hashlib.sha1((via + str(time.time())).encode()).hexdigest()[:12]
+            rec.update(chi=chi, quando=int(time.time()), segnato_da=(s["segnati"].get(via) or {}).get("chi", ""))
+            e_["voci"][k] = rec
             s["segnati"].pop(via, None)
-            esiti.append([via, "eliminato in parte: %d elementi non si sono potuti togliere" % len(errori) if errori else
-                          "ok, tenuti %d file che non avevano un'altra copia" % len(tenuti) if tenuti else "ok"])
         n = sum(1 for x in esiti if x[1].startswith("ok"))
         e_["storia"].append([int(time.time()), chi, "elimina", n]); del e_["storia"][:-1000]
         _scrivi(ELIMINATI, e_); _scrivi(SEGNATI, s)
