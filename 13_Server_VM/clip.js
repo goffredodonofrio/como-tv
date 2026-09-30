@@ -14294,9 +14294,11 @@ function provaLingua(ita, t, altro, da, dur) {
 async function scartoDelTempo(fIta, fAltro, punti, finestra) {
   const buone = [];
   for (const t of punti) {
-    const w = finestra(t, buone.length ? buone[0].o : null);
+    // si stringe la finestra solo attorno a una prova netta: una incerta la porterebbe fuori strada
+    const netta = buone.find((x) => x.netto >= 3);
+    const w = finestra(t, netta ? netta.o : null);
     const r = await provaLingua(fIta, t, fAltro, w.da, w.dur);
-    if (!r || r.t === null || !(r.netto >= 2.5)) continue;
+    if (!r || r.t === null || !(r.netto >= 1.8)) continue;       // due prove d'accordo al centesimo non sono un caso
     const o = Math.round((r.t - t) * 1000) / 1000;
     buone.push({ t, o, netto: r.netto });
     const d = buone.filter((x) => Math.abs(x.o - o) < 0.08);
@@ -14320,7 +14322,9 @@ async function allineaLingua(recIta, l) {
   // il cronometro dell'altra versione puo' essere letto male (Genoa-Como ENG:
   // diceva +327 s, lo scarto vero e' -0,4): se la finestra stretta non trova
   // niente si riprova larga
-  const punti1 = dentro([i1 + 420, i1 + 1200, i1 + 2100]), punti2 = dentro([i2 + 420, i2 + 1500, i2 + 2400]);
+  // cinque punti per tempo: su una registrazione col commento sopra, un tratto
+  // su tre cade dove parla solo il telecronista (Genoa-Como ENG, 30/09)
+  const punti1 = dentro([i1 + 420, i1 + 900, i1 + 1500, i1 + 2100, i1 + 2600]), punti2 = dentro([i2 + 420, i2 + 1000, i2 + 1600, i2 + 2200, i2 + 2700]);
   let t1 = await scartoDelTempo(fIta, v.file, punti1, (t, o) =>
     o !== null ? { da: t + o - 20, dur: 46 } : g1 !== null ? { da: t + g1 - 90, dur: 186 } : { da: t - 1500, dur: 1806 });
   if (t1.o === null && g1 !== null) t1 = await scartoDelTempo(fIta, v.file, punti1, (t, o) => o !== null ? { da: t + o - 20, dur: 46 } : { da: t - 1500, dur: 1806 });
@@ -14452,8 +14456,11 @@ function lingueDi(recIta) {
   return ["eng", "int"].filter((l) => e[l] && e[l].stato === "fatto");
 }
 // IL GIRO: una versione per volta, mai sopra una diretta o una regia
+let LINGUE_ORFANI_VIA = false;
 async function giroLingue() {
   if (CODE_SPENTE || LINGUA_ORA) return;
+  // un riavvio del ponte lascia girare le prove del processo di prima: si chiudono
+  if (!LINGUE_ORFANI_VIA) { LINGUE_ORFANI_VIA = true; try { cp.spawnSync("pkill", ["-f", "comotv-volti/lingue.py allinea"]); } catch (e) {} }
   try { await coppieLingue(); } catch (e) { console.log("[clip] lingue: " + e.message); return; }
   // DUE PER VOLTA (Goffredo 30/09/2026: "non ci sono dirette, spingi al
   // massimo"): una per core; con una diretta o una regia si fermano tutte e due
