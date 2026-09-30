@@ -7707,8 +7707,10 @@ function carica1907() {
       // "G07 - COMO v JUVENTUS", "G05 Atalanta v Como", "G02_20260830_NAPOLI-COMO"
       const pz = cartella.split("/");
       const iM = pz.findIndex((z) => /^matchdays?$|^matchday_/i.test(z)), iG0 = pz.findIndex((z) => /^G\s?\d{1,2}(?!\d)/i.test(z));
-      const cp = iM >= 0 ? (pz[iM + 1] || "") : iG0 >= 0 ? pz[iG0] : "";
-      const comp = iM >= 0 ? (pz[iM].replace(/^matchdays?_?/i, "").trim()) : "";
+      // la 26-27 da Drive ha la competizione in mezzo: "MATCHDAY/01. SERIE A/G01_UDINESE v COMO"
+      const conComp = iM >= 0 && /^\d+\.\s*\S/.test(pz[iM + 1] || "") && pz[iM + 2];
+      const cp = iM >= 0 ? (pz[iM + (conComp ? 2 : 1)] || "") : iG0 >= 0 ? pz[iG0] : "";
+      const comp = conComp ? pz[iM + 1].replace(/^\d+\.\s*/, "").trim() : iM >= 0 ? (pz[iM].replace(/^matchdays?_?/i, "").trim()) : "";
       const g = (/^G\s?(\d{1,2})(?!\d)/i.exec(cp) || [])[1] || "";
       const dataC = (/(20\d{6})/.exec(cp) || [])[1] || "";
       const partita = cp.replace(/^G\s?\d{1,2}(?!\d)/i, "").replace(/20\d{6}/, "").replace(/[_]+/g, " ")
