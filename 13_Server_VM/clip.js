@@ -3941,6 +3941,22 @@ function hlAudio(p) {
     if (!v) throw new Error("pezzo video sconosciuto");
     delete a.legato;
     a.t0 = v.t0;
+  } else if (azione === "duplica") {
+    // ALT+TRASCINA, COME IN PREMIERE (30/09/2026): una copia dell'audio dove
+    // la lasci, di solito sulla traccia sotto. La copia e' libera: non e'
+    // legata al video (quello ha gia' il suo audio) e non segue una grafica.
+    const n = p.traccia !== undefined ? String(p.traccia) : (a.traccia || "A1");
+    if (TRACCE_A.indexOf(n) < 0) throw new Error("traccia sconosciuta");
+    if (tracceDi(q)[n].bloccata) throw new Error("la traccia " + n + " e' bloccata");
+    const copia = JSON.parse(JSON.stringify(a));
+    copia.id = nuovoId("a");
+    delete copia.legato; delete copia.sfaso; delete copia.grafica;
+    copia.traccia = n;
+    copia.t0 = Math.round(Math.max(0, num(p.t0, 0, 86400, a.t0 || 0)) * 1000) / 1000;
+    q.audio.push(copia);
+    normalizzaSeq(q);
+    scrivi(); annuncia(0, "clip");
+    return { ok: true, seq: q, audio: copia.id };
   } else {
     throw new Error("comando audio sconosciuto: " + azione);
   }
@@ -17471,7 +17487,7 @@ function nomeDelPasso(p) {
   if (t === "clip-hl-audio") {
     const a = String(p.azione || "");
     return { scollega: "Scollega", collega: "Collega", traccia: "Traccia", gain: "Guadagno audio",
-             volume: "Volume", muto: "Disattiva audio clip", togli: "Elimina audio", sposta: "Sposta audio" }[a] || "Audio";
+             volume: "Volume", muto: "Disattiva audio clip", togli: "Elimina audio", sposta: "Sposta audio", duplica: "Duplica audio" }[a] || "Audio";
   }
   return ({ "clip-hl-inserisci": "Inserisci", "clip-hl-dividi": "Taglierino", "clip-hl-sposta": "Sposta", "clip-hl-sposta-gruppo": "Sposta in gruppo",
             "clip-hl-ordina": "Riordina", "clip-hl-attacca": "Chiudi gli spazi vuoti", "clip-hl-aggiungi": "Aggiungi clip",

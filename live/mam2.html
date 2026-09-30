@@ -1235,7 +1235,7 @@
   .ed-buco.sel{border:1px solid var(--oro2);background:repeating-linear-gradient(135deg,rgba(201,162,75,.22) 0 6px,rgba(201,162,75,.08) 6px 12px);}
   .ed-rete{position:absolute;z-index:6;background:rgba(201,162,75,.14);border:1px solid var(--oro2);border-radius:3px;pointer-events:none;}
   .ed-magnete{position:absolute;top:0;bottom:0;width:1px;background:#7CD992;box-shadow:0 0 5px #7CD992;pointer-events:none;z-index:4;}
-  .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;cursor:col-resize;} .ed-corsia.st{height:var(--h-C,26px);} .ed-corsia.g{height:var(--h-G,28px);} .ed-corsia.v2{height:var(--h-V2,40px);background:rgba(140,120,200,.05);} .ed-corsia.v2.mira{background:rgba(201,162,75,.12);box-shadow:0 0 0 1px var(--oro) inset;}
+  .ed-corsia{position:relative;border-bottom:1px solid var(--riga);} .ed-corsia.r{height:22px;cursor:col-resize;} .ed-audio.fantasma{opacity:.6;outline:1px dashed rgba(255,255,255,.85);outline-offset:-1px;pointer-events:none;} .ed-corsia.st{height:var(--h-C,26px);} .ed-corsia.g{height:var(--h-G,28px);} .ed-corsia.v2{height:var(--h-V2,40px);background:rgba(140,120,200,.05);} .ed-corsia.v2.mira{background:rgba(201,162,75,.12);box-shadow:0 0 0 1px var(--oro) inset;}
   .ed-corsia.v.mira{background:rgba(201,162,75,.10);box-shadow:0 0 0 1px var(--oro) inset;}
   .ed-corsia.v{height:var(--h-V1,64px);background:rgba(245,241,230,.02);}
   .ed-graf{position:absolute;top:3px;bottom:3px;height:auto;background:#4E3A6E;border:1px solid #8C6BB5;border-radius:4px;overflow:hidden;padding:0 6px;font-size:10px;line-height:19px;white-space:nowrap;cursor:grab;box-sizing:border-box;color:var(--ivory);} .ed-graf.sel{outline:2px solid var(--oro2);} .ed-graf.anim{background:#6E4A1E;border-color:var(--oro);}
@@ -4302,7 +4302,7 @@
         // l'audio legato sta sotto il suo video PIU' lo sfasamento; mentre si
         // trascina da solo l'audio (o da solo il video) lo sfasamento cambia dal vivo
         var aA = a + sfV;
-        if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id && !TRASC.legato && TRASC.mosso) { aA = TRASC.a; sfV = TRASC.a - a; }
+        if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id && !TRASC.legato && !TRASC.duplica && TRASC.mosso) { aA = TRASC.a; sfV = TRASC.a - a; }
         else if (TRASC && TRASC.soloVideo && TRASC.mosso && TRASC.tipo === "muovi" && (TRASC.i === i || (TRASC.gruppo && TRASC.gruppo.some(function(z){ return z.id === x.id; })))) {
           aA = (x.t0 || 0) + (+au.sfaso || 0); sfV = aA - a;
         }
@@ -4321,7 +4321,13 @@
       righeDi(x).forEach(function(s){ if (s.b <= x.dentro || s.a >= fineX) return; var sa = a + Math.max(0, s.a - x.dentro) / velX, sb = a + Math.min(d, (s.b - x.dentro) / velX); if (sb < LENTE.a || sa > LENTE.b) return; var t2 = testoRiga(s).t; hs += '<div class="ed-st' + (s.m ? " mod" : "") + (TS_SEL === regX + "|" + s.k ? " sel" : "") + '" data-k="' + esc(s.k || "") + '" data-reg="' + esc(regX) + '" data-t="' + sa + '" style="left:' + Math.max(0, X(sa)) + 'px;width:' + Math.max(4, Math.min(w, X(sb)) - Math.max(0, X(sa))) + 'px" title="' + esc(t2) + '">' + esc(t2) + '</div>'; });
     });
     // l'audio staccato: a t0, per la sua durata, dove lo lasci
-    AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id) { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.tipo === "gruppo" && TRASC.mosso && TRASC.setA[au.id]) { a += TRASC.d; b += TRASC.d; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, Math.max(6, xb - xa), true); });
+    AUD.forEach(function(au){ if (au.legato) return; var a = au.t0 || 0, b = a + Math.max(0.2, (au.fuori - au.dentro)); if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id && !TRASC.duplica) { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.tipo === "gruppo" && TRASC.mosso && TRASC.setA[au.id]) { a += TRASC.d; b += TRASC.d; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, Math.max(6, xb - xa), true); });
+    // la copia che si sta duplicando con Alt: una sagoma dove andra', l'originale resta
+    if (TRASC && TRASC.tipo === "a-muovi" && TRASC.duplica && (TRASC.mosso || TRASC.trA !== TRASC.trDa)) {
+      var auD = AUD.filter(function(z){ return z.id === TRASC.a_id; })[0];
+      if (auD) { var xaD = Math.max(0, X(TRASC.a)), xbD = Math.min(w, X(TRASC.b)), trD = TRASC.trA || auD.traccia || "A1";
+        haT[trD] = (haT[trD] || "") + audioHtml(auD, xaD, Math.max(6, xbD - xaD), true).replace('class="ed-audio', 'class="ed-audio fantasma').replace(/data-a="/, 'data-copia="').replace(/<span class="ed-sync"[^>]*>[^<]*<\/span>/g, ""); }
+    }
     var hg = "";
     GRAF.forEach(function(g){ var a = g.dentro, b = g.fuori; if (TRASC && TRASC.tipo === "gruppo" && TRASC.mosso && TRASC.setG[g.id]) { a += TRASC.d; b += TRASC.d; } if (TRASC && TRASC.g_id === g.id && TRASC.tipo !== "g-muovi") { a = TRASC.a; b = TRASC.b; } else if (TRASC && TRASC.g_id === g.id && TRASC.tipo === "g-muovi" && TRASC.mosso) { a = TRASC.a; b = TRASC.b; } if (b < LENTE.a || a > LENTE.b) return; var xa = Math.max(0, X(a)), xb = Math.min(w, X(b)); var fg = formatiDiGrafica(g), manca = g.animata ? [] : FORMATI.filter(function(f){ return fg.indexOf(f) < 0; }); hg += '<div class="ed-graf' + (g.animata ? " anim" : "") + (SELG === g.id || SELGS.indexOf(g.id) >= 0 ? " sel" : "") + '" data-g="' + esc(g.id) + '" style="left:' + xa + 'px;width:' + Math.max(8, xb - xa) + 'px" title="' + esc(g.nome || "grafica") + ' · ' + tcBreve(a) + ' → ' + tcBreve(b) + ' · formati: ' + fg.join(", ") + (manca.length ? " · manca " + manca.join(", ") + ": in uscita verra\u2019 adattata" : "") + '"><span class="bordo sx" data-lato="g-sx"></span>' + esc(g.nome || "grafica") + '<i class="gf">' + (g.animata ? "animata · suono su A3" : g.titolo ? "tutti" : fg.join(" ")) + '</i>' + (manca.length ? '<b class="gm">' + esc(manca.join(" ")) + '?</b>' : '') + '<span class="bordo dx" data-lato="g-dx"></span></div>'; });
     buchiDiQui().forEach(function(z){
@@ -5515,9 +5521,9 @@
     if (vp) { prendiPuntoVolume(vp, e); return; }
     var dz = e.target.closest(".diss");
     if (dz) { prendiDissolvenza(dz, e); return; }
-    // alt+clic sulla clip audio: un punto nuovo dove hai cliccato
-    var au0 = e.altKey ? e.target.closest(".ed-audio") : null;
-    if (au0) { aggiungiPuntoVolume(au0, e); return; }
+    // ALT SULLA CLIP AUDIO, come in Premiere: trascinata la DUPLICA (in giu'
+    // va sulla traccia sotto); un clic secco resta il punto del volume
+    var dupAlt = !!(e.altKey && e.target.closest(".ed-audio"));
     var pz = e.target.closest(".ed-pezzo"), bordo = e.target.closest(".bordo"), st = e.target.closest(".ed-st"), gf = e.target.closest(".ed-graf"), ad = e.target.closest(".ed-audio");
     if (st) { vaiTempo(+st.dataset.t, false); return; }
     if (gf && traccaBloccata("G")) { avviso("err", "La traccia V3 (grafiche) e' bloccata."); return; }
@@ -5529,8 +5535,9 @@
       // anche l'audio legato si prende: non per spostarlo nel tempo (quello
       // lo scollegherebbe dal suo video) ma per portarlo su un'altra traccia
       var pzAu = au.legato ? PZ.filter(function(z){ return z.id === au.legato; })[0] : null, t0Au = pzAu ? (pzAu.t0 || 0) + (+au.sfaso || 0) : (au.t0 || 0);
-      TRASC = { tipo: "a-muovi", a_id: au.id, legato: !!au.legato && COLLEGATI, eraLegato: !!au.legato, pzT0: pzAu ? (pzAu.t0 || 0) : null, trDa: au.traccia || "A1", trA: au.traccia || "A1",
-                x0: e.clientX, y0: e.clientY, a: t0Au, b: t0Au + (au.fuori - au.dentro), t00: t0Au, mosso: false };
+      TRASC = { tipo: "a-muovi", a_id: au.id, legato: !!au.legato && COLLEGATI && !dupAlt, eraLegato: !!au.legato && !dupAlt, pzT0: pzAu ? (pzAu.t0 || 0) : null, trDa: au.traccia || "A1", trA: au.traccia || "A1",
+                x0: e.clientX, y0: e.clientY, a: t0Au, b: t0Au + (au.fuori - au.dentro), t00: t0Au, mosso: false,
+                duplica: dupAlt, altNodo: dupAlt ? ad : null };
       e.preventDefault(); disegnaTl(); return;
     }
     SELG = null; SELA = null;
@@ -5675,6 +5682,14 @@
     if (tr.a_id) {
       Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-corsia.a"), function(c){ c.classList.remove("mira"); });
       var cambiaTraccia = tr.trA && tr.trA !== tr.trDa;
+      if (tr.duplica) {
+        // Alt+clic senza muovere: il punto del volume, come prima
+        if (!tr.mosso && !cambiaTraccia) { if (tr.altNodo) aggiungiPuntoVolume(tr.altNodo, { clientX: tr.x0, clientY: tr.y0 }); disegnaTl(); return; }
+        post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"duplica", audio: tr.a_id, t0: Math.round(tr.a * 1000) / 1000, traccia: tr.trA || tr.trDa })
+          .then(function(d){ ricaricaSeq(d.seq); SELA = d.audio || null; disegnaTl(); avviso("ok", "Audio duplicato su " + (tr.trA || tr.trDa) + "."); })
+          .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
+        return;
+      }
       if (!tr.mosso && !cambiaTraccia) { disegnaTl(); return; }
       var c2 = { tipo:"clip-hl-audio", seq: SEQ.id, azione:"sposta", audio: tr.a_id };
       if (cambiaTraccia) c2.traccia = tr.trA;
