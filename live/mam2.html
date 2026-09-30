@@ -199,6 +199,19 @@
   .ris .filtri-ris .apri-filtri + .ordina{margin-left:8px;}
   .ris .pannello-filtri{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px 22px;padding:14px 16px 16px;margin:0 0 12px;
     border:1px solid var(--riga2);border-radius:10px;background:rgba(245,241,230,.035);}
+  .barra-filtri{position:relative;display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px;max-width:1240px;}
+  .bf-ch{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--riga2);background:rgba(245,241,230,.04);color:var(--ivory);font:600 12px/1 'DM Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;}
+  .bf-ch i{font-style:normal;opacity:.6;font-size:10px;}
+  .bf-ch:hover,.bf-ch.aperta{border-color:var(--oro);}
+  .bf-ch.on{border-color:var(--oro);background:rgba(201,162,75,.16);color:var(--oro2);}
+  .bf-ch.tutti{margin-left:auto;}
+  .bf-pop{position:absolute;top:38px;left:0;z-index:70;min-width:260px;max-width:min(820px,94vw);max-height:440px;overflow:auto;padding:12px 14px;border:1px solid var(--riga2);border-radius:12px;background:#141a27;box-shadow:0 18px 44px rgba(0,0,0,.55);}
+  .bf-pop .ris.bf-dentro{max-width:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 22px;}
+  .bf-gio{width:320px;} .bf-gio input{width:100%;margin:0 0 8px;}
+  .bf-gio-lista a{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:6px;cursor:pointer;color:var(--ivory);font-size:13px;}
+  .bf-gio-lista a:hover{background:rgba(201,162,75,.14);} .bf-gio-lista em{font-style:normal;color:var(--fumo);font-size:11.5px;} .bf-gio-lista small{margin-left:auto;color:var(--fumo);font-size:11px;}
+  .bf-nota{color:var(--fumo);font-size:12px;margin:4px 2px;}
+  .ris #apriFiltri{display:none;}
   .ris .col-sez{grid-column:1/-1;margin:6px 0 -6px;padding-top:8px;border-top:1px solid var(--riga);font:700 10.5px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--oro2);}
   .ris .col-sez:first-child{border-top:0;padding-top:0;margin-top:0;}
   .gt .gt-tipo{font-style:normal;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;opacity:.7;margin-right:4px;}
@@ -1437,6 +1450,7 @@
       <div class="lib-cerca campo-g" id="campoG"><span class="lu">&#128269;</span><span id="gettoni" class="gettoni"></span><input id="cercaLib" type="search" placeholder="Cerca un giocatore, una squadra, un’azione… es. «Nico Paz gol», «Como Juventus», «angoli secondo tempo»" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" autofocus aria-autocomplete="list" aria-controls="suggerisci"><div id="suggerisci" class="sugg" role="listbox" hidden></div></div>
       <div class="copia" id="copiaS3" hidden></div>
     </div>
+    <div class="barra-filtri" id="barraFiltri" aria-label="filtri della ricerca"></div>
     <div id="riprendi"></div>
     <div id="libProg">
       <div class="sez"><h2>Progetti</h2><span id="progConto"></span><button class="dx b mini" id="progNuovo" title="un progetto raccoglie le sequenze di un lavoro (una puntata, un'uscita social, un cliente)">+ Nuovo progetto</button></div>
@@ -1895,7 +1909,7 @@
     post({ tipo:"clip-qnap-eventi" }).then(function(j){
       EVENTI = soloNas((j.eventi || []).filter(function(x){ return x.partita || x.durata; }));
       QUANTE_PUNTATE = EVENTI.filter(function(x){ return x.puntata; }).length;
-      disegnaCategorie(); disegnaRecenti();
+      disegnaCategorie(); disegnaRecenti(); disegnaBarraFiltri();
       // una ricerca aperta da un link parte prima che le partite arrivino: si ridisegna
       if (Q || GETTONI.length || RACCOLTA) { disegnaGettoni(); disegnaRisultati(); }
     }).catch(function(e){ avviso("err", "QNAP non raggiungibile: " + esc(e.message)); });
@@ -2559,6 +2573,7 @@
       return '<span class="gt gt-' + x.t + '"' + stile + ' title="' + esc((NOMI_TIPO_G[x.t] || "") + ": " + eti) + '">' + (x.t === "c" || breve ? "" : iconaGettone(x)) + (breve ? '<i class="gt-tipo">' + esc(breve) + '</i>' : '') + '<b>' + esc(eti) + '</b>' + (x.sq ? '<small>' + esc(x.sq) + '</small>' : '') +
         '<button type="button" data-via="' + i + '" aria-label="togli ' + esc(eti) + '">×</button></span>';
     }).join("");
+    disegnaBarraFiltri();
     el("cercaLib").placeholder = GETTONI.length ? "Aggiungi un filtro o una parola…" : "Cerca un giocatore, una squadra, un’azione… es. «Nico Paz gol», «Como Juventus», «angoli secondo tempo»";
   }
   // cambia un gettone che si filtra in pagina (non serve chiedere al ponte)
@@ -2569,7 +2584,7 @@
     else aggiungiGettone({ t: t, v: v, eti: eti || v });
     disegnaGettoni();
     // il tipo di azione e le squadre cambiano la domanda al ponte; il resto si filtra qui
-    if (t === "ta" || t === "s") cerca(el("cercaLib").value); else disegnaRisultati();
+    if (t === "ta" || t === "s" || el("risultati").hidden) cerca(el("cercaLib").value); else disegnaRisultati();
     aggiornaUrlRicerca();
   }
   function aggiornaUrlRicerca(){
@@ -2814,7 +2829,8 @@
     { t: "p", eti: "Precisione", soloAzioni: true, sez: "Audio e materiale" }
   ];
   var PANNELLO_APERTO = false, COLONNA_TUTTE = {}, COLONNA_CERCA = {};
-  try { PANNELLO_APERTO = localStorage.getItem("mam2-filtri") === "1"; } catch (e) {}
+  // (30/09/2026) il pannello nei risultati e' sostituito dalla barra dei filtri sotto il campo
+  PANNELLO_APERTO = false;
   function etiValore(t, v){
     if (t === "r") return (RUOLI[v] || {}).eti || v;
     if (t === "l") return ETI_L[v === "AUDIO" ? "INT" : v] || v;
@@ -3347,9 +3363,12 @@
     disegnaBarraScelte();
   });
   // IL PANNELLO: una colonna per tipo, i valori con la casella e il numero
-  function pannelloHtml(){
-    var cols = COLONNE.map(function(col){
+  // UNA COLONNA DI FILTRI (pannello e tendine della barra): valori, conteggi, caselle.
+  // inTenda: anche senza ricerca (si contano tutte le partite) e con pochi valori;
+  // tipo, tempo, minuto e punteggio, se non ci sono azioni, con l'elenco fisso
+  function htmlColonna(col, inTenda){
       var F = filtraRisultati(col.t), m = {};
+      if (!Q && !GETTONI.length && !F.partite.length) F = Object.assign({}, F, { partite: EVENTI.slice() });
       // GIOCATA e PUNTO contano azioni; le altre colonne contano PARTITE
       // diverse (quelle in elenco e quelle da cui vengono le azioni): "Serie A
       // 215" sommava partite e azioni e non voleva dire niente
@@ -3360,7 +3379,11 @@
       if (col.t === "r") az.forEach(function(x){ if (x.ruolo && RUOLI[x.ruolo]) conta(x.ruolo); });
       else if (col.t === "c") evs.forEach(function(ev){ conta(compNome(ev), "", ev.rec); });
       else if (col.t === "st") evs.forEach(function(ev){ conta(stagioneDi(ev.quando), "", ev.rec); });
-      else if (col.t === "s") evs.forEach(function(ev){ (ev.squadre || []).forEach(function(s){ conta(s.nome, s.stemma, ev.rec); }); });
+      else if (col.t === "s") {
+        // "COMO" (dai titoli) e "Como" (da ESPN) sono la stessa squadra: una voce, col nome scritto bene
+        var bello = {}; evs.forEach(function(ev){ (ev.squadre || []).forEach(function(s){ var k = piatto(s.nome || ""), n = s.nome || ""; if (!bello[k] || (bello[k] === bello[k].toUpperCase() && n !== n.toUpperCase())) bello[k] = n; }); });
+        evs.forEach(function(ev){ (ev.squadre || []).forEach(function(s){ conta(bello[piatto(s.nome || "")] || s.nome, s.stemma, ev.rec); }); });
+      }
       else if (col.t === "l") evs.forEach(function(ev){ audioDi(ev).forEach(function(v){ conta(v, "", ev.rec); }); });
       // i tipi li conta il ponte (su tutte le righe della domanda, minori compresi): se no, scelto
       // "Angolo", le altre voci sparirebbero perche' il ponte da' solo angoli
@@ -3387,8 +3410,11 @@
       else if (col.t === "mi") ordina(ORDINE_MI);
       else if (col.t === "sp") ordina(ORDINE_SP);
       else voci.sort(function(a, b){ return m[b].n - m[a].n || a.localeCompare(b); });
-      if (col.soloAzioni && !az.length && !sel.length) return "";
-      if (voci.length < 2 && !sel.length) return "";
+      var fisso = { ta: ORDINE_TA, te: ORDINE_TE, mi: ORDINE_MI, sp: ORDINE_SP, si: ORDINE_SI }[col.t];
+      if (inTenda && fisso && !voci.length) { fisso.forEach(function(v){ m[v] = { n: "" }; }); voci = fisso.slice(); }
+      if (!inTenda && col.soloAzioni && !az.length && !sel.length) return "";
+      if (!inTenda && voci.length < 2 && !sel.length) return "";
+      if (!voci.length) return "";
       var filtro = piatto(COLONNA_CERCA[col.t] || "");
       var visibili = voci.filter(function(v){ return !filtro || piatto(etiValore(col.t, v)).indexOf(filtro) >= 0; });
       var MAX = 7, tutte = COLONNA_TUTTE[col.t];
@@ -3399,14 +3425,68 @@
         var segno = col.t === "c" ? '<span class="gt-dot" style="background:' + coloreComp(v) + '"></span>'
                   : col.t === "r" ? '<span class="gt-dot" style="background:' + ((RUOLI[v] || {}).c || "#9AA7B8") + '"></span>'
                   : col.t === "s" ? (m[v].extra ? '<img class="gt-st" src="' + esc(m[v].extra) + '" alt="">' : '<span class="gt-av gt-sigla">' + esc(siglaSquadra(v)) + '</span>') : "";
-        return '<label class="col-v' + (n ? "" : " zero") + '" for="' + id + '"><input type="checkbox" id="' + id + '" data-col="' + col.t + '" data-eti="' + esc(col.t === "st" ? "Stagione " + v : (col.t === "sd" || col.t === "ar") ? v : etiValore(col.t, v)) + '" value="' + esc(v) + '"' + (on ? " checked" : "") + '>' +
+        return '<label class="col-v' + (n || n === "" ? "" : " zero") + '" for="' + id + (inTenda ? "-t" : "") + '"><input type="checkbox" id="' + id + (inTenda ? "-t" : "") + '" data-col="' + col.t + '" data-eti="' + esc(col.t === "st" ? "Stagione " + v : (col.t === "sd" || col.t === "ar") ? v : etiValore(col.t, v)) + '" value="' + esc(v) + '"' + (on ? " checked" : "") + '>' +
           segno + '<span class="col-n">' + esc(etiValore(col.t, v)) + '</span><b>' + n + '</b></label>';
       }).join("");
       var etiCol = (col.t === "sp" || col.t === "ct") ? col.eti + " · " + squadraRif() : col.eti;
       return '<fieldset class="col-f" data-sez="' + esc(col.sez || "") + '"><legend>' + etiCol + (sel.length ? ' <em>' + sel.length + '</em>' : '') + '<small>' + (col.soloAzioni ? "azioni" : "partite") + '</small></legend>' +
         (voci.length > 10 ? '<input class="col-cerca" type="search" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" id="colcerca-' + col.t + '" data-colcerca="' + col.t + '" placeholder="Filtra…" value="' + esc(COLONNA_CERCA[col.t] || "") + '" autocomplete="off">' : '') +
         righe + (visibili.length > MAX ? '<button type="button" class="col-tutte" data-coltutte="' + col.t + '">' + (tutte ? "Meno" : "Mostra tutte (" + visibili.length + ")") + '</button>' : '') + '</fieldset>';
-    }).join("");
+  }
+  // ── LA BARRA DEI FILTRI (30/09/2026, Goffredo: "la ricerca testuale da sola
+  //    non basta"). Sotto il campo, sempre visibile, come le tendine di Google
+  //    Drive: una tendina per i filtri piu' usati, "Tutti i filtri" per gli altri.
+  //    Si cerca anche senza scrivere niente.
+  var BF = [
+    { k: "s", eti: "Squadra", c: ["s"] }, { k: "g", eti: "Giocatore", c: ["g"] }, { k: "c", eti: "Competizione", c: ["c"] },
+    { k: "st", eti: "Stagione", c: ["st"] }, { k: "ta", eti: "Tipo di azione", c: ["ta"] }, { k: "tm", eti: "Tempo e minuto", c: ["te", "mi"] },
+    { k: "l", eti: "Audio", c: ["l"] }, { k: "tutti", eti: "Tutti i filtri", c: ["si", "r", "sp", "ct", "sd", "ar", "cl", "p"] }
+  ];
+  var BF_APERTA = "", BF_GIO = [];
+  function colDi(t){ return COLONNE.filter(function(c){ return c.t === t; })[0]; }
+  function popBarra(k){
+    var x = BF.filter(function(y){ return y.k === k; })[0]; if (!x) return "";
+    if (k === "g") return '<div class="bf-gio"><input type="search" id="bfGio" placeholder="Nome del giocatore o dell\u2019allenatore" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><div id="bfGioLista" class="bf-gio-lista"><p class="bf-nota">Scrivi almeno tre lettere.</p></div></div>';
+    var visto = {};
+    return '<div class="ris bf-dentro">' + x.c.map(function(t){ var col = colDi(t); if (!col) return ""; var h = htmlColonna(col, true); if (k === "tutti" && h && !visto[col.sez]) { visto[col.sez] = 1; h = '<h4 class="col-sez">' + col.sez + '</h4>' + h; } return h; }).join("") + '</div>';
+  }
+  function disegnaBarraFiltri(){
+    var b = el("barraFiltri"); if (!b) return;
+    var cerca0 = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.colcerca;
+    b.innerHTML = BF.map(function(x){
+      var sc = GETTONI.filter(function(g){ return x.c.indexOf(g.t) >= 0; });
+      var nomi = sc.map(function(g){ return g.t === "g" || g.t === "s" || g.t === "c" ? g.eti : g.t === "st" ? g.v : etiValore(g.t, g.v); });
+      var testo = !sc.length ? x.eti : x.k === "tutti" ? x.eti + " · " + sc.length : x.eti + ": " + nomi.slice(0, 2).join(", ") + (nomi.length > 2 ? " +" + (nomi.length - 2) : "");
+      return '<button type="button" class="bf-ch' + (sc.length ? " on" : "") + (BF_APERTA === x.k ? " aperta" : "") + (x.k === "tutti" ? " tutti" : "") + '" data-bf="' + x.k + '" aria-expanded="' + (BF_APERTA === x.k) + '">' + esc(testo) + '<i aria-hidden="true">\u25BE</i></button>';
+    }).join("") + (BF_APERTA ? '<div class="bf-pop" id="bfPop">' + popBarra(BF_APERTA) + '</div>' : '');
+    var ch = b.querySelector(".bf-ch.aperta"), pop = el("bfPop");
+    if (ch && pop) pop.style.left = Math.max(0, Math.min(ch.offsetLeft, b.clientWidth - pop.offsetWidth)) + "px";
+    if (cerca0) { var ci = b.querySelector('input[data-colcerca="' + cerca0 + '"]'); if (ci) { ci.focus(); ci.setSelectionRange(ci.value.length, ci.value.length); } }
+    if (BF_APERTA === "g" && el("bfGio")) el("bfGio").focus();
+  }
+  if (el("barraFiltri")) {
+    el("barraFiltri").addEventListener("click", function(e){
+      var c = e.target.closest(".bf-ch"); if (c) { BF_APERTA = BF_APERTA === c.dataset.bf ? "" : c.dataset.bf; disegnaBarraFiltri(); return; }
+      var t = e.target.closest("[data-coltutte]"); if (t) { COLONNA_TUTTE[t.dataset.coltutte] = !COLONNA_TUTTE[t.dataset.coltutte]; disegnaBarraFiltri(); return; }
+      var g = e.target.closest("[data-bfgio]"); if (g) { var x = BF_GIO[+g.dataset.bfgio]; if (!x) return; aggiungiGettone(x); BF_APERTA = ""; disegnaGettoni(); cerca(el("cercaLib").value); }
+    });
+    el("barraFiltri").addEventListener("change", function(e){
+      var c = e.target.closest("input[data-col]"); if (c) cambiaFiltroGettone(c.dataset.col, c.value, c.dataset.eti);
+    });
+    el("barraFiltri").addEventListener("input", function(e){
+      if (e.target.dataset && e.target.dataset.colcerca) { COLONNA_CERCA[e.target.dataset.colcerca] = e.target.value; COLONNA_TUTTE[e.target.dataset.colcerca] = true; disegnaBarraFiltri(); return; }
+      if (e.target.id === "bfGio") {
+        var q = e.target.value.trim(), lista = el("bfGioLista");
+        caricaDizionario();
+        BF_GIO = q.length >= 3 ? candidati(q).filter(function(x){ return x.t === "g"; }).slice(0, 8) : [];
+        lista.innerHTML = BF_GIO.length ? BF_GIO.map(function(x, i){ return '<a data-bfgio="' + i + '">' + iconaGettone(x) + '<span>' + esc(x.eti) + (x.sq ? ' <em>' + esc(x.sq) + '</em>' : '') + '</span>' + (x.al ? '<small>allenatore</small>' : '') + '</a>'; }).join("") : '<p class="bf-nota">' + (q.length < 3 ? "Scrivi almeno tre lettere." : "Nessun giocatore con questo nome.") + '</p>';
+      }
+    });
+    document.addEventListener("mousedown", function(e){ if (BF_APERTA && !e.target.closest("#barraFiltri")) { BF_APERTA = ""; disegnaBarraFiltri(); } });
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape" && BF_APERTA) { BF_APERTA = ""; disegnaBarraFiltri(); } });
+  }
+  function pannelloHtml(){
+    var cols = COLONNE.map(function(col){ return htmlColonna(col); }).join("");
     var nFiltri = GETTONI.filter(function(x){ return x.t !== "g"; }).length;
     // la stessa sezione una volta sola, prima delle sue colonne
     var visto = {};

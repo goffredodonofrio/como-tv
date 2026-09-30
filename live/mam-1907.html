@@ -242,6 +242,16 @@
   .ris .filtri-ris .apri-filtri b{background:var(--oro);color:#10131c;border-radius:999px;padding:1px 6px;margin-left:6px;}
   .ris .filtri-ris .ordina{display:flex;align-items:center;gap:6px;font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--fumo);margin-left:8px;}
   .ris .filtri-ris .ordina select{font:600 12px/1 'DM Sans',system-ui,sans-serif;letter-spacing:0;text-transform:none;color:var(--ivory);background:rgba(245,241,230,.06);border:1px solid var(--riga2);border-radius:8px;padding:6px 8px;}
+  .barra-filtri{position:relative;display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px;}
+  .bf-ch{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--riga2);background:rgba(245,241,230,.04);color:var(--ivory);font:600 12px/1 'DM Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;}
+  .bf-ch i{font-style:normal;opacity:.6;font-size:10px;}
+  .bf-ch:hover,.bf-ch.aperta{border-color:var(--oro);}
+  .bf-ch.on{border-color:var(--oro);background:rgba(201,162,75,.16);color:var(--oro2);}
+  .bf-ch.tutti{margin-left:auto;}
+  .bf-pop{position:absolute;top:38px;left:0;z-index:70;min-width:260px;max-width:min(860px,94vw);max-height:460px;overflow:auto;padding:12px 14px;border:1px solid var(--riga2);border-radius:12px;background:#141a27;box-shadow:0 18px 44px rgba(0,0,0,.55);}
+  .bf-pop .pannello-filtri{border:0;padding:0;background:none;}
+  .bf-nota{color:var(--fumo);font-size:12px;margin:4px 2px;}
+  #apriFiltri{display:none!important;}
   .col-sez{grid-column:1/-1;margin:6px 0 -6px;padding-top:8px;border-top:1px solid var(--riga2);font:700 10.5px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--oro2);}
   .col-sez:first-child{border-top:0;padding-top:0;margin-top:0;}
   .gt .gt-tipo{font-style:normal;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;opacity:.7;margin-right:4px;}
@@ -586,6 +596,7 @@
   </div>
   <div class="riass" id="riass" hidden></div>
   </div>
+  <div class="barra-filtri" id="barraFiltri" aria-label="filtri della ricerca"></div>
 
   <div id="home">
     <section id="raccolteBox" hidden>
@@ -679,7 +690,8 @@
   var G = [];            // gettoni: {k:"coll"|"ep"|"cart"|"stag"|"anno"|"tipo", v, n}
   var Q = "", MAX = 60, quanti = MAX, TAB = "tutto", PANNELLO = false, ORD = "data";
   var SCELTI = new Map(), SALVA_APERTO = false;
-  try { PANNELLO = localStorage.getItem("mam1907-filtri") === "1"; } catch (e) {}
+  // (30/09/2026) il pannello nei risultati e' sostituito dalla barra dei filtri sotto il campo
+  PANNELLO = false;
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function gb(b) { return !b ? "0 MB" : b > 1e12 ? (b / 1e12).toFixed(2).replace(".", ",") + " TB" : b > 1e9 ? (b / 1e9).toFixed(1).replace(".", ",") + " GB" : Math.max(1, Math.round(b / 1e6)) + " MB"; }
@@ -775,6 +787,7 @@
       return '<span class="gt" title="' + esc(ETI[g.k] + ": " + g.v) + '">' + (g.k === "pers" ? avatar(PERS[g.v]) : g.k === "volto" ? '<span class="gt-av" style="background-image:url(&quot;' + ritaglio(g.v) + '&quot;)"></span>' : u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"' + (g.k === "coll" ? ' style="--c:' + colore(g.v) + '"' : "") + "></span>") + (BREVE[g.k] ? '<i class="gt-tipo">' + esc(BREVE[g.k]) + "</i>" : "") + "<b>" + esc(nome) + "</b>" + (g.k === "ep" ? "<small>" + esc(g.v.split("/")[0]) + "</small>" : "") + '<button data-via="' + i + '" aria-label="togli ' + esc(nome) + '">×</button></span>';
     }).join("");
     $("svuota").hidden = !G.length && !$("cerca").value && !RACCOLTA;
+    disegnaBarra7();
   }
   function metti(g, sostituisci) {
     if (sostituisci) G = G.filter(function (x) { return x.k !== g.k; });
@@ -2440,10 +2453,53 @@
     if (f && f.dataset.prima) { f.classList.remove("provino"); f.style.backgroundPosition = ""; f.style.backgroundImage = f.dataset.prima === "none" ? "" : f.dataset.prima; if (f.dataset.prima === "none") f.classList.remove("su"); }
   });
 
+  // ── LA BARRA DEI FILTRI (30/09/2026), come nel MAM di Como TV: tendine sempre
+  //    visibili sotto il campo; si cerca anche senza scrivere niente.
+  var BF7 = [
+    { k: "pers", eti: "Persone", c: ["pers", "come"] }, { k: "gen", eti: "Tipo di contenuto", c: ["gen"] }, { k: "mo", eti: "Momento", c: ["mo"] },
+    { k: "stag", eti: "Stagione", c: ["stag"] }, { k: "partita", eti: "Partita", c: ["comp", "avv", "ct", "gi", "gl"] },
+    { k: "camera", eti: "Camera e formato", c: ["cam", "sl", "fmt"] }, { k: "tutti", eti: "Tutti i filtri", c: ["sq", "lu", "anno", "st", "ramo", "coll", "ep"] }
+  ];
+  var BF7_APERTA = "";
+  function disegnaBarra7() {
+    var b = $("barraFiltri"); if (!b || !BF7) return;              // (prima che la barra esista: all'avvio)
+    var cerca0 = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.colcerca;
+    var pop = "";
+    if (BF7_APERTA) {
+      var x = BF7.filter(function (y) { return y.k === BF7_APERTA; })[0];
+      if (!F) { pop = '<p class="bf-nota">Carico l’elenco dei file…</p>'; caricaFile().then(disegnaBarra7).catch(function () {}); }
+      else { SOLO_K = x.c; try { pop = pannello(trovati()).replace(' id="pannelloFiltri"', ""); } finally { SOLO_K = null; }
+        if (x.k !== "tutti") pop = pop.replace(/<h4 class="col-sez">[^<]*<\/h4>/g, ""); }
+    }
+    b.innerHTML = BF7.map(function (x) {
+      var sc = G.filter(function (g) { return x.c.indexOf(g.k) >= 0; });
+      var testo = !sc.length ? x.eti : x.k === "tutti" ? x.eti + " · " + sc.length : x.eti + ": " + sc.slice(0, 2).map(function (g) { return g.n; }).join(", ") + (sc.length > 2 ? " +" + (sc.length - 2) : "");
+      return '<button type="button" class="bf-ch' + (sc.length ? " on" : "") + (BF7_APERTA === x.k ? " aperta" : "") + (x.k === "tutti" ? " tutti" : "") + '" data-bf="' + x.k + '" aria-expanded="' + (BF7_APERTA === x.k) + '">' + esc(testo) + '<i aria-hidden="true">\u25BE</i></button>';
+    }).join("") + (BF7_APERTA ? '<div class="bf-pop" id="bfPop">' + pop + "</div>" : "");
+    var ch = b.querySelector(".bf-ch.aperta"), po = $("bfPop");
+    if (ch && po) po.style.left = Math.max(0, Math.min(ch.offsetLeft, b.clientWidth - po.offsetWidth)) + "px";
+    if (cerca0) { var ci = b.querySelector('[data-colcerca="' + cerca0 + '"]'); if (ci) { ci.focus(); ci.setSelectionRange(ci.value.length, ci.value.length); } }
+  }
+  if ($("barraFiltri")) {
+    $("barraFiltri").addEventListener("click", function (e) {
+      var c = e.target.closest(".bf-ch"); if (c) { BF7_APERTA = BF7_APERTA === c.dataset.bf ? "" : c.dataset.bf; disegnaBarra7(); return; }
+      var t = e.target.closest("[data-coltutte]"); if (t) { COL_TUTTE[t.dataset.coltutte] = true; disegnaBarra7(); return; }
+      if (e.target.closest("[data-azzera]")) { G = G.filter(function (x) { return x.k === "tipo"; }); disegnaGettoni(); vai(); }
+    });
+    $("barraFiltri").addEventListener("change", function (e) {
+      var c = e.target.closest("[data-col]"); if (!c) return;
+      if (c.checked) metti({ k: c.dataset.col, v: c.value, n: nomeDi(c.dataset.col, c.value) }); else togli(c.dataset.col, c.value);
+    });
+    $("barraFiltri").addEventListener("input", function (e) { var c = e.target.closest("[data-colcerca]"); if (!c) return; COL_CERCA[c.dataset.colcerca] = c.value; disegnaBarra7(); });
+    document.addEventListener("mousedown", function (e) { if (BF7_APERTA && !e.target.closest("#barraFiltri")) { BF7_APERTA = ""; disegnaBarra7(); } });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && BF7_APERTA) { BF7_APERTA = ""; disegnaBarra7(); } });
+  }
+  setTimeout(disegnaBarra7, 0);
   // IL PANNELLO FILTRI: colonne da spuntare; dentro una colonna "o", fra colonne "e"
-  var COL_TUTTE = {}, COL_CERCA = {};
+  var COL_TUTTE = {}, COL_CERCA = {}, SOLO_K = null;
   function pannello(tutti) {
     function colonna(k, eti, conta, ordina) {
+      if (SOLO_K && SOLO_K.indexOf(k) < 0) return "";
       var sc = di(k), voci = Object.keys(conta).filter(Boolean);
       sc.forEach(function (v) { if (!(v in conta)) { conta[v] = 0; voci.push(v); } });
       if (!voci.length) return "";
