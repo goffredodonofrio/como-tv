@@ -17221,7 +17221,10 @@ const AZIONI = {
     const q = seqMia(p);
     normalizzaSeq(q);
     const idP = new Set((p.pezzi || []).map(String)), idG = new Set((p.grafiche || []).map(String)), idA = new Set((p.audio || []).map(String));
-    const P = q.pezzi.filter((x) => idP.has(x.id)), G = (q.grafiche || []).filter((g) => idG.has(g.id)), A = (q.audio || []).filter((a) => idA.has(a.id) && !a.legato);
+    // soloAudio (30/09/2026, lo spazio vuoto chiuso su una traccia audio): anche
+    // gli audio LEGATI si spostano da soli, e restano legati fuori sincrono
+    const soloAudio = !!p.soloAudio;
+    const P = q.pezzi.filter((x) => idP.has(x.id)), G = (q.grafiche || []).filter((g) => idG.has(g.id)), A = (q.audio || []).filter((a) => idA.has(a.id) && (!a.legato || soloAudio));
     if (!P.length && !G.length && !A.length) throw new Error("niente da spostare");
     const tr = tracceDi(q), bloccata = (n) => !!(tr[n] || {}).bloccata;
     P.forEach((x) => { if (bloccata(x.traccia || "V1")) throw new Error("la traccia " + (x.traccia || "V1") + " e' bloccata"); });
@@ -17250,7 +17253,11 @@ const AZIONI = {
     toccataAMano(q);
     const r3 = (v) => Math.round(Math.max(0, v) * 1000) / 1000;
     P.forEach((x) => { x.t0 = r3((x.t0 || 0) + d); });
-    muove.forEach((a) => { a.t0 = r3((a.t0 || 0) + d); });
+    muove.forEach((a) => {
+      a.t0 = r3((a.t0 || 0) + d);
+      // un legato che si muove senza il suo video: cambia lo sfasamento
+      if (a.legato && !idP.has(a.legato)) { const x = q.pezzi.find((y) => y.id === a.legato); if (x) { const sf = Math.round((a.t0 - (x.t0 || 0)) * 1000) / 1000; if (Math.abs(sf) < 0.02) delete a.sfaso; else a.sfaso = sf; } }
+    });
     G.forEach((g) => { g.dentro = r3((g.dentro || 0) + d); g.fuori = r3((g.fuori || 0) + d); });
     // attaccata o libera: se dopo lo spostamento su V1 e V2 non ci sono
     // buchi (lo spazio chiuso con Canc) la sequenza resta com'era

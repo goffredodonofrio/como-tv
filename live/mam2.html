@@ -4098,6 +4098,22 @@
     Object.defineProperty(v, "paused", { configurable: true, get: function(){ return VUOTO ? !VUOTO.corre : dP.get.call(v); } });
     return v;
   }
+  // dove sta davvero un audio sulla timeline (il legato: sotto il suo video, piu' lo sfasamento)
+  function t0Audio(au){
+    var pz = au.legato ? PZ.filter(function(z){ return z.id === au.legato; })[0] : null;
+    return pz ? (pz.t0 || 0) + (+au.sfaso || 0) : (au.t0 || 0);
+  }
+  // GLI SPAZI VUOTI DI UNA TRACCIA AUDIO (30/09/2026, Federico: "avvicinare
+  // le clip cancellando lo spazio anche tra le tracce audio")
+  function buchiAudio(tr){
+    var b = [], fin = 0;
+    AUD.filter(function(au){ return (au.traccia || "A1") === tr; }).map(function(au){ var a = t0Audio(au); return { a: a, b: a + Math.max(0, au.fuori - au.dentro) }; })
+      .sort(function(x, y){ return x.a - y.a; }).forEach(function(z){
+        if (z.a > fin + 0.05) b.push({ a: fin, b: z.a });
+        fin = Math.max(fin, z.b);
+      });
+    return b;
+  }
   function buchiDiQui(){
     var b = [], fin = 0;
     PZ.slice().sort(function(x, y){ return (x.t0 || 0) - (y.t0 || 0); }).forEach(function(x){
@@ -4338,8 +4354,16 @@
     buchiDiQui().forEach(function(z){
       if (z.b < LENTE.a || z.a > LENTE.b) return;
       var xa = Math.max(0, X(z.a)), xb = Math.min(w, X(z.b));
-      var bSel = BUCO_SEL && Math.abs(BUCO_SEL.a - z.a) < 0.02 && Math.abs(BUCO_SEL.b - z.b) < 0.02;
+      var bSel = BUCO_SEL && (BUCO_SEL.tr || "V1") === "V1" && Math.abs(BUCO_SEL.a - z.a) < 0.02 && Math.abs(BUCO_SEL.b - z.b) < 0.02;
       hv += '<div class="ed-buco' + (bSel ? " sel" : "") + '" style="left:' + xa + 'px;width:' + Math.max(2, xb - xa) + 'px" title="spazio vuoto di ' + tc(z.b - z.a) + (bSel ? ": Canc lo chiude" : ": clic per sceglierlo, poi Canc lo chiude") + '"></div>';
+    });
+    corsie.forEach(function(n){
+      buchiAudio(n).forEach(function(z){
+        if (z.b < LENTE.a || z.a > LENTE.b) return;
+        var xa = Math.max(0, X(z.a)), xb = Math.min(w, X(z.b));
+        var bSel = BUCO_SEL && BUCO_SEL.tr === n && Math.abs(BUCO_SEL.a - z.a) < 0.02 && Math.abs(BUCO_SEL.b - z.b) < 0.02;
+        haT[n] = '<div class="ed-buco' + (bSel ? " sel" : "") + '" style="left:' + xa + 'px;width:' + Math.max(2, xb - xa) + 'px" title="spazio vuoto su ' + n + ' di ' + tc(z.b - z.a) + (bSel ? ": Canc lo chiude" : ": clic per sceglierlo, poi Canc lo chiude") + '"></div>' + (haT[n] || "");
+      });
     });
     if (AGGANCIO !== null && TRASC) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
     cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; cv2.innerHTML = hv2; cst.innerHTML = hs; cg.innerHTML = hg;
@@ -5041,6 +5065,16 @@
   // Canc sullo spazio vuoto scelto: si chiude, e tutto quello che viene dopo scala indietro
   function chiudiBuco(){
     var z = BUCO_SEL; if (!z || !SEQ) return;
+    // SU UNA TRACCIA AUDIO: scorrono indietro solo gli audio di quella traccia
+    // che vengono dopo; un legato resta legato, fuori sincrono di tanto
+    if (z.tr && z.tr !== "V1") {
+      if (traccaBloccata(z.tr)) return avviso("err", "La traccia " + z.tr + " e' bloccata.");
+      var lungA = z.b - z.a, dopoA = AUD.filter(function(au){ return (au.traccia || "A1") === z.tr && t0Audio(au) >= z.b - 0.02; }).map(function(au){ return au.id; });
+      if (!dopoA.length) { BUCO_SEL = null; disegnaTl(); return; }
+      return post({ tipo:"clip-hl-sposta-gruppo", seq: SEQ.id, d: -Math.round(lungA * 1000) / 1000, pezzi: [], grafiche: [], audio: dopoA, soloAudio: true })
+        .then(function(d){ BUCO_SEL = null; ricaricaSeq(d.seq); avviso("ok", "Spazio vuoto chiuso su " + z.tr + ": " + tc(lungA) + (AUD.some(function(au){ return au.legato && dopoA.indexOf(au.id) >= 0; }) ? " (gli audio legati ora sono fuori sincrono: il numero rosso dice di quanto)" : "") + "."); })
+        .catch(function(er){ avviso("err", esc(er.message)); });
+    }
     var eps = 0.02, lung = z.b - z.a, dentro = [];
     // quello che sta DENTRO lo spazio su un'altra traccia lo tiene aperto: Premiere non lo chiude, e neanche noi
     PZ.forEach(function(x){ var a = x.t0 || 0, b = a + (x.fuori - x.dentro); if (a < z.b - eps && b > z.a + eps) dentro.push(x.traccia || "V1"); });
@@ -5726,8 +5760,10 @@
       if (!re.mosso) {
         // UN CLIC NELLO SPAZIO VUOTO LO SCEGLIE, come in Premiere: poi Canc lo chiude
         var tq = tDiX(re.x0 - el("pista").getBoundingClientRect().left), bq = null;
-        if (!re.agg && corsiaSotto(re.x0, re.y0) === "V1") bq = buchiDiQui().filter(function(z){ return tq > z.a && tq < z.b; })[0] || null;
-        if (bq) { BUCO_SEL = { a: bq.a, b: bq.b }; SELS = []; SEL = null; SELGS = []; SELAS = []; SELG = null; SELA = null; }
+        var corsiaQ = re.agg ? "" : corsiaSotto(re.x0, re.y0);
+        if (corsiaQ === "V1") bq = buchiDiQui().filter(function(z){ return tq > z.a && tq < z.b; })[0] || null;
+        else if (/^A\d$/.test(corsiaQ)) { bq = buchiAudio(corsiaQ).filter(function(z){ return tq > z.a && tq < z.b; })[0] || null; if (bq) bq = { a: bq.a, b: bq.b, tr: corsiaQ }; }
+        if (bq) { BUCO_SEL = { a: bq.a, b: bq.b, tr: bq.tr || "V1" }; SELS = []; SEL = null; SELGS = []; SELAS = []; SELG = null; SELA = null; }
         else vaiTempo(tq, false);
       }
       else { var nSel = SELS.length + SELGS.length + SELAS.length; if (nSel > 1) avviso("ok", nSel + " elementi selezionati: Canc li toglie tutti."); }
