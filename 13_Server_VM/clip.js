@@ -3548,7 +3548,7 @@ function normalizzaSeq(q) {
     if (sf) { a.sfaso = Math.round((a.t0 - x.t0) * 1000) / 1000; if (Math.abs(a.sfaso) < 0.005) delete a.sfaso; }
     if (!a.titolo) a.titolo = x.titolo || "";
   });
-  q.audio.forEach((a) => { if (TRACCE_A.indexOf(a.traccia) < 0) a.traccia = "A1"; });
+  q.audio.forEach((a) => { if (TRACCE_A.indexOf(a.traccia) < 0) a.traccia = "A1"; decoraLingua(q, a); });
   return q;
 }
 
@@ -3674,7 +3674,7 @@ function audioSemplice(q) {
   const legati = {};
   au.forEach((a) => { if (a.legato) legati[a.legato] = true; });
   if (pz.some((x) => (x.traccia || "V1") === "V1" && !legati[x.id])) return false;
-  return au.every((a) => a.legato && !a.sfaso && a.traccia === "A1" && !a.gain
+  return au.every((a) => a.legato && !a.sfaso && !a.lingua && a.traccia === "A1" && !a.gain
                                    && !a.entra && !a.esce && !a.muto && !a.canale
                                    && !((a.volumi || []).length));
 }
@@ -3941,6 +3941,17 @@ function hlAudio(p) {
     if (!v) throw new Error("pezzo video sconosciuto");
     delete a.legato;
     a.t0 = v.t0;
+  } else if (azione === "lingua") {
+    // QUALE COMMENTO: ITA (la nostra, di suo), ENG o suono internazionale
+    const l = String(p.lingua || "").toLowerCase();
+    if (!l || l === "ita") delete a.lingua;
+    else {
+      if (["eng", "int"].indexOf(l) < 0) throw new Error("lingua sconosciuta");
+      const rec = recItaDi(q, a);
+      if (!rec || lingueDi(rec).indexOf(l) < 0) throw new Error("questa partita non ha la versione " + l.toUpperCase() + " allineata");
+      if (tempoInLingua(rec, l, a.dentro) === null) throw new Error("in questo tempo la versione " + l.toUpperCase() + " non si ritrova");
+      a.lingua = l;
+    }
   } else if (azione === "duplica") {
     // ALT+TRASCINA, COME IN PREMIERE (30/09/2026): una copia dell'audio dove
     // la lasci, di solito sulla traccia sotto. La copia e' libera: non e'
@@ -4232,6 +4243,14 @@ async function hlInserisci(p) {
   ricorda(q);                     // com'era prima che entrasse
   q.pezzi.splice(dove, 0, pezzo);
   toccataAMano(q);
+  // inserita mentre si ascoltava l'ENG o l'INT: la clip nasce con quella lingua
+  const lp = String(p.lingua || "").toLowerCase();
+  if (lp === "eng" || lp === "int") {
+    normalizzaSeq(q);
+    const au = (q.audio || []).find((a) => a.legato === pezzo.id);
+    const rec = au && recItaDi(q, au);
+    if (au && rec && tempoInLingua(rec, lp, au.dentro) !== null) { au.lingua = lp; decoraLingua(q, au); }
+  }
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q, pezzo: pezzo.id, agganciato: agganciato };
 }
@@ -4993,6 +5012,7 @@ function segnaPezziLocali(q) {
     // chiave lunga; l'onda resta sulla chiave di sempre (26/09/2026)
     const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
     const kc = suoP && !mediaVia(suoP) ? chiaveCasa(q, suoP) : k;
+    decoraLingua(q, a);
     if (fs.existsSync(filePezzo(kc))) { a.locale = viaPezzo(kc); a.scarto = scartoPezzo(kc); }
     else { delete a.locale; delete a.scarto; }
     a.onda = fs.existsSync(path.join(cartellaOnde(), k + ".json"));
@@ -5039,12 +5059,13 @@ function costruisciMix(q, iBase) {
     if (a.muto || !suona[a.traccia]) return;
     const t = (q.tracce && q.tracce[a.traccia]) || {};
     const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
-    const mioA = mediaVia(suoP) || mediaVia(a) || (a.animata ? viaAnimata(a.animata, "wav") : null);
+    const linA = linguaAudio(q, a);
+    const mioA = (linA && linA.file) || mediaVia(suoP) || mediaVia(a) || (a.animata ? viaAnimata(a.animata, "wav") : null);
     // OGNI PEZZO CON LA SUA PARTITA (26/09/2026): canali e materiale di
     // riserva erano sempre quelli di q.reg, anche per un pezzo di un'altra
     // partita in una gol collection
     const rA = regDi(q, suoP || a);
-    const canaliQui = a.animata ? 2 : quantiCanali(rA);
+    const canaliQui = a.animata || linA ? 2 : quantiCanali(rA);
     const k = suoP ? chiaveCasa(q, suoP) : chiavePezzo(idRegDi(q, a), a.dentro, a.fuori);
     const casa = mioA || filePezzo(k);
     const dur = Math.max(0.05, a.fuori - a.dentro);
@@ -5061,7 +5082,7 @@ function costruisciMix(q, iBase) {
     // accorgi quando e' gia' online.
     let off = 0;
     if (fs.existsSync(casa)) {
-      off = mioA ? a.dentro : scartoPezzo(k);
+      off = linA ? linA.at : mioA ? a.dentro : scartoPezzo(k);
       ingressi.push("-ss", String(off), "-t", String(Math.max(0.05, dur * velA)), "-i", casa);
     } else {
       const rq = rA;
@@ -5079,7 +5100,7 @@ function costruisciMix(q, iBase) {
     // su tutte e due, se no il suono esce da un orecchio
     // la coppia di canali, e dentro la coppia l'eventuale mezzo canale:
     // "aformat=stereo" qui pieghegava un sei canali su due sommando i bus
-    f += "," + panDi(canaliQui, a.coppia, a.canale);
+    f += "," + panDi(canaliQui, linA ? 0 : a.coppia, a.canale);
     // atempo tiene solo da 0.5 a 2: fuori di li' si incatena piu' passaggi
     if (velA !== 1) {
       let resta = velA;
@@ -5965,10 +5986,28 @@ async function hlEsportaPremiere(q, percorso, volume) {
               '</comment><in>' + start + '</in><out>-1</out></marker>';
   });
 
+  // L'AUDIO IN UN'ALTRA LINGUA (30/09/2026): la clip punta al file ENG o INT,
+  // al secondo allineato. Sul Mac: l'archivio sta nel volume della QNAP, il
+  // materiale del club in quello del FRAME (COMOTV - FRAME)
+  const fileLingua = (lx) => {
+    const f = lx.file, frameR = "/mnt/qnap100-frame/";
+    let via;
+    if (f.indexOf(frameR) === 0) via = (vol ? vol.replace(/COMOTV - VOD$/i, "COMOTV - FRAME") : "/Volumes/COMOTV - FRAME") + "/" + f.slice(frameR.length);
+    else if (f.indexOf(radiceNas) === 0) via = (vol ? vol + "/" : "") + f.slice(radiceNas.length);
+    else via = f;
+    const id = "lingua-" + lx.rec + "-" + path.basename(f).replace(/[^A-Za-z0-9]/g, "-").slice(-40);
+    if (gia[id]) return '<file id="' + id + '"/>';
+    gia[id] = true;
+    return '<file id="' + id + '"><name>' + xmlEsc(path.basename(f)) + '</name><pathurl>' + xmlEsc(indirizzo(via)) + '</pathurl>' + rate +
+      '<duration>' + durataFile + '</duration>' + tc +
+      '<media><video><samplecharacteristics><width>1920</width><height>1080</height>' +
+      '</samplecharacteristics></video><audio><channelcount>2</channelcount></audio></media></file>';
+  };
   (q.audio || []).forEach((a) => {
     if (a.animata) return;
-    const da = dovE(a.dentro, (q.pezzi || []).filter((y) => y.id === a.legato)[0]).da;
-    const inF = frame(a.dentro - da), outF = frame(a.fuori - da);
+    const linX = linguaAudio(q, a);
+    const da = linX ? 0 : dovE(a.dentro, (q.pezzi || []).filter((y) => y.id === a.legato)[0]).da;
+    const inF = linX ? frame(linX.at) : frame(a.dentro - da), outF = linX ? frame(linX.at + (a.fuori - a.dentro)) : frame(a.fuori - da);
     const durF = Math.max(1, outF - inF);
     const start = frame(a.t0 || 0), end = start + durF;
     pos = Math.max(pos, end);
@@ -5986,7 +6025,7 @@ async function hlEsportaPremiere(q, percorso, volume) {
     audioTr[k] += '<clipitem id="' + a.id + '"><name>' + xmlEsc(a.titolo || "audio") + '</name>' +
       '<duration>' + durF + '</duration>' + rate +
       '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +
-      (a.muto ? '<enabled>FALSE</enabled>' : '') + schedaFile(a.dentro, (q.pezzi || []).filter((y) => y.id === a.legato)[0]) +
+      (a.muto ? '<enabled>FALSE</enabled>' : '') + (linX ? fileLingua(linX) : schedaFile(a.dentro, (q.pezzi || []).filter((y) => y.id === a.legato)[0])) +
       '<sourcetrack><mediatype>audio</mediatype><trackindex>' + sorg + '</trackindex></sourcetrack>' +
       link + livello(a.gain || 0) + '</clipitem>';
   });
@@ -14149,6 +14188,217 @@ function cartellaGrafiche() {
   assicura(d);
   return d;
 }
+// ══════════ LE LINGUE DI UNA PARTITA (30/09/2026) ══════════
+//  La registrazione del Como resta la NOSTRA (ITA, Goffredo 30/09/2026: "vale
+//  solo quella"); accanto le servono l'ENG e il suono internazionale. L'ENG
+//  e' gia' nell'archivio come partita a se' ("UDINESE-COMO [ENG]"), l'INT
+//  pure dal 2026-27 ("[AUDIO ONLY]"), e per il 2025-26 sta nelle cartelle
+//  BROADCAST del club sulla NAS del 1907 (LIVE INTENATIONAL SOUND).
+//  Ogni versione si ALLINEA alla ITA confrontando la forma d'onda (lingue.py:
+//  sotto i commenti c'e' lo stesso tappeto dello stadio), un tempo per volta,
+//  perche' i file sono tagliati diversamente (l'INT del 6/4 non ha
+//  l'intervallo: -217 s nel primo tempo, -1065 s nel secondo).
+//  lingue.json: { recIta: { taglio, eng: {rec?, file, o1, o2, stato}, int: {...} } }
+const LINGUE_FILE = () => path.join(DIR, "lingue.json");
+let LINGUE = null, LINGUA_ORA = null, LINGUE_INDICE = { quando: 0, int: new Map() };
+function lingue() {
+  if (!LINGUE) { try { LINGUE = JSON.parse(fs.readFileSync(LINGUE_FILE(), "utf8")) || {}; } catch (e) { LINGUE = {}; } }
+  return LINGUE;
+}
+function scriviLingue() {
+  try { fs.writeFileSync(LINGUE_FILE() + ".tmp", JSON.stringify(lingue())); fs.renameSync(LINGUE_FILE() + ".tmp", LINGUE_FILE()); } catch (e) {}
+}
+const PRIMA_SQUADRA_NO = /\bU1\d\b|\bU2\d\b|WOMEN|FEMMINIL|PRIMAVERA|ACADEMY|\bSHOW\b|\bCUP\b|ZETA COMO|KINGS/i;
+// che versione e' una riga dell'archivio: ita, eng, int o niente
+function linguaDiRecord(a) {
+  const t = (a.partita || "") + " " + (a.chiave || "") + " " + (a.dove || "");
+  if (/AUDIO ?ONLY|AUDIO ?FX|INT(ERNATIONAL)? ?SOUND|\[INT\]/i.test(t)) return "int";
+  if (/(^|[^A-Z])ENG([^A-Z]|$)/.test(String(a.partita || "").toUpperCase()) || /FULL MATCH ENG|\/ENG\//i.test(t)) return "eng";
+  if (/(^|[^A-Z])ITA([^A-Z]|$)/.test(t.toUpperCase())) return "ita";
+  return "";
+}
+function primaSquadraComo(a) {
+  return !!a && /\bCOMO\b/i.test(a.partita || "") && !PRIMA_SQUADRA_NO.test((a.partita || "") + " " + (a.competizione || "")) && !senzaPartita(a);
+}
+// il file intero di una riga (una partita in UN file: le altre non si allineano)
+function fileDiRecord(a) {
+  const pz = partiDi(a); if (pz.length !== 1) return null;
+  try { const f = firmaConRegione("", pz[0].chiave, {}, 0, a.bucket); return f && !/^https?:/i.test(f) ? f : null; } catch (e) { return null; }
+}
+// L'INT DEL CLUB: le cartelle BROADCAST della NAS del 1907, una volta ogni sei ore
+async function indiceIntClub() {
+  if (Date.now() - LINGUE_INDICE.quando < 6 * 3600000 && LINGUE_INDICE.int.size) return LINGUE_INDICE.int;
+  const m = MAGAZZINI.find((x) => x.bucket === "frame1907"); if (!m) return LINGUE_INDICE.int;
+  const fuori = new Map(), fsp = fs.promises;
+  const leggi = async (d) => { try { return await fsp.readdir(d, { withFileTypes: true }); } catch (e) { return []; } };
+  // stagione / squadra / competizione / partita / BROADCAST / LIVE ... INT SOUND / file
+  const passi = [/season/i, /first team/i, /./, /./, /broadcast/i, /(?=.*live)(?=.*(int|international))/i];
+  // "20260406_UDINESE-COMO_FULL MATCH_INT SOUND.mp4": la coda confonde le
+  // squadre; se il nome non basta, le dice la cartella ("G31 - UDINESE v COMO")
+  const squadreDa = (nome, cartella) => dueSquadre(nome.replace(/\.[a-z0-9]+$/i, "").replace(/^\d{8}[\s_-]*/, "").replace(/[\s_-]*(FULL[\s_]*MATCH|LIVE|INT(ERNATIONAL)?[\s_]*SOUND|CLEAN[\s_]*FEED).*$/i, "")) ||
+    dueSquadre(String(cartella || "").replace(/^G\d+[\s_-]*(\d{8}[\s_-]*)?/i, "").replace(/\s+v\s+/i, "-"));
+  const giu = async (d, k, partita) => {
+    for (const e of await leggi(d)) {
+      if (!e.isDirectory() && k === passi.length && /\.(mp4|mov|mxf)$/i.test(e.name)) {
+        const g = /(20\d{2})(\d{2})(\d{2})/.exec(e.name); const q = squadreDa(e.name, partita);
+        if (!g || !q) continue;
+        const chiave = g[1] + g[2] + g[3] + "|" + q.map((x) => nomeSemplice(conEsonimi(x))).join("|");
+        fuori.set(chiave, path.join(d, e.name));
+      } else if (e.isDirectory() && k < passi.length && passi[k].test(e.name) && !e.name.startsWith("@")) await giu(path.join(d, e.name), k + 1, k === 3 ? e.name : partita);
+    }
+  };
+  await giu(m.cartella, 0, "");
+  LINGUE_INDICE = { quando: Date.now(), int: fuori };
+  return fuori;
+}
+// LE COPPIE: ogni ITA del Como con la sua ENG e il suo INT
+async function coppieLingue() {
+  const L = lingue(), perChiave = new Map();
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const a = ARCHIVIO[k]; if (!primaSquadraComo(a)) return;
+    const c = chiaveGemella(a); if (!c) return;
+    if (!perChiave.has(c)) perChiave.set(c, {});
+    const g = perChiave.get(c), lr = linguaDiRecord(a), l = lr || "ita";
+    // piu' ITA della stessa gara: vale quella che lo dice nel titolo
+    if (!g[l] || (l === "ita" && lr === "ita" && linguaDiRecord(ARCHIVIO[g[l]]) !== "ita")) g[l] = k;
+  });
+  const intClub = await indiceIntClub();
+  let nuove = 0;
+  perChiave.forEach((g, c) => {
+    const ita = g.ita; if (!ita) return;
+    const a = ARCHIVIO[ita], fIta = fileDiRecord(a); if (!fIta) return;
+    const metti = (l, rec, file) => {
+      if (!file) return;
+      const e = L[ita] || (L[ita] = {}), v = e[l];
+      if (v && v.file === file) return;
+      e[l] = { rec: rec || null, file, stato: "da fare" }; nuove++;
+    };
+    if (g.eng) metti("eng", g.eng, fileDiRecord(ARCHIVIO[g.eng]));
+    if (g.int) metti("int", g.int, fileDiRecord(ARCHIVIO[g.int]));
+    else if (intClub.has(c)) metti("int", null, intClub.get(c));
+  });
+  if (nuove) { scriviLingue(); console.log("[clip] lingue: " + nuove + " versioni nuove da allineare"); }
+  return L;
+}
+function provaLingua(ita, t, altro, da, dur) {
+  return new Promise((si) => {
+    const pr = cp.spawn("ionice", ["-c3", "nice", "-n", "19", path.join(VOLTI_DIR, "venv/bin/python"), path.join(VOLTI_DIR, "lingue.py"), "allinea", ita, String(t), altro, String(Math.max(0, da)), String(dur)], { stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    pr.stdout.on("data", (d) => { out += d; });
+    pr.on("error", () => si(null));
+    pr.on("close", () => { try { si(JSON.parse(out)); } catch (e) { si(null); } });
+  });
+}
+// UN TEMPO: prove in piu' punti; vale lo scarto su cui almeno due sono d'accordo
+async function scartoDelTempo(fIta, fAltro, punti, finestra) {
+  const buone = [];
+  for (const t of punti) {
+    const w = finestra(t, buone.length ? buone[0].o : null);
+    const r = await provaLingua(fIta, t, fAltro, w.da, w.dur);
+    if (!r || r.t === null || !(r.netto >= 2.5)) continue;
+    const o = Math.round((r.t - t) * 1000) / 1000;
+    buone.push({ t, o, netto: r.netto });
+    const d = buone.filter((x) => Math.abs(x.o - o) < 0.08);
+    if (d.length >= 2) return { o: Math.round(d.reduce((s, x) => s + x.o, 0) / d.length * 1000) / 1000, prove: buone };
+  }
+  return { o: null, prove: buone };
+}
+async function allineaLingua(recIta, l) {
+  const L = lingue(), e = L[recIta], v = e && e[l]; if (!v) throw new Error("versione sconosciuta");
+  const a = ARCHIVIO[recIta], fIta = a && fileDiRecord(a);
+  if (!fIta) throw new Error("il file della ITA non e' sulla NAS");
+  const oro = a.orologio || {};
+  const dur = (partiDi(a)[0] || {}).minuti ? partiDi(a)[0].minuti * 60 : 7200;
+  const i1 = +oro.inizio1 > 0 ? +oro.inizio1 : 400, i2 = +oro.inizio2 > i1 + 2400 ? +oro.inizio2 : i1 + 3700;
+  e.taglio = Math.round(i2 - 150);
+  // l'ENG ha il suo cronometro: da li' una prima idea dello scarto, e finestre strette
+  const altro = v.rec && ARCHIVIO[v.rec] && ARCHIVIO[v.rec].orologio;
+  const g1 = altro && +altro.inizio1 > 0 && +oro.inizio1 > 0 ? altro.inizio1 - oro.inizio1 : null;
+  const g2 = altro && +altro.inizio2 > 0 && +oro.inizio2 > 0 ? altro.inizio2 - oro.inizio2 : null;
+  const dentro = (x) => x.filter((t) => t > 30 && t < dur - 90);
+  const t1 = await scartoDelTempo(fIta, v.file, dentro([i1 + 420, i1 + 1200, i1 + 2100]), (t, o) =>
+    o !== null ? { da: t + o - 20, dur: 46 } : g1 !== null ? { da: t + g1 - 90, dur: 186 } : { da: t - 1500, dur: 1806 });
+  const base2 = t1.o !== null ? t1.o : g1;
+  const t2 = await scartoDelTempo(fIta, v.file, dentro([i2 + 420, i2 + 1500, i2 + 2400]), (t, o) =>
+    o !== null ? { da: t + o - 20, dur: 46 } : g2 !== null ? { da: t + g2 - 90, dur: 186 } : base2 !== null ? { da: t + base2 - 1500, dur: 1566 } : { da: t - 2800, dur: 3106 });
+  v.o1 = t1.o; v.o2 = t2.o; v.prove = t1.prove.concat(t2.prove).slice(0, 12); v.quando = new Date().toISOString();
+  v.stato = t1.o !== null || t2.o !== null ? "fatto" : "no";
+  if (v.stato === "no") v.motivo = "nessun tratto ritrovato con sicurezza";
+  else delete v.motivo;
+  collegaLingua(recIta, l);
+  scriviLingue();
+  if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0;     // la ricerca ricompone le partite
+  console.log("[clip] lingue: " + (a.partita || recIta) + " " + l.toUpperCase() + " → " + v.stato + " (1° tempo " + t1.o + " s, 2° tempo " + t2.o + " s)");
+  return v;
+}
+// il file si serve da /clip/_lingue/<rec>_<l>.mp4: un collegamento al file sulla NAS
+function viaLingua(recIta, l) { return "/clip/_lingue/" + recIta + "_" + l + ".mp4"; }
+function collegaLingua(recIta, l) {
+  const v = ((lingue()[recIta] || {})[l]); if (!v || v.stato !== "fatto") return;
+  const d = path.join(DIR, "_lingue"), f = path.join(d, recIta + "_" + l + ".mp4");
+  try { fs.mkdirSync(d, { recursive: true }); try { fs.unlinkSync(f); } catch (e) {} fs.symlinkSync(v.file, f); } catch (e) {}
+}
+// dove sta un secondo della ITA nella versione l (null: non si sa)
+function tempoInLingua(recIta, l, t) {
+  const e = lingue()[recIta], v = e && e[l];
+  if (!v || v.stato !== "fatto") return null;
+  const o = t < (e.taglio || Infinity) ? v.o1 : v.o2;
+  return o === null || o === undefined ? null : Math.max(0, t + o);
+}
+// L'AUDIO DI UNA CLIP IN UN'ALTRA LINGUA: il file e il secondo dove comincia.
+// La clip sta nella ITA (la nostra registrazione); a.lingua dice quale
+// versione far sentire al suo posto.
+function recItaDi(q, a) {
+  const suoP = a && a.legato ? (q.pezzi || []).find((y) => y.id === a.legato) : null;
+  const r = regDi(q, suoP || a);
+  return r && r.arch && r.arch.rec ? r.arch.rec : null;
+}
+function linguaAudio(q, a) {
+  if (!a || !a.lingua) return null;
+  const rec = recItaDi(q, a); if (!rec) return null;
+  const v = (lingue()[rec] || {})[a.lingua]; if (!v || v.stato !== "fatto") return null;
+  const t = tempoInLingua(rec, a.lingua, a.dentro); if (t === null) return null;
+  return { rec, file: v.file, at: Math.round(t * 1000) / 1000, off: Math.round((t - a.dentro) * 1000) / 1000, via: viaLingua(rec, a.lingua) };
+}
+// per la pagina: quali lingue ci sono per questa clip, e dove suona quella scelta
+function decoraLingua(q, a) {
+  try {
+    const recL = recItaDi(q, a), ll = recL ? lingueDi(recL) : [];
+    if (ll.length) a.lingue = ll; else delete a.lingue;
+    const lin = linguaAudio(q, a);
+    if (lin) a.lin = { via: lin.via, off: lin.off }; else delete a.lin;
+  } catch (e) {}
+}
+// le righe ENG e AUDIO ONLY gia' allineate a una ITA: nella ricerca e nella
+// Libreria non sono partite a se', sono l'audio della ITA (Goffredo 30/09/2026)
+function gemelleLingua() {
+  const g = new Set(), L = lingue();
+  Object.keys(L).forEach((k) => ["eng", "int"].forEach((l) => { const v = L[k][l]; if (v && v.rec && v.stato === "fatto") g.add(v.rec); }));
+  return g;
+}
+// quali versioni ha una partita, per la pagina
+function lingueDi(recIta) {
+  const e = lingue()[recIta]; if (!e) return [];
+  return ["eng", "int"].filter((l) => e[l] && e[l].stato === "fatto");
+}
+// IL GIRO: una versione per volta, mai sopra una diretta o una regia
+async function giroLingue() {
+  if (CODE_SPENTE || LINGUA_ORA) return;
+  try { await coppieLingue(); } catch (e) { console.log("[clip] lingue: " + e.message); return; }
+  const L = lingue();
+  const prossima = () => { for (const k of Object.keys(L)) for (const l of ["eng", "int"]) if (L[k][l] && L[k][l].stato === "da fare") return [k, l]; return null; };
+  const avanti = async () => {
+    const x = prossima(); if (!x) { LINGUA_ORA = null; return; }
+    if (inDiretta() || regiaInCorso() || whisperGira()) { LINGUA_ORA = null; setTimeout(giroLingue, 600000); return; }
+    LINGUA_ORA = x;
+    try { await allineaLingua(x[0], x[1]); } catch (e) { L[x[0]][x[1]].stato = "no"; L[x[0]][x[1]].motivo = String(e.message).slice(0, 120); scriviLingue(); }
+    setTimeout(avanti, 5000);
+  };
+  avanti();
+}
+setTimeout(giroLingue, 420000);
+setInterval(giroLingue, 3 * 3600000);
+
 // ══════════ LE GRAFICHE ANIMATE (30/09/2026) ══════════
 //  Bumper ed endtag di Como TV (11_Editing, da Goffredo): video con la
 //  trasparenza (QuickTime Animation, ProRes 4444) e un suono. Stanno sulla
@@ -15481,7 +15731,8 @@ async function aPezzi(lista, fn, quanti) {
 async function costruisciCercaCache() {
   const ora = Date.now();
       const per = {};
-      await aPezzi(Object.keys(R.reg), (k) => { const r = R.reg[k]; if (!r || !(r.evento || r.arch)) return; try { per[k] = tabellino(r).righe; } catch (e) { per[k] = []; } }, 5);
+      const gemelle = gemelleLingua();
+      await aPezzi(Object.keys(R.reg), (k) => { const r = R.reg[k]; if (!r || !(r.evento || r.arch)) return; if (r.arch && gemelle.has(r.arch.rec)) return; try { per[k] = tabellino(r).righe; } catch (e) { per[k] = []; } }, 5);
       // E LE PARTITE MAI APERTE. La ricerca guardava solo le registrazioni:
       // "tutti i gol di Douvikas" trovava Udinese-Como e basta, con venti
       // partite negli appunti. Per una partita dell'indice bastano appunti
@@ -15490,7 +15741,7 @@ async function costruisciCercaCache() {
       const conReg = new Set(); Object.keys(R.reg).forEach((k) => { const r = R.reg[k]; if (r && (r.arch || r.evento)) conReg.add((r.arch && r.arch.rec) || r.evento); });
       const finti = {};
       await aPezzi(Object.keys(ARCHIVIO), (rec) => {
-        if (conReg.has(rec) || rec.indexOf("s3:") === 0) return;
+        if (conReg.has(rec) || rec.indexOf("s3:") === 0 || gemelle.has(rec)) return;
         const a = ARCHIVIO[rec], ap = APPUNTI[rec], es = ESPN[rec];
         if (!a || !(a.pezzi || []).length) return;
         if (!ap && !(es && es.eventi && es.eventi.length)) return;
@@ -16550,7 +16801,8 @@ const AZIONI = {
         if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
         fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
                      tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
-                     gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo: x.ruolo || "", ruoloDa: x.ruoloDa || "", rating: x.rating || 0, boato: x.boato || 0 });
+                     gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo: x.ruolo || "", ruoloDa: x.ruoloDa || "", rating: x.rating || 0, boato: x.boato || 0,
+                     lingue: r.arch && r.arch.rec ? lingueDi(r.arch.rec) : [] });
       });
     });
     // LO STESSO FILE APERTO DUE VOLTE (26/09/2026): due registrazioni sulla
@@ -17043,7 +17295,8 @@ const AZIONI = {
     // un errore di chi l'ha scritta, non del calendario. Si tiene, ma in
     // fondo e con il segno, invece di farla comparire come prima cosa.
     const domani = Date.now() + 2 * 86400000;
-    const fuori = Object.keys(ARCHIVIO).map((rec) => {
+    const gemelle = gemelleLingua();
+    const fuori = Object.keys(ARCHIVIO).filter((rec) => !gemelle.has(rec)).map((rec) => {
       const a = ARCHIVIO[rec], ms = Date.parse(a.quando) || 0;
       // "intera": la partita c'e' tutta — un file da cento minuti in su, oppure
       // i due tempi. Prima della misura ci si fida della forma del materiale.
@@ -17057,7 +17310,7 @@ const AZIONI = {
                forse: f ? { nome: f.nome, voto: f.voto, perche: f.perche || [] } : undefined,
                competizione: a.competizione || "", soloS3: !!a.soloS3,
                dataSospetta: !!a.soloS3 && ms > domani,
-               pezzi: pz.length || 1, sicuro: !!a.sicuro, intera: intera, minuti: Math.round(minuti),
+               pezzi: pz.length || 1, sicuro: !!a.sicuro, intera: intera, minuti: Math.round(minuti), lingue: lingueDi(rec),
                kickoff: a.kickoff === undefined ? null : a.kickoff };
     }).sort((x, y) => (x.dataSospetta - y.dataSospetta) || ((Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0)));
     return { ok: true, quante: fuori.length, partite: fuori.slice(0, quante) };
@@ -17301,13 +17554,16 @@ const AZIONI = {
     let mancano = 0, fatte = 0;
     for (const a of (q.audio || [])) {
       const suoP = a.legato ? (q.pezzi || []).filter((y) => y.id === a.legato)[0] : null;
-      const mioW = mediaVia(suoP) || mediaVia(a) || (a.animata ? viaAnimata(a.animata, "wav") : null);
-      const k = mioW ? ("media-" + path.basename(mioW) + "-" + a.dentro.toFixed(2) + "-" + a.fuori.toFixed(2)).replace(/[^A-Za-z0-9._-]/g, "_")
+      const linW = linguaAudio(q, a);
+      const mioW = (linW && linW.file) || mediaVia(suoP) || mediaVia(a) || (a.animata ? viaAnimata(a.animata, "wav") : null);
+      const k = linW ? ("lingua-" + linW.rec + "-" + a.lingua + "-" + a.dentro.toFixed(2) + "-" + a.fuori.toFixed(2))
+              : mioW ? ("media-" + path.basename(mioW) + "-" + a.dentro.toFixed(2) + "-" + a.fuori.toFixed(2)).replace(/[^A-Za-z0-9._-]/g, "_")
                      : chiavePezzo(idRegDi(q, suoP || a), a.dentro, a.fuori);
       const via = path.join(cartellaOnde(), k + ".json");
       if (fs.existsSync(via)) { try { fuori[a.id] = JSON.parse(fs.readFileSync(via, "utf8")); } catch (e) {} continue; }
       if (fatte >= 4) { mancano++; continue; }      // le altre al giro dopo
-      const o = mioW ? await ondaDaFile(mioW, a.dentro, a.fuori, via)
+      const o = linW ? await ondaDaFile(linW.file, linW.at, linW.at + (a.fuori - a.dentro), via)
+              : mioW ? await ondaDaFile(mioW, a.dentro, a.fuori, via)
                      : await calcolaOnda(q.reg, a.dentro, a.fuori);
       if (o) { fuori[a.id] = o; fatte++; } else mancano++;
     }
@@ -17364,6 +17620,29 @@ const AZIONI = {
   "clip-grafica-uscita": graficaSuUscita,
   "clip-hl-grafica": hlGrafica,
   "clip-hl-animate": () => ({ ok: true, animate: animate() }),
+  // LE LINGUE: lo stato, e un allineamento a mano (anche in dev, dove i giri sono spenti)
+  "clip-lingue": async (p) => {
+    if (p && p.coppie) await coppieLingue();
+    const L = lingue();
+    return { ok: true, ora: LINGUA_ORA, lingue: Object.keys(L).map((k) => ({ rec: k, partita: (ARCHIVIO[k] || {}).partita || "", giorno: (ARCHIVIO[k] || {}).giorno || "",
+      eng: L[k].eng ? { stato: L[k].eng.stato, o1: L[k].eng.o1, o2: L[k].eng.o2, motivo: L[k].eng.motivo, club: !L[k].eng.rec } : null,
+      int: L[k].int ? { stato: L[k].int.stato, o1: L[k].int.o1, o2: L[k].int.o2, motivo: L[k].int.motivo, club: !L[k].int.rec } : null })) };
+  },
+  "clip-lingue-allinea": async (p) => {
+    const rec = String(p.rec || ""), l = String(p.lingua || "");
+    if (["eng", "int"].indexOf(l) < 0) throw new Error("lingua: eng o int");
+    await coppieLingue();
+    return { ok: true, versione: await allineaLingua(rec, l) };
+  },
+  "clip-lingue-giro": () => { giroLingue(); return { ok: true }; },
+  // per i player della pagina: dove sta, in ENG e INT, ogni secondo della ITA
+  "clip-lingue-di": (p) => {
+    const rec = String(p.rec || ""), e = lingue()[rec];
+    if (!e) return { ok: true, lingue: null };
+    const fuori = { taglio: e.taglio || null };
+    ["eng", "int"].forEach((l) => { const v = e[l]; if (v && v.stato === "fatto") fuori[l] = { via: viaLingua(rec, l), o1: v.o1, o2: v.o2 }; });
+    return { ok: true, lingue: fuori.eng || fuori.int ? fuori : null };
+  },
   // UNA GRAFICA ANIMATA ALLA TESTINA: la grafica sopra il video e il suo suono su A3
   "clip-hl-animata": (p) => {
     const q = seqMia(p);

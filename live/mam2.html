@@ -1227,6 +1227,15 @@
   .ed-pista.lametta,.ed-pista.lametta .ed-pezzo,.ed-pista.lametta .ed-audio,.ed-pista.lametta .ed-audio *{cursor:crosshair;}
   /* FUORI SINCRONO (come in Premiere): il numero rosso, in fotogrammi, sul video e sul suo audio; clic = rimetti in sincrono */
   .ed-sync{position:absolute;top:2px;left:2px;z-index:5;background:#C8252C;color:#fff;font:700 10px/12px ui-monospace,Menlo,monospace;padding:0 3px;border:1px solid rgba(255,255,255,.9);border-radius:4px;cursor:pointer;pointer-events:auto;box-shadow:0 1px 2px rgba(0,0,0,.5);}
+  /* ITA · ENG · INT sopra i player (30/09/2026) */
+  .lingue-player{position:absolute;top:8px;right:8px;z-index:6;display:inline-flex;border:1px solid rgba(245,241,230,.35);border-radius:6px;overflow:hidden;background:rgba(10,18,32,.72);}
+  .lingue-player button{border:0;background:transparent;color:var(--ivory);font:700 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;padding:5px 8px;cursor:pointer;}
+  .lingue-player button+button{border-left:1px solid rgba(245,241,230,.2);}
+  .lingue-player button.on{background:var(--oro);color:var(--navy);}
+  .lingue-ris{display:inline-flex;gap:3px;margin-left:6px;vertical-align:1px;}
+  .lingue-ris a{font:700 9px/1 ui-monospace,Menlo,monospace;letter-spacing:.05em;padding:2px 4px;border-radius:3px;border:1px solid rgba(201,162,75,.6);color:var(--oro2);text-decoration:none;}
+  .lingue-ris a:hover{background:var(--oro);color:var(--navy);}
+  .ed-lingua{position:absolute;top:2px;right:4px;z-index:5;background:#1F6FB2;color:#fff;font:700 9px/12px ui-monospace,Menlo,monospace;padding:0 4px;border-radius:3px;pointer-events:none;letter-spacing:.06em;}
   .ed-pezzo .cima .ed-sync{position:static;display:inline-block;margin-right:4px;vertical-align:1px;}
   .ed-sync:hover{background:#ff6b70;}
   /* SELEZIONA IN AVANTI / INDIETRO (A, Shift+A di Premiere): la riga che segue il
@@ -1456,7 +1465,7 @@
         </div>
         <div class="a-per" id="aPer" hidden><span>Stai montando <b id="aPerNome">…</b>: segna entrata e uscita e</span><button class="mini oro" id="aPerInserisci" title="inserisce entrata-uscita nella sequenza che stai montando (,)">Inserisci nella sequenza ,</button><button class="mini" id="aPerTorna" title="torna al montaggio">&#8617; Torna al montaggio</button></div>
       </div>
-      <div class="player"><video id="video" playsinline preload="metadata"></video><div class="sotto" id="sottoBox"><i class="it" id="sottoIt"></i><i class="en" id="sottoEn"></i></div></div>
+      <div class="player"><video id="video" playsinline preload="metadata"></video><div class="lingue-player" id="lingueAsset" hidden></div><div class="sotto" id="sottoBox"><i class="it" id="sottoIt"></i><i class="en" id="sottoEn"></i></div></div>
       <div class="trasporto">
         <div class="momenti-riga"><div class="lati" id="mLati" hidden></div><div class="momenti" id="momenti"><div class="testina" id="mTestina"></div></div></div>
         <div class="legenda" id="legenda"></div>
@@ -1588,7 +1597,7 @@
           <div class="pan-corpo pan-srg" data-corpo="srg" hidden>
             <!-- il titolo sta nella linguetta, come il Programma; queste restano per il codice e per il menu ≡ -->
             <div hidden><b id="srgTitolo">Nessuna partita</b><span id="srgMeta"></span><button id="srgLibreria" disabled>Apri nella Libreria</button></div>
-            <div class="srg-palco"><video id="videoS" playsinline preload="metadata"></video><div class="srg-vuoto" id="srgVuoto">Apri una partita dal Browser media (due clic),<br>oppure premi F su un pezzo: la sua partita arriva qui, sullo stesso fotogramma.</div></div>
+            <div class="srg-palco"><video id="videoS" playsinline preload="metadata"></video><div class="lingue-player" id="lingueSrg" hidden></div><div class="srg-vuoto" id="srgVuoto">Apri una partita dal Browser media (due clic),<br>oppure premi F su un pezzo: la sua partita arriva qui, sullo stesso fotogramma.</div></div>
             <div class="bt" id="btSrg" title="l&#8217;indicatore di posizione corrente: trascinalo"></div>
             <div class="ed-barra barra-monitor srg-barra">
               <span class="tc" id="srgOra">00:00:00:00<small id="srgTot"></small></span>
@@ -2617,9 +2626,19 @@
       ruoli.map(function(r){ return '<button data-ruolo="' + r + '" style="--c:' + RUOLI[r].c + '" class="' + (selR.indexOf(r) >= 0 ? "on" : "") + '">' + RUOLI[r].eti + '<b>' + conta[r] + '</b></button>'; }).join("") + '</div>';
     return h + '</div>';
   }
+  // ITA · ENG · INT sotto una partita del Como: ognuna apre l'Editing con quell'audio
+  function lingueRis(x, link, t){
+    var ls = x.lingue || (x.rec && LINGUE_INFO[x.rec] ? ["eng", "int"].filter(function(k){ return LINGUE_INFO[x.rec][k]; }) : []);
+    if (!ls || !ls.length) return "";
+    return '<span class="lingue-ris">' + ["ita"].concat(ls).map(function(k){ return '<a data-apri-lingua="' + esc(link(x, t, k === "ita" ? "" : k)) + '" title="' + ({ ita: "con il commento ITA di Como TV", eng: "con il commento inglese del club", int: "con il suono internazionale" })[k] + '">' + k.toUpperCase() + '</a>'; }).join("") + '</span>';
+  }
+  document.addEventListener("click", function(e){
+    var a = e.target.closest && e.target.closest("[data-apri-lingua]"); if (!a) return;
+    e.preventDefault(); e.stopPropagation(); vaiEditing(a.dataset.apriLingua);
+  }, true);
   function tesseraPartita(x, link){
     var ant = anteprimaHtml(x);
-    return '<a class="card tes" href="' + link(x) + '"><div class="mini">' + ant + '</div><div class="t">' + didascalia(x) + '<small>' + compEtichetta(x, true) + quando(x.quando) + ' · ' + durata(x.durata) + '</small></div></a>';
+    return '<a class="card tes" href="' + link(x) + '"><div class="mini">' + ant + '</div><div class="t">' + didascalia(x) + '<small>' + compEtichetta(x, true) + quando(x.quando) + ' · ' + durata(x.durata) + lingueRis(x, link) + '</small></div></a>';
   }
   // DOVE SI APRE. La finestra (dentro-fuori) e' larga apposta, per il montaggio;
   // chi clicca vuole vedere la giocata. Quando il secondo l'ha detto
@@ -2653,7 +2672,7 @@
     return '<a class="card tes az' + (on ? " scelta" : "") + '" href="' + link(x, apriA(x)) + '" data-reg="' + esc(x.reg || "") + '" data-rec="' + esc(casa ? (x.rec || "") : "") + '" data-t="' + Math.round(x.t || 0) + '">' + scegli +
       '<div class="mini">' + sotto + '<div class="foto"></div><div class="sopra"><div class="su"><span class="tipo-az ' + ta.cl + '">' + esc(ta.eti) + '</span>' +
         (x.minuto ? '<span class="minuto">' + esc(String(x.minuto).replace(/'?$/, "'")) + '</span>' : '') + '</div><div class="giu">' + esc(fonte) + (!ev || ev.s3 ? ' \u00b7 in arrivo sulla NAS' : '') + '</div></div></div>' +
-      '<div class="t"><div class="testo">' + evidenzia(x.titolo || x.giocatore || "", QEV || Q) + '</div><small>' + (ev ? compEtichetta(ev, true) : '') + esc(ev ? (ev.squadre ? ev.squadre.map(function(s){ return s.nome; }).join(" – ") + (ev.ris ? " " + ev.ris.join("-") : "") : nomeDi(ev)) : x.partita) + '</small></div></a>';
+      '<div class="t"><div class="testo">' + evidenzia(x.titolo || x.giocatore || "", QEV || Q) + '</div><small>' + (ev ? compEtichetta(ev, true) : '') + esc(ev ? (ev.squadre ? ev.squadre.map(function(s){ return s.nome; }).join(" – ") + (ev.ris ? " " + ev.ris.join("-") : "") : nomeDi(ev)) : x.partita) + lingueRis(x, link, apriA(x)) + '</small></div></a>';
   }
   function tesseraDetto(x, ev, link){
     return '<a class="card tes detto" href="' + link(x, x.a) + '"><div class="mini"><div class="frase"><span>“' + esc(x.testo) + '”</span></div>' +
@@ -2820,7 +2839,7 @@
       var voto = function(x){ return (x.rating || 0) * 10 + (x.boato || 0) + (x.gol || x.ruolo === "gol" ? 6 : 0) + (x.certezza && x.certezza !== "minuto" ? 2 : 0); };
       azioni.sort(function(a, b){ return voto(b) - voto(a); });
     }
-    var link = function(x, t){ return "mam2.html?asset=" + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + (t !== undefined ? "&t=" + Math.floor(t) : ""); };
+    var link = function(x, t, lin){ return "mam2.html?asset=" + encodeURIComponent(x.rec || "") + (x.reg ? "&reg=" + encodeURIComponent(x.reg) : "") + (t !== undefined ? "&t=" + Math.floor(t) : "") + (lin ? "&lingua=" + lin : ""); };
     var nomeSq = gettone("s").map(function(s){ return s.eti; }).join(" / ");
     var etiRuoli = rls.map(function(r){ return (RUOLI[r] || {}).eti || r; }).join(" o ");
     var gruppi = {
@@ -3510,11 +3529,63 @@
       .then(function(P){ var x = P[g]; if (!x || !x.n || ASSET !== r) return;
         el("aMeta").insertAdjacentHTML("beforeend", ' · <a href="mam-1907.html#g=' + encodeURIComponent(JSON.stringify([["part", g]])) + '" target="_blank" rel="noopener" style="color:var(--oro2)" title="la stessa partita girata dal club, nel MAM Como 1907">Materiale del club: ' + x.n.toLocaleString("it-IT") + ' file ↗</a>'); });
   }
+  // ── LE LINGUE NEI PLAYER (30/09/2026). Per le partite del Como la nostra
+  //    registrazione e' la ITA; ENG e suono internazionale del club sono file
+  //    allineati tempo per tempo. Scegliendoli, il video resta quello e muto,
+  //    e un <audio> suona la versione scelta al secondo giusto.
+  var LINGUE_INFO = {};
+  function infoLingue(rec){
+    if (!rec) return Promise.resolve(null);
+    if (LINGUE_INFO.hasOwnProperty(rec)) return Promise.resolve(LINGUE_INFO[rec]);
+    return post({ tipo:"clip-lingue-di", rec: rec }).then(function(d){ return (LINGUE_INFO[rec] = d.lingue || null); }).catch(function(){ return (LINGUE_INFO[rec] = null); });
+  }
+  function PlayerLingua(video, boxId){
+    var o = { l: "ita", info: null, au: null, video: video };
+    function secondo(t){ var i = o.info, v = i && i[o.l]; if (!v) return null; var off = (i.taglio && t >= i.taglio) ? v.o2 : v.o1; return (off === null || off === undefined) ? null : t + off; }
+    o.giro = function(){
+      var v = o.video(); if (!v) return;
+      if (o.l === "ita" || !o.au) { if (o.au && !o.au.paused) o.au.pause(); return; }
+      var dove = secondo(v.currentTime || 0);
+      if (dove === null) { if (!o.au.paused) o.au.pause(); return; }
+      if (Math.abs((o.au.currentTime || 0) - dove) > 0.2) { try { o.au.currentTime = dove; } catch (e) {} }
+      try { o.au.volume = v.volume; if (o.au.playbackRate !== v.playbackRate) o.au.playbackRate = v.playbackRate; } catch (e) {}
+      if (v.paused) { if (!o.au.paused) o.au.pause(); } else if (o.au.paused) o.au.play().catch(function(){});
+    };
+    o.metti = function(l){
+      var v = o.video(); o.l = (l === "eng" || l === "int") && o.info && o.info[l] ? l : "ita";
+      if (o.l === "ita") { if (o.au) o.au.pause(); if (v) v.muted = false; }
+      else {
+        if (!o.au) { o.au = document.createElement("audio"); o.au.preload = "auto"; o.au.style.display = "none"; document.body.appendChild(o.au); }
+        var src = BASE + o.info[o.l].via; if (o.au.getAttribute("src") !== src) o.au.setAttribute("src", src);
+        if (v) v.muted = true;
+        o.giro();
+      }
+      disegna();
+    };
+    o.carica = function(rec, iniziale){
+      o.info = null; o.l = "ita"; if (o.au) o.au.pause(); var v0 = o.video(); if (v0) v0.muted = false; disegna();
+      infoLingue(rec).then(function(i){ o.info = i; disegna(); if (iniziale) o.metti(iniziale); });
+    };
+    function disegna(){
+      var b = el(boxId); if (!b) return;
+      if (!o.info) { b.hidden = true; b.innerHTML = ""; return; }
+      var ls = ["ita"].concat(["eng", "int"].filter(function(k){ return o.info[k]; }));
+      b.hidden = false;
+      b.innerHTML = ls.map(function(k){ return '<button type="button" data-lin="' + k + '" class="' + (o.l === k ? "on" : "") + '" title="' + ({ ita: "commento ITA di Como TV", eng: "commento inglese del club", int: "suono internazionale (senza commento)" })[k] + '">' + k.toUpperCase() + '</button>'; }).join("");
+    }
+    setTimeout(function(){ var b = el(boxId); if (b) b.addEventListener("click", function(e){ var x = e.target.closest("button[data-lin]"); if (!x) return; e.preventDefault(); e.stopPropagation(); o.metti(x.dataset.lin); avviso("ok", x.dataset.lin === "ita" ? "Commento ITA." : x.dataset.lin === "eng" ? "Commento ENG del club: inserendo, la clip nasce con questo audio." : "Suono internazionale: inserendo, la clip nasce con questo audio."); }); }, 0);
+    setInterval(o.giro, 250);
+    return o;
+  }
+  var LIN_ASSET = PlayerLingua(function(){ return el("video"); }, "lingueAsset");
+  var LIN_SRG = PlayerLingua(function(){ return el("videoS"); }, "lingueSrg");
+  function linguaPer(o){ return o && o.l !== "ita" ? o.l : undefined; }
   function apriAsset(rec, regId, t){
     vai("asset"); V = el("video"); mostraPer();
     var apri = regId ? Promise.resolve({ reg: REGS[regId] || null }) : Promise.resolve({ reg: null });
     apri.then(function(){ return post({ tipo:"clip-archivio-apri", rec: rec }); }).then(function(d){
       var r = d.reg; ASSET = r; MARKER = r.marker || []; FORSE = null; BOZZA = null;
+      LIN_ASSET.carica(r.arch && r.arch.rec, new URLSearchParams(location.search).get("lingua"));
       // la bozza: la sequenza "BOZZA · partita" piu' recente di questa registrazione
       post({ tipo:"clip-hl-elenco", reg: r.id, tutte: true }).then(function(x){ BOZZA = (x.seq || []).filter(function(q){ return q.reg === r.id && /^BOZZA · /.test(q.titolo || ""); }).sort(function(a,b){ return (b.creata || 0) - (a.creata || 0); })[0] || null; disegnaBozza(); }).catch(function(){});
       disegnaBozza();
@@ -3919,7 +3990,7 @@
     return post({ tipo:"clip-hl-nuova", reg: ASSET.id, titolo: "BOZZA · " + (ASSET.titolo || "") }).then(function(d){ BOZZA = d.seq; return BOZZA; });
   }
   function bozzaAggiungi(dentro, fuori, titolo){
-    return bozzaAssicura().then(function(){ return post({ tipo:"clip-hl-inserisci", reg: ASSET.id, seq: BOZZA.id, dentro: Math.round(dentro * 100) / 100, fuori: Math.round(fuori * 100) / 100, titolo: titolo || ((ASSET.titolo || "") + " " + tc(dentro)), aggancia: false }); }).then(function(d){ BOZZA = d.seq || BOZZA; return BOZZA; });
+    return bozzaAssicura().then(function(){ return post({ tipo:"clip-hl-inserisci", lingua: linguaPer(LIN_ASSET), reg: ASSET.id, seq: BOZZA.id, dentro: Math.round(dentro * 100) / 100, fuori: Math.round(fuori * 100) / 100, titolo: titolo || ((ASSET.titolo || "") + " " + tc(dentro)), aggancia: false }); }).then(function(d){ BOZZA = d.seq || BOZZA; return BOZZA; });
   }
   el("bBozza").addEventListener("click", function(){
     if (!ASSET || DENTRO === null || FUORI === null || FUORI <= DENTRO) return;
@@ -3928,7 +3999,7 @@
   });
   // IN TIMELINE, DOVE VUOI TU: in coda, all'inizio, dopo un pezzo, o in una sequenza nuova
   function inserisci(seqId, dove){
-    var c = { tipo:"clip-hl-inserisci", reg: ASSET.id, dentro: DENTRO, fuori: FUORI, titolo: (ASSET.titolo || "") + " " + tc(DENTRO), aggancia: false };
+    var c = { tipo:"clip-hl-inserisci", reg: ASSET.id, dentro: DENTRO, fuori: FUORI, titolo: (ASSET.titolo || "") + " " + tc(DENTRO), aggancia: false, lingua: linguaPer(LIN_ASSET) };
     if (seqId) c.seq = seqId; if (dove !== undefined && dove !== null) c.dove = dove;
     return post(c).then(function(d){ var q = d.seq; if (q && q.id) vaiEditing("mam2.html?seq=" + encodeURIComponent(q.id)); }).catch(function(e){ avviso("err", esc(e.message)); });
   }
@@ -4472,6 +4543,7 @@
                  '<span class="diss dx" data-diss="esce" data-ad="' + esc(au.id) + '" style="right:' + Math.max(0, esce - 4).toFixed(0) + 'px" title="dissolvenza in uscita: trascina"></span>' : "") +
       (ww > 60 && (au.gain || au.muto) ? '<span class="db">' + (au.muto ? "muto" : (au.gain > 0 ? "+" : "") + au.gain + " dB") + '</span>' : "") +
       (au.legato ? segnoSync(sfVivo !== undefined ? sfVivo : au.sfaso, au.id) : "") +
+      (au.lingua ? '<span class="ed-lingua" title="' + (au.lingua === "eng" ? "commento inglese" : "suono internazionale") + ' del club, allineato">' + au.lingua.toUpperCase() + '</span>' : "") +
       '</div>';
   }
   function chiediOnde(){
@@ -4674,6 +4746,9 @@
       { capo: "Audio" },
       bt("Scollega", "cmd L", "eStacca"),
       bt("Disattiva audio clip", "", "eMuto"),
+      vc("Commento ITA (Como TV)", "", function(){ linguaScelti("ita"); }),
+      vc("Commento ENG", "", function(){ linguaScelti("eng"); }),
+      vc("Suono internazionale (INT)", "", function(){ linguaScelti("int"); }),
       bt("Elimina la traccia audio", "", "eAudioTogli"),
       vc("Guadagno audio…", "G", chiediGain),
       vc("Applica dissolvenza in entrata…", "", function(){ chiediDissolvenza("entra"); }),
@@ -5147,6 +5222,7 @@
     return Math.max(0, Math.min(1, lin));
   }
   function sorgenteAudio(a){
+    if (a.lin && a.lin.via) return BASE + a.lin.via;
     if (a.animata) return BASE + "/clip/_hl/_grafiche/animate/" + encodeURIComponent(a.animata) + ".wav";
     var p = a.legato ? PZ.filter(function(z){ return z.id === a.legato; })[0] : null;
     if ((p && p.media) || a.media) return BASE + "/video/" + encodeURIComponent((p && p.media) || a.media);
@@ -5189,7 +5265,8 @@
     if (!AE) { AE = document.createElement("audio"); AE.preload = "auto"; AE.style.display = "none"; document.body.appendChild(AE); }
     var src = sorgenteAudio(a); if (!src) return;
     var p = a.legato ? PZ.filter(function(z){ return z.id === a.legato; })[0] : null, v = (p && +p.velocita) || 1;
-    var dove = a.dentro + (t - (a.t0 || 0)) * v;
+    // in un'altra lingua il file e' un altro, e lo stesso istante sta piu' in la' o piu' in qua
+    var dove = a.dentro + (t - (a.t0 || 0)) * v + (a.lin ? +a.lin.off || 0 : 0);
     if (AE.getAttribute("src") !== src) { AE.setAttribute("src", src); AE.addEventListener("loadedmetadata", function una(){ AE.removeEventListener("loadedmetadata", una); try { AE.currentTime = dove; } catch (e) {} }); }
     else if (Math.abs(AE.currentTime - dove) > 0.25) { try { AE.currentTime = dove; } catch (e) {} }
     try { if (AE.playbackRate !== v) AE.playbackRate = v; } catch (e) {}
@@ -5384,7 +5461,7 @@
     // li'. Ora: il video suona se il suo audio e' al suo posto; ogni altro
     // audio che cade sotto la testina lo suona un secondo lettore.
     var auOra = AUD.filter(function(z){ return z.legato === x.id; })[0];
-    var alSuoPosto = !VUOTO && auOra && Math.abs((auOra.t0 || 0) - (x.t0 || 0)) < 0.05 && Math.abs(auOra.dentro - x.dentro) < 0.05;
+    var alSuoPosto = !VUOTO && auOra && !auOra.lin && Math.abs((auOra.t0 || 0) - (x.t0 || 0)) < 0.05 && Math.abs(auOra.dentro - x.dentro) < 0.05;
     var daVE = alSuoPosto && !auOra.muto && tracciaSuona(auOra.traccia) ? auOra : null;
     VE.muted = !daVE;
     if (daVE) { var vv = volumeAudio(daVE, t); if (Math.abs(VE.volume - vv) > 0.01) VE.volume = vv; }
@@ -6231,6 +6308,23 @@
       metti(suo);
     });
     return out;
+  }
+  // LE LINGUE DELLA PARTITA (30/09/2026): sotto le clip del Como, al posto del
+  // nostro commento, l'ENG o il suono internazionale del club, allineati
+  function linguaScelti(l){
+    if (!SEQ) return;
+    var tutti = audiScelti(); if (!tutti.length) return avviso("err", "Scegli una o piu' clip.");
+    var quali = tutti.filter(function(a){ return l === "ita" ? !!a.lingua : (a.lingue || []).indexOf(l) >= 0 && a.lingua !== l; });
+    if (!quali.length) return avviso("err", l === "ita" ? "Sono gia' col commento ITA." : "Queste clip non hanno la versione " + l.toUpperCase() + " (solo le partite del Como con la " + l.toUpperCase() + " allineata).");
+    var passo = Promise.resolve(), fatti = 0, errori = [], ultima = null;
+    quali.forEach(function(a){ passo = passo.then(function(){ return post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"lingua", audio: a.id, lingua: l }).then(function(d){ fatti++; delete ONDE[a.id]; if (d && d.seq) ultima = d.seq; }).catch(function(er){ errori.push(er.message); }); }); });
+    passo.then(function(){
+      if (ultima) ricaricaSeq(ultima);
+      ONDE_CHIESTE = 0; chiediOnde();
+      var nome = { ita: "commento ITA", eng: "commento ENG", int: "suono internazionale" }[l];
+      if (!fatti && errori.length) return avviso("err", esc(errori[0]));
+      avviso("ok", fatti + (fatti === 1 ? " clip" : " clip") + " col " + nome + (errori.length ? " (non riuscite " + errori.length + ": " + esc(errori[0]) + ")" : "") + ".");
+    });
   }
   function collegaScelti(){
     if (!SEQ) return;
@@ -7502,6 +7596,10 @@
     (gia && gia.via && !gia.arch ? Promise.resolve({ reg: gia }) : post({ tipo:"clip-archivio-apri", rec: rec })).then(function(d){
       var r = d.reg; if (!r || !r.via) throw new Error("questa partita non si apre");
       REGS[r.id] = r; SRG.r = r; SRG.rec = rec; SRG.dentro = SRG.fuori = null;
+      // la lingua: quella scelta nel risultato (&lingua=) la prima volta, poi quella che si stava ascoltando
+      var linUrl = new URLSearchParams(location.search).get("lingua");
+      LIN_SRG.carica(r.arch && r.arch.rec, !LIN_SRG.giaUrl && linUrl ? linUrl : (LIN_SRG.l !== "ita" ? LIN_SRG.l : null));
+      LIN_SRG.giaUrl = true;
       var v = el("videoS"), dove = (t !== null && t !== undefined) ? Math.max(0, t) : null;
       el("srgNome").textContent = r.titolo || "partita"; el("srgTitolo").textContent = r.titolo || "partita";
       el("srgMeta").textContent = [r.competizione, r.durata ? durata(r.durata) : ""].filter(Boolean).join(" · ");
@@ -7762,12 +7860,12 @@
     if (!SEQ) {
       var nome = window.prompt("Nome della nuova sequenza:", "HL " + (r.titolo || "")); if (nome === null) return;
       post({ tipo:"clip-hl-nuova", reg: r.id, titolo: (nome.trim() || "HL " + (r.titolo || "")) })
-        .then(function(d){ return post({ tipo:"clip-hl-inserisci", seq: d.seq.id, reg: r.id, dentro: SRG.dentro, fuori: SRG.fuori, aggancia: false, titolo: (r.titolo || "") + " " + tc(SRG.dentro) }); })
+        .then(function(d){ return post({ tipo:"clip-hl-inserisci", seq: d.seq.id, reg: r.id, dentro: SRG.dentro, fuori: SRG.fuori, aggancia: false, titolo: (r.titolo || "") + " " + tc(SRG.dentro), lingua: linguaPer(LIN_SRG) }); })
         .then(function(d){ vaiEditing("mam2.html?seq=" + encodeURIComponent(d.seq.id)); })
         .catch(function(er){ avviso("err", esc(er.message)); });
       return;
     }
-    post({ tipo:"clip-hl-inserisci", seq: SEQ.id, reg: r.id, dentro: SRG.dentro, fuori: SRG.fuori, dove: dove, aggancia: false, titolo: (r.titolo || "") + " " + tc(SRG.dentro) })
+    post({ tipo:"clip-hl-inserisci", seq: SEQ.id, reg: r.id, dentro: SRG.dentro, fuori: SRG.fuori, dove: dove, aggancia: false, titolo: (r.titolo || "") + " " + tc(SRG.dentro), lingua: linguaPer(LIN_SRG) })
       .then(function(d){ ricaricaSeq(d.seq); avviso("ok", "Inserito in sequenza: " + esc(r.titolo || "partita") + ", " + tc(SRG.fuori - SRG.dentro) + "."); disegnaBrowser(); })
       .catch(function(er){ avviso("err", esc(er.message)); });
   });
