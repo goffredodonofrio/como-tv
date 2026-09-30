@@ -750,6 +750,98 @@ def _persone_note():
     return sorted(e for e in ee if e and "@" in e)
 
 
+# ── CARICARE DAL BROWSER (30/09/2026) ─────────────────────────────────────
+# Il team del club carica i file direttamente nella cartella giusta, a blocchi da 8 MB (anche file da
+# decine di GB, e se cade la connessione si riprende da dove era). Il file cresce con un nome nascosto
+# (".caricamento-…") nella cartella di arrivo, sul collegamento in scrittura; alla fine si controllano la
+# dimensione e, per MP4/MOV, la struttura (come danneggiati-1907.py): solo se e' integro prende il suo
+# nome. Poi l'indice si riallinea da solo (ripara_indice). Registro in caricamenti.json.
+CARICAMENTI = os.path.join(CASA, "caricamenti.json")
+CAR_LOCK = threading.Lock()
+CAR = {}   # id -> {tmp, dest, peso, chi, via}
+
+
+def _struttura_ok(p, dim):
+    """None se l'MP4/MOV sta in piedi (blocchi e indice moov), altrimenti il motivo"""
+    import struct
+    if not p.lower().endswith((".mp4", ".mov", ".m4v")): return None
+    try:
+        with open(p, "rb") as f:
+            pos, visti = 0, set()
+            while pos < dim:
+                f.seek(pos); h = f.read(8)
+                if len(h) < 8: return "intestazione tronca"
+                size, tipo = struct.unpack(">I4s", h)
+                if size == 1: size = struct.unpack(">Q", f.read(8))[0]
+                elif size == 0: size = dim - pos
+                if size < 8: return "blocco non valido"
+                if pos + size > dim: return "file troncato"
+                visti.add(tipo); pos += size
+        return None if b"moov" in visti else "manca l'indice del video (moov)"
+    except OSError as e: return "non si legge: %s" % (e.strerror or e)
+
+
+def carica(metodo, parti, q, h, chi):
+    chi = (chi or "").lower()
+    if not puo_segnare(chi): return 403, {"ok": False, "errore": "Caricare puo' il team del Como 1907."}
+    if not _nas_pronta(): return 503, {"ok": False, "errore": "La NAS del club non e' collegata in scrittura in questo momento. Riprova tra poco."}
+    if metodo == "POST" and parti == ["inizia"]:
+        n = int(h.headers.get("Content-Length") or 0); p = json.loads(h.rfile.read(min(n, 65536)) or b"{}")
+        dentro, nome = _rel(p.get("in")), _nome_ok(p.get("nome"))
+        peso = int(p.get("peso") or 0)
+        if not nome or nome.startswith("."): return 400, {"ok": False, "errore": "Nome del file non valido."}
+        if peso <= 0 or peso > 400 * 10**9: return 400, {"ok": False, "errore": "Dimensione non valida."}
+        cart = os.path.join(RW, dentro) if dentro else RW
+        if not os.path.isdir(cart) or not (dentro == "" or _dentro_frame(cart)): return 400, {"ok": False, "errore": "La cartella di arrivo non c'e'."}
+        dest = os.path.join(cart, nome)
+        if os.path.exists(dest): return 409, {"ok": False, "errore": "In questa cartella c'e' gia' un file con questo nome."}
+        # un caricamento interrotto dello stesso file (stesso posto, stesso peso, stessa persona) si riprende
+        with CAR_LOCK:
+            for k, x in CAR.items():
+                if x["dest"] == dest and x["peso"] == peso and x["chi"] == chi and os.path.exists(x["tmp"]):
+                    return 200, {"ok": True, "id": k, "ricevuti": os.path.getsize(x["tmp"])}
+            k = secrets.token_hex(8); tmp = os.path.join(cart, ".caricamento-%s-%s" % (k, nome)[:240])
+            open(tmp, "wb").close()
+            CAR[k] = {"tmp": tmp, "dest": dest, "peso": peso, "chi": chi, "via": _rel(os.path.relpath(dest, RW)), "inizio": int(time.time())}
+        return 200, {"ok": True, "id": k, "ricevuti": 0}
+    k = parti[0] if parti else ""; x = CAR.get(k)
+    if not x or x["chi"] != chi: return 404, {"ok": False, "errore": "Caricamento non trovato: ricomincia."}
+    if metodo == "GET": return 200, {"ok": True, "ricevuti": os.path.getsize(x["tmp"]) if os.path.exists(x["tmp"]) else 0}
+    if metodo == "PUT":
+        da = int((q.get("da") or ["0"])[0]); n = int(h.headers.get("Content-Length") or 0)
+        if n <= 0 or n > 64 * 2**20: return 400, {"ok": False, "errore": "Blocco non valido."}
+        ora = os.path.getsize(x["tmp"])
+        if da != ora: h.rfile.read(n); return 409, {"ok": False, "ricevuti": ora}
+        if ora + n > x["peso"]: h.rfile.read(n); return 400, {"ok": False, "errore": "Il file e' piu' grande di quanto annunciato."}
+        with open(x["tmp"], "ab") as f:
+            rest = n
+            while rest:
+                b = h.rfile.read(min(rest, 2**20))
+                if not b: break
+                f.write(b); rest -= len(b)
+        return 200, {"ok": True, "ricevuti": os.path.getsize(x["tmp"])}
+    if metodo == "POST" and parti[1:] == ["fine"]:
+        dim = os.path.getsize(x["tmp"])
+        if dim != x["peso"]: return 409, {"ok": False, "ricevuti": dim, "errore": "Mancano dei pezzi: riprendo."}
+        motivo = _struttura_ok(x["tmp"], dim)
+        if motivo:
+            try: os.remove(x["tmp"])
+            except OSError: pass
+            CAR.pop(k, None)
+            return 422, {"ok": False, "errore": "Il file non e' integro (%s): non l'ho messo nella cartella. Controlla l'originale e ricaricalo." % motivo}
+        if os.path.exists(x["dest"]): return 409, {"ok": False, "errore": "Nel frattempo e' comparso un file con lo stesso nome."}
+        os.rename(x["tmp"], x["dest"]); CAR.pop(k, None)
+        with CAR_LOCK:
+            r = _leggi(CARICAMENTI, {"voci": []}); r["voci"].append({"via": x["via"], "peso": dim, "chi": chi, "quando": int(time.time())}); del r["voci"][:-20000]; _scrivi(CARICAMENTI, r)
+        ripara_indice([x["via"]])
+        return 200, {"ok": True, "via": x["via"], "peso": dim}
+    if metodo == "DELETE":
+        try: os.remove(x["tmp"])
+        except OSError: pass
+        CAR.pop(k, None); return 200, {"ok": True}
+    return 404, {"ok": False}
+
+
 # ── I LINK DI CONDIVISIONE ESTERNI, COME SU FRAME.IO (30/09/2026) ─────────
 # Chi e' del club crea un link per partner, sponsor, media: le clip (o le cartelle) scelte, con scadenza,
 # password facoltativa (si tiene solo l'impronta con sale) e "si puo' scaricare" si/no. Il link apre una
@@ -1012,8 +1104,22 @@ class H(BaseHTTPRequestHandler):
         for k, v in (extra or {}).items(): self.send_header(k, v)
         self.end_headers(); self.wfile.write(b)
 
+    def _carica(self, metodo):
+        u = urllib.parse.urlparse(self.path)
+        cod, r = carica(metodo, [x for x in u.path[len("/carica/"):].split("/") if x], urllib.parse.parse_qs(u.query), self, str(self.headers.get("X-Utente") or ""))
+        return self.rispondi(cod, r, extra={"Cache-Control": "no-store"})
+
+    def do_PUT(self):
+        if urllib.parse.urlparse(self.path).path.startswith("/carica/"): return self._carica("PUT")
+        return self.rispondi(404, {"ok": False})
+
+    def do_DELETE(self):
+        if urllib.parse.urlparse(self.path).path.startswith("/carica/"): return self._carica("DELETE")
+        return self.rispondi(404, {"ok": False})
+
     def do_POST(self):
         via = urllib.parse.urlparse(self.path).path
+        if via.startswith("/carica/"): return self._carica("POST")
         if via.startswith("/pub/"):
             try: corpo = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 4096)) or b"{}")
             except Exception: corpo = {}
@@ -1104,6 +1210,7 @@ class H(BaseHTTPRequestHandler):
             c = _leggi(ELIMINATI, {"voci": {}})
             return self.rispondi(200, {"ok": True, "segnati": s.get("segnati", {}), "stato": stato, "eliminati": c.get("voci", {}),
                                        "puoi": puo_segnare(chi), "elimina": puo_eliminare(chi)}, extra={"Cache-Control": "no-store"})
+        if u.path.startswith("/carica/"): return self._carica("GET")
         if u.path.startswith("/pub/"):
             return pubblico(self, [urllib.parse.unquote(x) for x in u.path[5:].split("/") if x], "GET", None)
         if u.path == "/condividi":

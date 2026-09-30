@@ -426,6 +426,17 @@
   .lingua.eng{background:#2456B8;}
   .el-graf{position:relative;display:inline-block;} .el-graf .lingua{position:absolute;right:3px;bottom:3px;font-size:9px;padding:2px 4px 1px;}
   .card .mini .lingua.grande{position:absolute;right:8px;top:8px;z-index:3;font-size:13px;padding:5px 8px 4px;box-shadow:0 2px 6px rgba(0,0,0,.4);}
+  .ell-griglia{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:22px 16px;padding:6px 2px;}
+  @media (max-width:1300px){ .ell-griglia{grid-template-columns:repeat(5,minmax(0,1fr));} } @media (max-width:760px){ .ell-griglia{grid-template-columns:repeat(3,minmax(0,1fr));} }
+  .ell{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;text-align:center;min-width:0;border-radius:12px;padding:6px 4px;}
+  .ell:hover .ell-foto,.ell:focus-visible .ell-foto{box-shadow:0 0 0 3px var(--oro);} .ell:focus-visible{outline:none;}
+  .ell-foto{position:relative;width:100%;aspect-ratio:5/4;border-radius:50%;overflow:hidden;background:radial-gradient(120% 90% at 30% 0%,#20284E,#0A0F24 70%);box-shadow:0 0 0 1px var(--riga2);transition:box-shadow .15s;}
+  .ell.stag .ell-foto{box-shadow:0 0 0 2px rgba(201,162,75,.7);}
+  .ell-foto .foto{position:absolute;inset:0;background:center/cover no-repeat;opacity:0;transition:opacity .3s;} .ell-foto .foto.su{opacity:.9;}
+  .ell-foto .ell-vuota{position:absolute;inset:0;display:grid;place-items:center;color:rgba(245,241,230,.25);}
+  .ell-anno{position:absolute;inset:0;display:grid;place-items:center;font:800 clamp(15px,1.6vw,22px)/1 'Mazzard',sans-serif;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.8);background:linear-gradient(transparent 30%,rgba(10,15,36,.55));}
+  .ell b{display:block;width:100%;font:700 13px/1.25 'DM Sans',sans-serif;color:var(--ivory);overflow-wrap:anywhere;text-wrap:balance;}
+  .ell small{display:block;width:100%;font-size:11px;color:var(--fumo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
   .el-tab{width:100%;border-collapse:collapse;}
   .el-tab th{font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--fumo);text-align:left;padding:10px 10px;border-bottom:1px solid var(--riga);}
   .el-tab td{padding:8px 10px;border-bottom:1px solid var(--riga);vertical-align:middle;}
@@ -1537,13 +1548,15 @@
       if (cur[0] === t) for (var i = 1; i < cur.length; i++) { if (PASSAGGIO.test(cur[i])) continue; var v = cur.slice(0, i + 1).join("/"); r += '<button class="liv3' + (FX.via === v ? " on" : "") + '" data-fxvia="' + esc(v) + '" style="padding-left:' + (46 + i * 10) + 'px"><span class="fx-nome">' + esc(cur[i]) + "</span></button>"; }
       return r;
     };
-    h += '<div class="fx-g"><h3>COMOTV - FRAME</h3><button class="' + (vere && FX.via === "" ? "on" : "") + '" data-fxvia=""><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Tutte le cartelle</span></button>' +
+    // (Goffredo, 30/09/2026) COMO 1907 in cima; Organizza le cartelle; Tutte le stagioni; poi gli Altri progetti
+    h += '<div class="fx-g"><h3>Como 1907</h3><a href="cartelle-1907.html"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Organizza le cartelle</span></a>' +
+      '<button class="' + (vere && FX.via === "\u00a7tutte" ? "on" : "") + '" data-fxvia="\u00a7tutte"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">Tutte le stagioni</span></button>' +
       gr.stagioni.map(function (g) {
         var dentro = g.cartelle.indexOf(cur[0]) >= 0 || FX.via === g.via, aperta = FX_APERTE[g.via] !== undefined ? FX_APERTE[g.via] : dentro;
         return '<button class="liv2 stag' + (vere && FX.via === g.via ? " on" : "") + '" data-fxvia="' + g.via + '"><span class="fx-ic" data-fxapri="' + g.via + '" title="' + (aperta ? "chiudi" : "apri") + '">' + (aperta ? "▾" : "▸") + '</span><span class="fx-nome">' + esc(g.nome) + '</span><span class="fx-n">' + n(g.cartelle.reduce(function (t, c) { return t + (top[c] || 0); }, 0)) + "</span></button>" +
           (aperta ? g.cartelle.map(function (c) { return ramo(c, "liv3 in-stag"); }).join("") : "");
-      }).join("") + (gr.stagioni.length && gr.altre.length ? '<hr class="fx-sep" aria-hidden="true">' : "") +
-      gr.altre.map(function (c) { return ramo(c, "liv2"); }).join("") + "</div>";
+      }).join("") + "</div>" +
+      (gr.altre.length ? '<div class="fx-g"><hr class="fx-sep" aria-hidden="true"><h3>Altri progetti</h3>' + gr.altre.map(function (c) { return ramo(c, "liv2"); }).join("") + "</div>" : "");
     var dips = dipsDellaStagione(), stg = Object.keys(STAGIONI).sort().reverse().concat(["-", ""]);
     h += '<div class="fx-g"><h3>Collezioni</h3><select id="fxStagSel" class="fx-stag" aria-label="stagione delle collezioni">' + stg.map(function (k) { return '<option value="' + k + '"' + (FX.stag === k ? " selected" : "") + ">" + esc(nomeStag(k)) + "</option>"; }).join("") + "</select>" +
       '<button class="' + (!vere && !FX.dip ? "on" : "") + '" data-fxstag="' + FX.stag + '"><span class="fx-ic">' + SVG_COLL + '</span><span class="fx-nome">Tutti i reparti</span></button>' +
@@ -1559,7 +1572,7 @@
       '<button data-fxscorc="condivisi"><span class="fx-ic">▸</span><span class="fx-nome">Link condivisi</span></button>' +
       '<button data-fxscorc="menzioni"><span class="fx-ic">▸</span><span class="fx-nome">Menzioni</span>' + (MENZ.nuove ? '<span class="fx-n" style="color:var(--oro2);font-weight:700">' + MENZ.nuove + " nuove</span>" : MENZ.lista.length ? '<span class="fx-n">' + MENZ.lista.length + "</span>" : "") + "</button>" +
       '<a href="doppioni-1907.html"><span class="fx-ic">▸</span><span class="fx-nome">Doppioni 1907</span></a>' +
-      '<a href="cartelle-1907.html"><span class="fx-ic">▸</span><span class="fx-nome">Organizza le cartelle</span></a></div>';
+      "</div>";
     h += '<div class="fx-g"><h3>Raccolte 1907</h3>' + (RACC.length ? RACC.slice(0, FX_TUTTI ? 999 : 8).map(function (r) {
       return '<button data-racc="' + esc(r.id) + '"><span class="fx-ic">' + SVG_CART + '</span><span class="fx-nome">' + esc(r.nome) + '</span><span class="fx-n">' + n(r.quante) + "</span></button>"; }).join("") +
       (RACC.length > 8 && !FX_TUTTI ? '<button data-fxracc><span class="fx-ic"></span><span class="fx-nome">Tutte (' + RACC.length + ")</span></button>" : "") :
@@ -1573,9 +1586,15 @@
     var via = FX.via, tok = FX_TOK = {};
     var top0 = {}; I.cartelle.forEach(function (r) { top0[r[0].split("/")[0]] = 1; });
     var GS = gruppiStagioni(Object.keys(top0)), gq = GS.stagioni.filter(function (g) { return g.via === via || g.cartelle.indexOf(via.split("/")[0]) >= 0; })[0];
-    var pz = [["COMOTV - FRAME", 'data-fxvia=""']]; if (gq) pz.push([gq.nome, 'data-fxvia="' + gq.via + '"']);
+    var pz = [["Como 1907", 'data-fxvia=""']]; if (gq || via === "\u00a7tutte") pz.push(["Tutte le stagioni", 'data-fxvia="\u00a7tutte"']); if (gq) pz.push([gq.nome, 'data-fxvia="' + gq.via + '"']);
     if (via && via.charAt(0) !== "\u00a7") via.split("/").forEach(function (p, i, a) { if (i && PASSAGGIO.test(p)) return; pz.push([i ? p : nomeVista(p), 'data-fxvia="' + esc(a.slice(0, i + 1).join("/")) + '"']); });
     // il nodo "Stagione 2026/27": non e' una cartella della NAS, raccoglie quelle di quella stagione
+    if (via === "\u00a7tutte") {
+      fxBc(pz); fxSide(); $("fxAzioni").hidden = true;
+      FX_ULTIMA = { via: via, cartelle: [], file: [], virtuale: true };
+      fxVereDisegna({ via: "", cartelle: GS.stagioni.reduce(function (a, g) { return a.concat(g.cartelle); }, []).map(function (c) { return { nome: c }; }), file: [] });
+      return;
+    }
     if (via.charAt(0) === "\u00a7") {
       fxBc(pz); fxSide(); $("fxAzioni").hidden = true;
       FX_ULTIMA = { via: via, cartelle: gq ? gq.cartelle.map(function (c) { return { nome: c }; }) : [], file: [], virtuale: true };
@@ -1615,6 +1634,16 @@
   // sta nella cartella sopra e il percorso lo salta. Sulla NAS resta com'e'.
   var PASSAGGIO = /^\s*como\s*tv\s*$/i;
   function sottocartelle(p) { var l = {}; I.cartelle.forEach(function (r) { if (r[0].indexOf(p + "/") === 0) l[r[0].slice(p.length + 1).split("/")[0]] = 1; }); return Object.keys(l); }
+  // LA PRIMA SCHERMATA A ELLISSI (Goffredo, 30/09/2026: "ellissi, 7 contenuti a riga"): il fotogramma piu'
+  // recente dentro un'ellisse, il nome sotto (coi puntini se e' lungo), i numeri piccoli
+  function ellissi(voci) {
+    return '<div class="ell-griglia">' + voci.map(function (o) {
+      var ss = o.s.filter(function (x) { return x[7]; }).sort(function (a, b) { return (b[1] || 0) - (a[1] || 0); }), foto = ss[0] ? ss[0][7] : "";
+      return '<div class="ell' + (o.stagione ? " stag" : "") + '" tabindex="0" data-fxvia="' + esc(o.via) + '" title="' + esc(o.nome) + '">' +
+        '<div class="ell-foto"' + (foto ? ' data-mini="' + esc(foto) + '"' : "") + '><span class="foto"></span>' + (foto ? "" : '<span class="ell-vuota">' + SVG_CART_G + "</span>") + (o.stagione ? '<span class="ell-anno">' + esc(o.nome.replace(/^Stagione /, "")) + "</span>" : "") + "</div>" +
+        "<b>" + esc(o.nome) + "</b><small>" + (o.v + o.f ? n(o.v + o.f) + " elementi" : "vuota") + (o.p ? " · " + gb(o.p) : "") + "</small></div>";
+    }).join("") + "</div>";
+  }
   function fxVereDisegna(j) {
     var via = j.via || "";
     // (le cartelle "COMO TV" di passaggio le appiattisce fxVere, leggendo la NAS: vedi sotto)
@@ -1629,8 +1658,10 @@
     var voci = (j.cartelle || []).map(function (c) { var p = (via ? via + "/" : "") + (c.sotto ? c.sotto + "/" : "") + c.nome; return conta(p, { k: c.nome, nome: via ? c.nome : nomeVista(c.nome), via: p, s: [], e: [], v: 0, f: 0, p: 0, dt: 0 }); });
     voci = nodi.concat(ordina(voci));
 
-    var ff = (j.file || []).slice().sort(FX_ORD === "peso" ? function (a, b) { return b.peso - a.peso; } : function (a, b) { return a.nome.localeCompare(b.nome, "it", { numeric: true }); });
+    // (30/09/2026) i .log dei download da Frame non sono materiale: non si mostrano; alla prima schermata niente file
+    var ff = (!via && !j.stagione ? [] : (j.file || []).filter(function (f) { return !/\.log$/i.test(f.nome); })).slice().sort(FX_ORD === "peso" ? function (a, b) { return b.peso - a.peso; } : function (a, b) { return a.nome.localeCompare(b.nome, "it", { numeric: true }); });
     var h = '<p class="fx-conta">' + n(voci.length) + (voci.length === 1 ? " cartella" : " cartelle") + (ff.length ? " · " + n(ff.length) + " file" : "") + "</p>";
+    if (voci.length && !via && !j.stagione_no) { h += ellissi(voci); } else
     if (voci.length) h += cartelleFx(voci, function (o) { return 'data-fxvia="' + esc(o.via) + '"' + (o.stagione ? "" : ' draggable="true"') + (FX_SCELTE.has(o.via) ? ' class="fx-sel"' : ""); },
       function (o) { return o.v + o.f && !o.stagione ? bottonePiu(o.via, true) : ""; },
       function (o) { return o.stagione ? "" : '<button type="button" class="mini fx-mod" data-fxmod="' + esc(o.via) + '">Rinomina</button>'; });
@@ -1666,7 +1697,7 @@
   }
   function fxRinomina(v) {
     var vecchio = v.split("/").pop();
-    fxChiedi("Rinomina", "In: " + (v.split("/").slice(0, -1).join(" › ") || "COMOTV - FRAME"), vecchio, function (nome) {
+    fxChiedi("Rinomina", "In: " + (v.split("/").slice(0, -1).join(" › ") || "Como 1907"), vecchio, function (nome) {
       return fxManda({ azione: "rinomina", via: v, nome: nome }).then(function (j) {
         var nuovo = (v.split("/").slice(0, -1).concat([nome])).join("/");
         SPOST[v] = nuovo; if (FX.via === v || FX.via.indexOf(v + "/") === 0) FX.via = nuovo + FX.via.slice(v.length);
@@ -1689,7 +1720,7 @@
     }
     if ((t = e.target.closest("[data-fxnoscelta]"))) { FX_SCELTE.clear(); document.querySelectorAll("#fxBody .fx-sel").forEach(function (x) { x.classList.remove("fx-sel"); }); fxScelti(); return; }
     if ((t = e.target.closest("[data-fxmod]"))) { fxRinomina(t.dataset.fxmod); return; }
-    if ((t = e.target.closest("[data-fxnuova]"))) { var qui = FX.via; fxChiedi("Nuova cartella", "Dentro: " + (qui ? qui.split("/").join(" › ") : "COMOTV - FRAME"), "Nuova cartella", function (nome) { return fxManda({ azione: "nuova", in: qui, nome: nome }).then(function () { avviso("", "Cartella creata."); FX_ULTIMA = null; fxDisegna(); }); }); return; }
+    if ((t = e.target.closest("[data-fxnuova]"))) { var qui = FX.via; fxChiedi("Nuova cartella", "Dentro: " + (qui ? qui.split("/").join(" › ") : "Como 1907"), "Nuova cartella", function (nome) { return fxManda({ azione: "nuova", in: qui, nome: nome }).then(function () { avviso("", "Cartella creata."); FX_ULTIMA = null; fxDisegna(); }); }); return; }
     if ((t = e.target.closest("[data-fxcond]"))) { finestraCondividi([FX.via], ultimo(FX.via)); return; }
     if ((t = e.target.closest("[data-fxcerca]"))) { G = []; metti({ k: "cart", v: FX.via, n: ultimo(FX.via) }); window.scrollTo(0, 0); return; }
     if ((t = e.target.closest("[data-fxtutti]"))) { FX_TUTTI = true; fxVereDisegna(FX_ULTIMA); return; }
@@ -1716,7 +1747,7 @@
       FX.modo = "ord"; FX.dip = "ft"; FX.sub = "Matchday"; FX.comp = ""; FX.par = ""; fxVai(); return;
     }
   });
-  $("fxBody").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.matches(".fx-card,.ff,tr[tabindex]")) e.target.click(); });
+  $("fxBody").addEventListener("keydown", function (e) { if (e.key === "Enter" && e.target.matches(".fx-card,.ff,.ell,tr[tabindex]")) e.target.click(); });
   $("fxSide").addEventListener("change", function (e) { if (e.target.id === "fxStagSel") { FX.modo = "ord"; FX.stag = e.target.value; FX.dip = ""; FX.sub = ""; FX.comp = ""; FX.par = ""; fxVai(); } });
   // ── TRASCINA PER SPOSTARE (Goffredo, 29/09/2026: "spostare cartelle e file tipo drag and drop") ──
   // Si prende una cartella o un file (o tutti quelli scelti con ⌘/Ctrl+clic, se e' tra quelli) e si
@@ -1762,7 +1793,7 @@
   function fxSposta(vie, dest) {
     var nomi = vie.map(function (v) { return v.split("/").pop(); });
     $("velo").innerHTML = '<div class="fx-dlg" role="dialog" aria-label="Sposta"><h2>Sposta</h2><p>' + (vie.length === 1 ? "«" + esc(nomi[0]) + "»" : n(vie.length) + " elementi (" + esc(nomi.slice(0, 4).join(", ")) + (vie.length > 4 ? "…" : "") + ")") +
-      ' in <b>' + esc(dest ? dest.split("/").join(" › ") : "COMOTV - FRAME") + '</b>?</p><p class="nota-date">Si sposta sulla NAS del club, per tutti. Raccolte e commenti li seguono; il MAM si riallinea in pochi minuti.</p><div class="az"><button type="button" id="fxNo">Annulla</button><button type="button" class="oro" id="fxOk">Sposta</button></div></div>';
+      ' in <b>' + esc(dest ? dest.split("/").join(" › ") : "Como 1907") + '</b>?</p><p class="nota-date">Si sposta sulla NAS del club, per tutti. Raccolte e commenti li seguono; il MAM si riallinea in pochi minuti.</p><div class="az"><button type="button" id="fxNo">Annulla</button><button type="button" class="oro" id="fxOk">Sposta</button></div></div>';
     $("velo").hidden = false; $("fxOk").focus(); $("fxNo").onclick = chiudi;
     $("fxOk").onclick = function () {
       $("fxOk").disabled = true;
