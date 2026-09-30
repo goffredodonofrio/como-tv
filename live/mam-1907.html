@@ -1889,15 +1889,18 @@
     document.querySelectorAll(".fx-drop").forEach(function (x) { if (x !== b) x.classList.remove("fx-drop"); });
     if (!b) { fxHint(""); return; }
     var dest = fxDest(b), es = fxEsito(dest, e.altKey);
-    fxHint(es[1], e.clientX, e.clientY, !es[0]);
-    if (!es[0]) return;
+    var cartella = b !== $("fxBody") && !!b.closest("#fxBody");
+    fxHint(es[1] + (es[0] && cartella && FX_MOLLA.b === b ? " · ferma qui per aprirla" : ""), e.clientX, e.clientY, !es[0]);
+    if (!es[0]) { clearTimeout(FX_MOLLA.t); FX_MOLLA.b = null; return; }
     e.preventDefault(); try { e.dataTransfer.dropEffect = e.altKey ? "copy" : "move"; } catch (x) {}
     b.classList.add("fx-drop");
-    // a molla: fermi un secondo su una cartella, si apre
-    if (b !== $("fxBody") && FX_MOLLA.b !== b) { clearTimeout(FX_MOLLA.t); FX_MOLLA.b = b; FX_MOLLA.t = setTimeout(function () { if (FX_MOLLA.b === b && FX_PRESI.length && dest !== FX.via) { FX_MOLLA.b = null; FX.via = dest; fxVai(); } }, 1000); }
-    if (b === $("fxBody")) { clearTimeout(FX_MOLLA.t); FX_MOLLA.b = null; }
+    // a molla: fermi un secondo e mezzo su una cartella del riquadro (col puntatore fermo), si apre
+    var fermo = FX_MOLLA.x != null && Math.abs(e.clientX - FX_MOLLA.x) < 6 && Math.abs(e.clientY - FX_MOLLA.y) < 6;
+    if (cartella && (FX_MOLLA.b !== b || !fermo)) { clearTimeout(FX_MOLLA.t); FX_MOLLA.b = b; FX_MOLLA.x = e.clientX; FX_MOLLA.y = e.clientY; FX_MOLLA.t = setTimeout(function () { if (FX_MOLLA.b === b && FX_PRESI.length && dest !== FX.via) { FX_MOLLA.b = null; FX.via = dest; fxVai(); } }, 1500); }
+    if (!cartella) { clearTimeout(FX_MOLLA.t); FX_MOLLA.b = null; }
   });
-  document.addEventListener("dragleave", function (e) { if (FX_PRESI.length && (!e.relatedTarget || !document.documentElement.contains(e.relatedTarget))) { document.querySelectorAll(".fx-drop").forEach(function (x) { x.classList.remove("fx-drop"); }); fxHint(""); } });
+  // si pulisce solo quando il puntatore esce davvero dalla finestra (Chrome manda l'uscita a ogni elemento: lampeggiava)
+  document.addEventListener("dragleave", function (e) { if (FX_PRESI.length && (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= innerWidth || e.clientY >= innerHeight)) { document.querySelectorAll(".fx-drop").forEach(function (x) { x.classList.remove("fx-drop"); }); fxHint(""); clearTimeout(FX_MOLLA.t); FX_MOLLA.b = null; } });
   $("fxBox").addEventListener("drop", function (e) {
     var b = fxBersaglio(e), copia_ = e.altKey; fxPulisci();
     if (!b) return;

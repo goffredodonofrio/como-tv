@@ -587,7 +587,8 @@
   }
   $("corpo").addEventListener("dragstart", function (e) {
     var o = e.target.closest(".ogg"); if (!o || !PUOI || QUI === CEST) return;
-    if (SCELTI.indexOf(o.dataset.v) < 0) scegli(o.dataset.v);
+    // si sceglie senza ridisegnare: ridisegnare durante l'inizio del trascinamento lo annullava (colonne, galleria)
+    if (SCELTI.indexOf(o.dataset.v) < 0) { SCELTI = [o.dataset.v]; document.querySelectorAll("#corpo .ogg").forEach(function (x) { x.classList.toggle("scelto", x.dataset.v === o.dataset.v); }); }
     PRESI = SCELTI.slice(); e.dataTransfer.effectAllowed = "copyMove"; e.dataTransfer.setData("text/plain", PRESI.join("\n"));
     // l'etichetta sotto il puntatore: quanti elementi si portano
     var g = document.createElement("div"); g.textContent = (PRESI.length === 1 ? (elemento(PRESI[0]) || {}).dir ? "📁 " : "🎞 " : "▣ ") + (PRESI.length === 1 ? ultimo(PRESI[0]) : PRESI.length + " elementi");
@@ -627,16 +628,17 @@
     if (!PRESI.length) return;
     if (!b) { hint("", 0, 0); return; }
     var dest = destDi(b), es = esito(dest, e.altKey);
-    hint(es[1], e.clientX, e.clientY, !es[0]);
-    if (!es[0]) { try { e.dataTransfer.dropEffect = "none"; } catch (x) {} return; }
+    var cartella = b.matches(".ogg[data-dir-v]");
+    hint(es[1] + (es[0] && cartella && MOLLA.b === b ? " · ferma qui per aprirla" : ""), e.clientX, e.clientY, !es[0]);
+    if (!es[0]) { try { e.dataTransfer.dropEffect = "none"; } catch (x) {} clearTimeout(MOLLA.t); MOLLA.b = null; return; }
     e.preventDefault(); e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
     if (b !== c) b.classList.add("bersaglio"); else c.classList.add("sopra");
-    // a molla: fermi un secondo su una cartella, si apre
-    var cartella = b.matches(".ogg[data-dir-v]") || (b.matches("#lato a[data-dir], #percorso a[data-dir]") && dest !== CEST);
-    if (cartella && MOLLA.b !== b) { clearTimeout(MOLLA.t); MOLLA.b = b; MOLLA.t = setTimeout(function () { if (MOLLA.b === b && PRESI.length && dest !== QUI) { MOLLA.b = null; vai(dest); } }, 1000); }
+    // a molla: fermi un secondo e mezzo su una cartella del riquadro, si apre (il puntatore deve restare fermo)
+    var fermo = MOLLA.x != null && Math.abs(e.clientX - MOLLA.x) < 6 && Math.abs(e.clientY - MOLLA.y) < 6;
+    if (cartella && (MOLLA.b !== b || !fermo)) { clearTimeout(MOLLA.t); MOLLA.b = b; MOLLA.x = e.clientX; MOLLA.y = e.clientY; MOLLA.t = setTimeout(function () { if (MOLLA.b === b && PRESI.length && dest !== QUI) { MOLLA.b = null; vai(dest); } }, 1500); }
     if (!cartella) { clearTimeout(MOLLA.t); MOLLA.b = null; }
   });
-  document.addEventListener("dragleave", function (e) { if (!e.relatedTarget || !document.documentElement.contains(e.relatedTarget)) { pulisci(); hint("", 0, 0); } });
+  document.addEventListener("dragleave", function (e) { if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= innerWidth || e.clientY >= innerHeight) { pulisci(); hint("", 0, 0); clearTimeout(MOLLA.t); MOLLA.b = null; } });
   document.addEventListener("drop", function (e) {
     var b = bersaglio(e), mac = daMac(e); pulisci(); hint("", 0, 0); clearTimeout(MOLLA.t); MOLLA.b = null;
     if (mac) { e.preventDefault(); if (!PUOI) { toast("Caricare possono le persone del team del Como 1907.", true); return; } var dest = b ? destDi(b) : QUI; if (dest === CEST) dest = QUI; caricaDaMac(e.dataTransfer, dest); return; }
