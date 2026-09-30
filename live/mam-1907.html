@@ -242,6 +242,9 @@
   .ris .filtri-ris .apri-filtri b{background:var(--oro);color:#10131c;border-radius:999px;padding:1px 6px;margin-left:6px;}
   .ris .filtri-ris .ordina{display:flex;align-items:center;gap:6px;font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--fumo);margin-left:8px;}
   .ris .filtri-ris .ordina select{font:600 12px/1 'DM Sans',system-ui,sans-serif;letter-spacing:0;text-transform:none;color:var(--ivory);background:rgba(245,241,230,.06);border:1px solid var(--riga2);border-radius:8px;padding:6px 8px;}
+  .col-sez{grid-column:1/-1;margin:6px 0 -6px;padding-top:8px;border-top:1px solid var(--riga2);font:700 10.5px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--oro2);}
+  .col-sez:first-child{border-top:0;padding-top:0;margin-top:0;}
+  .gt .gt-tipo{font-style:normal;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;opacity:.7;margin-right:4px;}
   .pannello-filtri{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px 22px;padding:14px 16px 16px;border:1px solid var(--riga2);border-radius:10px;background:rgba(245,241,230,.035);}
   .col-f{border:0;margin:0;padding:0;min-width:0;display:flex;flex-direction:column;gap:2px;}
   .col-f legend{width:100%;padding:0 0 6px;font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--oro2);}
@@ -575,7 +578,7 @@
   <div class="lib-riga">
   <div class="lib-cerca">
     <span class="lu">&#128269;</span>
-    <div class="campo-g" id="campoG"><span id="gettoni" style="display:contents"></span><input id="cerca" type="search" placeholder="Cerca qui" autocomplete="off" data-1p-ignore data-lpignore="true" aria-autocomplete="list" aria-controls="sugg"></div>
+    <div class="campo-g" id="campoG"><span id="gettoni" style="display:contents"></span><input id="cerca" type="search" placeholder="Cerca una persona, una partita, un luogo… es. «Fabregas spogliatoio», «Udinese gol», «drone lago»" autocomplete="off" data-1p-ignore data-lpignore="true" aria-autocomplete="list" aria-controls="sugg"></div>
     <button class="apri-volti" id="apriVolti" type="button" aria-expanded="false" aria-controls="pannelloVolti" title="scegli le persone dal loro volto"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="6" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 14c.8-2.6 2.9-4 5.5-4s4.7 1.4 5.5 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Volti</button>
     <button class="via" id="svuota" title="svuota la ricerca" aria-label="svuota la ricerca" hidden>×</button>
     <div id="pannelloVolti" class="sugg pv" role="dialog" aria-label="Scegli i volti" hidden></div>
@@ -719,7 +722,15 @@
 
   // ══════════ GETTONI ══════════
   var ETI = { coll: "Collezione", ep: "Episodio", cart: "Cartella", stag: "Stagione", anno: "Anno", tipo: "Tipo", pers: "Persona", gen: "Tipo di contenuto", sq: "Squadra", comp: "Competizione", avv: "Avversario",
-    st: "Stato del materiale", cam: "Chi ha girato", mo: "Momento", lu: "Luogo", ct: "Casa o trasferta", part: "Partita", come: "Come compare", volto: "Volto", insieme: "Più persone", ramo: "Ramo" };
+    st: "Stato del materiale", cam: "Chi ha girato", mo: "Momento", lu: "Luogo", ct: "Casa o trasferta", part: "Partita", come: "Come compare", volto: "Volto", insieme: "Più persone", ramo: "Ramo",
+    gi: "Giornata", fmt: "Formato", sl: "Slow motion", gl: "Gol" };
+  // I FILTRI COMUNI COI DUE MAM (30/09/2026): la giornata dalla cartella ("G31 - UDINESE v COMO",
+  // "G02_20260830_NAPOLI-COMO"), il formato dall'estensione, slow motion e gol come la ricerca del ponte
+  var BREVE = { gen: "Tipo", st: "Stato", stag: "", anno: "Anno", sq: "", comp: "", avv: "Avversario", cam: "Camera", mo: "Momento", lu: "Luogo", ct: "", coll: "", ep: "", cart: "", pers: "", tipo: "", part: "", come: "", volto: "", insieme: "", ramo: "Ramo", gi: "Giornata", fmt: "Formato", sl: "", gl: "" };
+  function giDi(d) { var m = /(^|\/)G(\d{1,2})(?=[\s_-])/i.exec(d || ""); return m ? "G" + (+m[2] < 10 ? "0" : "") + (+m[2]) : ""; }
+  function fmtDi(nome) { var e = String(nome || "").split(".").pop().toUpperCase(); return /^(JPE?G|PNG|HEIC|TIFF?|DNG|CR2|ARW|NEF)$/.test(e) ? "Foto" : e; }
+  function slowDi(nome) { return /slow ?mo|rallent/i.test(nome || ""); }
+  function golDi(via) { return /\/gol\b|\bgol\b|\bgoal\b/i.test(via || ""); }
   // LE PARTITE DEL COMO con materiale del club (Goffredo, 27/09/2026): chiave = il giorno
   var PART = {};
   function titoloPartita(p) { return p ? (p.casa ? "Como–" + p.avv : p.avv + "–Como") : ""; }
@@ -761,7 +772,7 @@
     $("gettoni").innerHTML = G.map(function (g, i) {
       var u = (g.k === "coll" || g.k === "ep") ? copertina(g.v) : "";
       var nome = g.k === "cart" ? g.v.split("/").slice(-2).join(" › ") : g.n;
-      return '<span class="gt" title="' + esc(ETI[g.k] + ": " + g.v) + '">' + (g.k === "pers" ? avatar(PERS[g.v]) : g.k === "volto" ? '<span class="gt-av" style="background-image:url(&quot;' + ritaglio(g.v) + '&quot;)"></span>' : u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"' + (g.k === "coll" ? ' style="--c:' + colore(g.v) + '"' : "") + "></span>") + "<b>" + esc(nome) + "</b>" + (g.k === "ep" ? "<small>" + esc(g.v.split("/")[0]) + "</small>" : "") + '<button data-via="' + i + '" aria-label="togli ' + esc(nome) + '">×</button></span>';
+      return '<span class="gt" title="' + esc(ETI[g.k] + ": " + g.v) + '">' + (g.k === "pers" ? avatar(PERS[g.v]) : g.k === "volto" ? '<span class="gt-av" style="background-image:url(&quot;' + ritaglio(g.v) + '&quot;)"></span>' : u ? '<span class="gt-mini" style="' + bg(u) + '"></span>' : '<span class="gt-dot"' + (g.k === "coll" ? ' style="--c:' + colore(g.v) + '"' : "") + "></span>") + (BREVE[g.k] ? '<i class="gt-tipo">' + esc(BREVE[g.k]) + "</i>" : "") + "<b>" + esc(nome) + "</b>" + (g.k === "ep" ? "<small>" + esc(g.v.split("/")[0]) + "</small>" : "") + '<button data-via="' + i + '" aria-label="togli ' + esc(nome) + '">×</button></span>';
     }).join("");
     $("svuota").hidden = !G.length && !$("cerca").value && !RACCOLTA;
   }
@@ -938,7 +949,7 @@
     if (!G.length && !Q && !RACCOLTA) { if (FX.modo === "vere") { if (FX.via) h.set("fv", FX.via); } else if (FX.dip || (I && FX.stag !== Object.keys(STAGIONI).sort().reverse()[0])) h.set("fo", [FX.stag, FX.dip, FX.sub, FX.comp, FX.par].join("|")); }
     history.replaceState(null, "", location.pathname + location.search + (h.toString() ? "#" + h.toString() : ""));
   }
-  function nomeDi(k, v) { return k === "insieme" ? "Insieme" : k === "volto" ? "Volto sconosciuto" : k === "coll" ? nomeVista(v) : k === "ep" ? v.split("/")[1] : k === "cart" ? (v.indexOf("/") < 0 ? nomeVista(v) : tc(ultimo(v))) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : k === "part" ? (PART[v] ? titoloPartita(PART[v]) + " " + dataRip(PART[v].g) : v) : v; }
+  function nomeDi(k, v) { return k === "sl" ? "Slow motion" : k === "gl" ? "Gol" : k === "gi" ? "Giornata " + String(v).replace(/^G0?/, "") : k === "insieme" ? "Insieme" : k === "volto" ? "Volto sconosciuto" : k === "coll" ? nomeVista(v) : k === "ep" ? v.split("/")[1] : k === "cart" ? (v.indexOf("/") < 0 ? nomeVista(v) : tc(ultimo(v))) : k === "stag" ? "Stagione " + v : k === "tipo" ? (v === "video" ? "Solo video" : "Solo foto") : k === "pers" ? ((PERS[v] || {}).nome || v) : k === "avv" ? "contro " + v : k === "cam" ? "Girato da " + v : k === "ct" ? (v === "Casa" ? "In casa" : "In trasferta") : k === "part" ? (PART[v] ? titoloPartita(PART[v]) + " " + dataRip(PART[v].g) : v) : v; }
   function leggiIndirizzo() {
     var h = new URLSearchParams(location.hash.slice(1)); G = [];
     try { (JSON.parse(h.get("g") || "[]") || []).forEach(function (x) { if (ETI[x[0]]) G.push({ k: x[0], v: String(x[1]), n: nomeDi(x[0], String(x[1])) }); }); } catch (e) {}
@@ -1972,6 +1983,7 @@
   function trovati(escludi) {
     var coll = di("coll"), ep = di("ep"), cart = di("cart"), stag = di("stag"), anno = di("anno");
     var fp = di("pers"), fg = di("gen"), fq = di("sq"), fc = di("comp"), fa = di("avv"), fcam = di("cam"), fmo = di("mo"), flu = di("lu"), fct = di("ct"), fst = di("st");
+    var fgi = di("gi"), ffmt = di("fmt"), fsl = di("sl"), fgl = di("gl");
     var DD = doppioni(); NASCOSTI = 0; var fpart = di("part"), fcome = di("come"), fvolto = di("volto"), framo = di("ramo"), vieVolto = null, insieme = di("insieme").length > 0 && fp.length > 1 && escludi !== "pers";
     if (fvolto.length) { vieVolto = new Set(); fvolto.forEach(function (id) { var g = ((IGN || {}).gruppi || []).filter(function (x) { return x.id === id; })[0]; (g ? g.vie : []).forEach(function (v) { vieVolto.add(v); }); }); }
     var parole = norm(Q).split(/\s+/).filter(function (w) { return w.length > 1; });
@@ -1999,12 +2011,17 @@
       if (escludi !== "ct" && fct.length && fct.indexOf(md.ct) < 0) continue;
       if (escludi !== "mo" && fmo.length && !(md.mo || []).some(function (x) { return fmo.indexOf(x) >= 0; })) continue;
       if (escludi !== "lu" && flu.length && !(md.lu || []).some(function (x) { return flu.indexOf(x) >= 0; })) continue;
+      var giQui = giDi(d); if (escludi !== "gi" && fgi.length && fgi.indexOf(giQui) < 0) continue;
       var fs = F[i].f;
       for (var j = 0; j < fs.length; j++) {
         var f = fs[j], via = d + "/" + f[0];
         if (inRacc && !tuttaDentro && !inRacc.has(via)) continue;
         if (vieVolto && !vieVolto.has(via)) continue;
         var tp = tipo(f[0]); if (tp === "altro") continue;
+        var fmtQui = fmtDi(f[0]), slQui = slowDi(f[0]), glQui = golDi(via);
+        if (escludi !== "fmt" && ffmt.length && ffmt.indexOf(fmtQui) < 0) continue;
+        if (escludi !== "sl" && fsl.length && !slQui) continue;
+        if (escludi !== "gl" && fgl.length && !glQui) continue;
         var dd = DD[via];
         if (dd && dd.primo !== via && !MOSTRA_DOPPI && !inRacc) { NASCOSTI++; continue; }
         var stt = statoDi(d, f[0], tp);
@@ -2023,7 +2040,7 @@
         // come compare: nominato (percorso o nome del file), si vede (volto), primo piano (volto grande)
         if (!insieme && escludi !== "come" && fcome.length && !comeCompare(fp.length ? fp : pers, nominati, visti, vh).some(function (m) { return fcome.indexOf(m) >= 0; })) continue;
         if (parole.length) { var nn = F[i].nd + "/" + norm(f[0]), ok = true; for (var w = 0; w < parole.length; w++) if (nn.indexOf(parole[w]) < 0) { ok = false; break; } if (!ok) continue; }
-        out.push({ via: via, d: d, nome: f[0], peso: f[1], mtime: f[2], data: dt, stag: st || (dt ? stagioneDi(dt) : ""), tipo: tp, coll: c0, md: md, pers: pers, nom: nominati, st: stt, dop: dd ? dd.n : 0, volti: visti, vh: vh });
+        out.push({ via: via, d: d, nome: f[0], peso: f[1], mtime: f[2], data: dt, stag: st || (dt ? stagioneDi(dt) : ""), tipo: tp, coll: c0, md: md, pers: pers, nom: nominati, st: stt, dop: dd ? dd.n : 0, volti: visti, vh: vh, gi: giQui, fmt: fmtQui, sl: slQui, gl: glQui });
       }
     }
     return out;
@@ -2437,7 +2454,7 @@
       return '<fieldset class="col-f"><legend>' + eti + (sc.length ? "<em>" + sc.length + "</em>" : "") + "<small>file</small></legend>" +
         (Object.keys(conta).length > 8 ? '<input class="col-cerca" data-colcerca="' + k + '" placeholder="Filtra…" value="' + esc(COL_CERCA[k] || "") + '">' : "") +
         voci.slice(0, max).map(function (v) {
-          var on = sc.indexOf(v) >= 0, nome = k === "cart" ? v.split("/").slice(-2).join(" › ") : k === "ep" ? v.split("/")[1] : k === "pers" ? ((PERS[v] || {}).nome || v) : v;
+          var on = sc.indexOf(v) >= 0, nome = (k === "sl" || k === "gl") && v === "si" ? ETI[k] : k === "gi" ? "Giornata " + v.replace(/^G0?/, "") : k === "cart" ? v.split("/").slice(-2).join(" › ") : k === "ep" ? v.split("/")[1] : k === "pers" ? ((PERS[v] || {}).nome || v) : v;
           return '<label class="col-v' + (conta[v] ? "" : " zero") + '" title="' + esc(v) + '"><input type="checkbox" data-col="' + k + '" value="' + esc(v) + '"' + (on ? " checked" : "") + '><span class="col-n">' + esc(nome) + "</span><b>" + n(conta[v]) + "</b></label>";
         }).join("") + (voci.length > max ? '<button class="col-tutte" data-coltutte="' + k + '">Mostra tutte (' + voci.length + ")</button>" : "") + "</fieldset>";
     }
@@ -2449,13 +2466,21 @@
     function contaLista(k, campo) { var c = {}; (di(k).length ? trovati(k) : tutti).forEach(function (x) { var v = campo === "p" ? x.pers : x.md[campo]; (Array.isArray(v) ? v : v ? [v] : []).forEach(function (y) { c[y] = (c[y] || 0) + 1; }); }); return c; }
     var perSt = conta(di("st").length ? trovati("st") : tutti, function (x) { return x.st; });
     var perCome = {}; (di("come").length ? trovati("come") : tutti).forEach(function (x) { comeCompare(di("pers").length ? di("pers") : x.pers, x.nom, x.volti, x.vh).forEach(function (m) { perCome[m] = (perCome[m] || 0) + 1; }); });
-    var cols = colonna("ramo", "Ramo", contaLista("ramo", "ramo"), function (a, b) { return RAMI.indexOf(a) - RAMI.indexOf(b); }) + colonna("gen", "Tipo di contenuto", contaLista("gen", "g")) + colonna("pers", "Persone", contaLista("pers", "p")) +
-      colonna("come", "Come compare", perCome, function (a, b) { return ["Si vede", "Primo piano", "Nominato"].indexOf(a) - ["Si vede", "Primo piano", "Nominato"].indexOf(b); }) +
-      colonna("st", "Stato del materiale", perSt) +
-      colonna("stag", "Stagione", perStag, function (a, b) { return b.localeCompare(a); }) + colonna("sq", "Squadra", contaLista("sq", "q")) +
-      colonna("mo", "Momento", contaLista("mo", "mo")) + colonna("cam", "Chi ha girato", contaLista("cam", "cam")) + colonna("lu", "Luogo", contaLista("lu", "lu")) +
-      colonna("comp", "Competizione", contaLista("comp", "c")) + colonna("avv", "Avversario", contaLista("avv", "a")) + colonna("ct", "Casa o trasferta", contaLista("ct", "ct")) +
-      colonna("coll", "Collezione", perColl) + colonna("anno", "Anno delle riprese", perAnno, function (a, b) { return b.localeCompare(a); }) + colonna("ep", "Episodio / cartella", perEp);
+    var dalFile = function (k, campo) { return conta(di(k).length ? trovati(k) : tutti, function (x) { return x[campo] === true ? "si" : x[campo] || ""; }); };
+    var perGi = dalFile("gi", "gi"), perFmt = dalFile("fmt", "fmt"), perSl = dalFile("sl", "sl"), perGl = dalFile("gl", "gl");
+    // una sezione: la sua testa solo se sotto c'e' almeno una colonna
+    var sezione = function (nome, html) { return html ? '<h4 class="col-sez">' + nome + "</h4>" + html : ""; };
+    var cols =
+      sezione("Contenuto", colonna("gen", "Tipo di contenuto", contaLista("gen", "g")) + colonna("mo", "Momento", contaLista("mo", "mo")) +
+        colonna("gl", "Gol", perGl) + colonna("pers", "Persone", contaLista("pers", "p")) +
+        colonna("come", "Come compare", perCome, function (a, b) { return ["Si vede", "Primo piano", "Nominato"].indexOf(a) - ["Si vede", "Primo piano", "Nominato"].indexOf(b); })) +
+      sezione("Partita", colonna("comp", "Competizione", contaLista("comp", "c")) + colonna("stag", "Stagione", perStag, function (a, b) { return b.localeCompare(a); }) +
+        colonna("sq", "Squadra", contaLista("sq", "q")) + colonna("avv", "Avversario", contaLista("avv", "a")) + colonna("ct", "Casa o trasferta", contaLista("ct", "ct")) +
+        colonna("gi", "Giornata", perGi, function (a, b) { return a.localeCompare(b); })) +
+      sezione("Ripresa e file", colonna("cam", "Chi ha girato", contaLista("cam", "cam")) + colonna("sl", "Slow motion", perSl) + colonna("fmt", "Formato", perFmt) +
+        colonna("lu", "Luogo", contaLista("lu", "lu")) + colonna("anno", "Anno delle riprese", perAnno, function (a, b) { return b.localeCompare(a); }) + colonna("st", "Stato del materiale", perSt)) +
+      sezione("Archivio", colonna("ramo", "Ramo", contaLista("ramo", "ramo"), function (a, b) { return RAMI.indexOf(a) - RAMI.indexOf(b); }) +
+        colonna("coll", "Collezione", perColl) + colonna("ep", "Episodio / cartella", perEp));
     var nF = G.filter(function (x) { return x.k !== "tipo"; }).length;
     return '<div class="pannello-filtri" id="pannelloFiltri">' + (cols || '<p class="vuoto">Nessun filtro utile per questa ricerca.</p>') + (nF ? '<button class="col-azzera" data-azzera="1">Togli tutti i filtri</button>' : "") + "</div>";
   }

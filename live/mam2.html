@@ -199,6 +199,9 @@
   .ris .filtri-ris .apri-filtri + .ordina{margin-left:8px;}
   .ris .pannello-filtri{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px 22px;padding:14px 16px 16px;margin:0 0 12px;
     border:1px solid var(--riga2);border-radius:10px;background:rgba(245,241,230,.035);}
+  .ris .col-sez{grid-column:1/-1;margin:6px 0 -6px;padding-top:8px;border-top:1px solid var(--riga);font:700 10.5px/1 'Mazzard',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--oro2);}
+  .ris .col-sez:first-child{border-top:0;padding-top:0;margin-top:0;}
+  .gt .gt-tipo{font-style:normal;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;opacity:.7;margin-right:4px;}
   .ris .col-f{border:0;margin:0;padding:0;min-width:0;display:flex;flex-direction:column;gap:2px;}
   .ris .col-f legend{padding:0 0 6px;font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:var(--oro2);}
   .ris .col-f legend small{float:right;font:600 9px/1 'DM Sans',sans-serif;letter-spacing:.06em;text-transform:none;color:var(--fumo);margin-top:1px;}
@@ -1431,7 +1434,7 @@
   <div class="vista" id="libreria">
     <div class="lib-testa"><h1 id="libSaluto">Buongiorno, <span>Como TV</span></h1><p id="libSotto">L'archivio: partite intere, azioni, telecronache, foto. Cerca, guarda, monta.</p></div>
     <div class="lib-riga">
-      <div class="lib-cerca campo-g" id="campoG"><span class="lu">&#128269;</span><span id="gettoni" class="gettoni"></span><input id="cercaLib" type="search" placeholder="Cerca qui" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" autofocus aria-autocomplete="list" aria-controls="suggerisci"><div id="suggerisci" class="sugg" role="listbox" hidden></div></div>
+      <div class="lib-cerca campo-g" id="campoG"><span class="lu">&#128269;</span><span id="gettoni" class="gettoni"></span><input id="cercaLib" type="search" placeholder="Cerca un giocatore, una squadra, un’azione… es. «Nico Paz gol», «Como Juventus», «angoli secondo tempo»" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" autofocus aria-autocomplete="list" aria-controls="suggerisci"><div id="suggerisci" class="sugg" role="listbox" hidden></div></div>
       <div class="copia" id="copiaS3" hidden></div>
     </div>
     <div id="riprendi"></div>
@@ -2278,7 +2281,72 @@
   // aggiunge gettoni con un clic, e la ricerca intera sta nell'indirizzo.
   var GETTONI = [], DIZ_G = null, DIZ_A = [], DIZ_G_IN_CORSO = false, SUG = [], SUG_I = 0, SUG_K = 0, ORDINE_RIS = "pertinenza", QEV = "";
   var CHIAVE_RIC = "";
-  var NOMI_TIPO_G = { g: "Giocatori", s: "Squadre", c: "Competizioni", r: "Giocate", st: "Stagioni", l: "Lingua" };
+  var NOMI_TIPO_G = { g: "Giocatori", s: "Squadre", c: "Competizioni", r: "Giocate", st: "Stagioni", l: "Audio",
+    ta: "Tipo di azione", si: "Situazione", te: "Tempo", mi: "Minuto", sp: "Punteggio", ct: "Casa o trasferta", sd: "Stadio", ar: "Arbitro", cl: "Materiale del club" };
+  // ── I FILTRI DELLA RICERCA (30/09/2026) ────────────────────────────────
+  //  Ogni gettone dice di che tipo e' ("Tipo · Angolo"); i valori con un ordine
+  //  (tempo, minuto, punteggio) lo tengono; le parole li riconoscono mentre si scrive.
+  var BREVE_TIPO = { ta: "Tipo", si: "Situazione", te: "Tempo", mi: "Minuto", sp: "Punteggio", ct: "", sd: "Stadio", ar: "Arbitro", cl: "", l: "Audio", st: "", r: "", p: "Punto", d: "" };
+  var ORDINE_TA = ["Gol", "Tiro in porta", "Tiro fuori", "Tiro respinto", "Palo", "Rigore", "Occasione", "Giocata", "Angolo", "Punizione", "Fuorigioco", "Fallo", "Giallo", "Rosso", "VAR", "Sostituzione"];
+  var TA_MINORI = { "Angolo": 1, "Punizione": 1, "Fuorigioco": 1, "Fallo": 1 };
+  var ORDINE_SI = ["Calcio piazzato", "Contropiede", "Colpo di testa", "Da fuori area", "Parata", "Boato del pubblico"];
+  var ETI_TE = { "1": "1° tempo", "2": "2° tempo", "3": "Supplementari", "5": "Rigori" }, ORDINE_TE = ["1", "2", "3", "5"];
+  var ETI_MI = { "1-15": "1'–15'", "16-30": "16'–30'", "31-45": "31'–45'", "45+": "Recupero 1° tempo", "46-60": "46'–60'", "61-75": "61'–75'", "76-90": "76'–90'", "90+": "Recupero 2° tempo", "sup": "Supplementari", "rig": "Rigori" };
+  var ORDINE_MI = ["1-15", "16-30", "31-45", "45+", "46-60", "61-75", "76-90", "90+", "sup", "rig"];
+  var ETI_SP = { pari: "In parità", vantaggio: "In vantaggio", svantaggio: "In svantaggio" }, ORDINE_SP = ["pari", "vantaggio", "svantaggio"];
+  var ETI_CT = { casa: "In casa", trasferta: "In trasferta" };
+  var ETI_L = { ITA: "Commento ITA", ENG: "Commento ENG", INT: "Suono internazionale" };
+  // la squadra di riferimento per punteggio e casa/trasferta: quella dei gettoni, se no il Como
+  function squadraRif(){ var s = gettone("s")[0]; return s ? s.v : "Como"; }
+  function latoDi(nomi, sq){
+    var w = piatto(sq).split(/\s+/).filter(Boolean); if (!nomi || !w.length) return -1;
+    for (var i = 0; i < nomi.length; i++) { var n = piatto(nomi[i] || ""); if (w.every(function(x){ return n.indexOf(x) >= 0; })) return i; }
+    return -1;
+  }
+  function spDi(x){ if (!x.pp || !x.sq) return ""; var i = latoDi(x.sq, squadraRif()); if (i < 0) return ""; var d = x.pp[i] - x.pp[1 - i]; return d === 0 ? "pari" : d > 0 ? "vantaggio" : "svantaggio"; }
+  function ctDi(ev, x){
+    var ref = squadraRif();
+    if (x && x.sq) { var i = latoDi(x.sq, ref); return i === 0 ? "casa" : i === 1 ? "trasferta" : ""; }
+    if (!ev) return "";
+    var casa = ev.casaEspn || (ev.squadre && ev.squadre[0] && ev.squadre[0].nome) || "";
+    if (casa && latoDi([casa], ref) === 0) return "casa";
+    return latoDi([ev.partita || ""], ref) === 0 ? "trasferta" : "";
+  }
+  function miDi(x){
+    if (x.tp === 5) return "rig"; if (x.tp === 3) return "sup";
+    if (x.rc && x.tp === 1) return "45+"; if (x.rc && x.tp === 2) return "90+";
+    var m = +x.mn; if (!m) return "";
+    return m <= 15 ? "1-15" : m <= 30 ? "16-30" : m <= 45 ? "31-45" : m <= 60 ? "46-60" : m <= 75 ? "61-75" : m <= 90 ? "76-90" : "90+";
+  }
+  function audioDi(ev, titolo){
+    var t = titolo || (ev && ev.partita) || "", l = linguaDi(t), fuori = [l === "AUDIO" ? "INT" : l];
+    ((ev && ev.lingue) || []).forEach(function(k){ var K = String(k).toUpperCase(); if (fuori.indexOf(K) < 0) fuori.push(K); });
+    return fuori;
+  }
+  // I FILTRI SCRITTI: "angoli del Como", "gol nel secondo tempo", "in svantaggio"
+  var PAROLE_FILTRO = [
+    ["ta", "Tiro in porta", ["tiro in porta", "tiri in porta", "tiro parato", "tiri parati"]], ["ta", "Tiro fuori", ["tiro fuori", "tiri fuori"]],
+    ["ta", "Tiro respinto", ["tiro respinto", "tiri respinti", "tiro murato"]], ["ta", "Palo", ["pali", "traverse", "traversa"]],
+    ["ta", "Angolo", ["angolo", "angoli", "calcio d'angolo", "calci d'angolo", "corner"]], ["ta", "Punizione", ["punizione", "punizioni"]],
+    ["ta", "Fuorigioco", ["fuorigioco"]], ["ta", "Fallo", ["fallo", "falli"]], ["ta", "Giallo", ["ammonizione", "ammonizioni", "cartellino giallo", "gialli"]],
+    ["ta", "Rosso", ["espulsione", "espulsioni", "cartellino rosso", "rossi"]], ["ta", "VAR", ["var"]], ["ta", "Sostituzione", ["sostituzione", "sostituzioni", "cambi"]],
+    ["si", "Calcio piazzato", ["calcio piazzato", "calci piazzati", "palla inattiva"]], ["si", "Contropiede", ["contropiede", "ripartenza"]],
+    ["si", "Colpo di testa", ["colpo di testa", "di testa"]], ["si", "Da fuori area", ["da fuori", "da fuori area"]], ["si", "Parata", ["parata", "parate"]],
+    ["si", "Boato del pubblico", ["boato", "pubblico", "esultanza"]],
+    ["te", "1", ["primo tempo", "1 tempo", "1° tempo"]], ["te", "2", ["secondo tempo", "2 tempo", "2° tempo", "ripresa"]],
+    ["te", "3", ["supplementari", "tempi supplementari"]], ["te", "5", ["rigori", "calci di rigore", "lotteria"]],
+    ["mi", "45+", ["recupero primo tempo"]], ["mi", "90+", ["recupero", "recupero secondo tempo", "zona cesarini"]],
+    ["sp", "pari", ["in parita", "pareggio"]], ["sp", "vantaggio", ["in vantaggio"]], ["sp", "svantaggio", ["in svantaggio"]],
+    ["ct", "casa", ["in casa"]], ["ct", "trasferta", ["in trasferta", "fuori casa"]],
+    ["l", "ENG", ["commento inglese", "inglese", "english"]], ["l", "INT", ["suono internazionale", "senza commento", "audio ambiente", "ambientale"]],
+    ["cl", "si", ["materiale del club", "club"]]
+  ];
+  function candidatiFiltro(f){
+    var q = piatto(f); if (q.length < 3) return [];
+    var fuori = [];
+    PAROLE_FILTRO.forEach(function(r){ if (r[2].some(function(w){ var p = piatto(w); return p === q || (q.length >= 4 && p.indexOf(q) === 0); })) fuori.push({ t: r[0], v: r[1], eti: etiValore(r[0], r[1]) }); });
+    return fuori.filter(function(x, i){ return fuori.findIndex(function(y){ return y.t === x.t && y.v === x.v; }) === i; }).slice(0, 4);
+  }
   var ETI_P = { secondo: "al secondo", minuto: "al minuto" }, ETI_D = { nas: "sulla NAS", arrivo: "in arrivo" };
   function stagioneDi(q){ var d = new Date(q); if (!q || isNaN(d)) return ""; var y = d.getFullYear() - (d.getMonth() < 6 ? 1 : 0); return y + "/" + String((y + 1) % 100).padStart(2, "0"); }
   function linguaDi(t){ t = String(t || ""); return /\baudio\b/i.test(t) ? "AUDIO" : /\beng\b/i.test(t) ? "ENG" : "ITA"; }
@@ -2418,14 +2486,14 @@
     var ws = el("cercaLib").value.split(/\s+/).filter(Boolean);
     SUG = []; SUG_K = 0;
     if (document.activeElement === el("cercaLib") && !/["“]/.test(el("cercaLib").value)) {
-      for (var k = Math.min(3, ws.length); k >= 1; k--) { var c = candidati(ws.slice(-k).join(" ")); if (c.length) { SUG = c; SUG_K = k; break; } }
+      for (var k = Math.min(3, ws.length); k >= 1; k--) { var fr = ws.slice(-k).join(" "), c = candidatiFiltro(fr).concat(candidati(fr)); if (c.length) { SUG = c; SUG_K = k; break; } }
     }
     if (!SUG.length) { box.hidden = true; box.innerHTML = ""; return; }
     SUG_I = Math.min(SUG_I, SUG.length - 1);
     var ultimo = "";
     var lista = SUG.map(function(x, i){
       var tipo = x.t + (x.al ? "a" : "");
-      var testa = tipo !== ultimo ? '<h5>' + (x.al ? "Allenatori" : NOMI_TIPO_G[x.t]) + '</h5>' : ""; ultimo = tipo;
+      var testa = tipo !== ultimo ? '<h5>' + (x.al ? "Allenatori" : NOMI_TIPO_G[x.t] || "") + '</h5>' : ""; ultimo = tipo;
       return testa + '<a data-sug="' + i + '" class="' + (i === SUG_I ? "on" : "") + '">' + iconaGettone(x) + '<span>' + esc(x.eti) + (x.sq ? ' <em>' + esc(x.sq) + '</em>' : '') + '</span>' +
         (x.n ? '<small>' + x.n + (x.n === 1 ? " partita" : " partite") + '</small>' : '') + '</a>';
     }).join("");
@@ -2486,11 +2554,12 @@
     var g = el("gettoni"); if (!g) return;
     g.innerHTML = GETTONI.map(function(x, i){
       var stile = x.t === "c" ? ' style="background:' + coloreComp(x.v) + ';color:' + testoSu(coloreComp(x.v)) + ';border-color:transparent"' : "";
-      var eti = x.t === "p" ? ETI_P[x.v] : x.t === "d" ? ETI_D[x.v] : x.eti;
-      return '<span class="gt gt-' + x.t + '"' + stile + '>' + (x.t === "c" ? "" : iconaGettone(x)) + '<b>' + esc(eti) + '</b>' + (x.sq ? '<small>' + esc(x.sq) + '</small>' : '') +
+      var eti = x.t === "p" ? ETI_P[x.v] : x.t === "d" ? ETI_D[x.v] : x.t === "g" || x.t === "s" || x.t === "c" ? x.eti : etiValore(x.t, x.v);
+      var breve = BREVE_TIPO[x.t] || "";
+      return '<span class="gt gt-' + x.t + '"' + stile + ' title="' + esc((NOMI_TIPO_G[x.t] || "") + ": " + eti) + '">' + (x.t === "c" || breve ? "" : iconaGettone(x)) + (breve ? '<i class="gt-tipo">' + esc(breve) + '</i>' : '') + '<b>' + esc(eti) + '</b>' + (x.sq ? '<small>' + esc(x.sq) + '</small>' : '') +
         '<button type="button" data-via="' + i + '" aria-label="togli ' + esc(eti) + '">×</button></span>';
     }).join("");
-    el("cercaLib").placeholder = "Cerca qui";
+    el("cercaLib").placeholder = GETTONI.length ? "Aggiungi un filtro o una parola…" : "Cerca un giocatore, una squadra, un’azione… es. «Nico Paz gol», «Como Juventus», «angoli secondo tempo»";
   }
   // cambia un gettone che si filtra in pagina (non serve chiedere al ponte)
   function cambiaFiltroGettone(t, v, eti){
@@ -2498,7 +2567,10 @@
     if (!v) GETTONI = GETTONI.filter(function(y){ return y.t !== t; });
     else if (GETTONI.some(function(y){ return y.t === t && y.v === v; })) GETTONI = GETTONI.filter(function(y){ return !(y.t === t && y.v === v); });
     else aggiungiGettone({ t: t, v: v, eti: eti || v });
-    disegnaGettoni(); disegnaRisultati(); aggiornaUrlRicerca();
+    disegnaGettoni();
+    // il tipo di azione e le squadre cambiano la domanda al ponte; il resto si filtra qui
+    if (t === "ta" || t === "s") cerca(el("cercaLib").value); else disegnaRisultati();
+    aggiornaUrlRicerca();
   }
   function aggiornaUrlRicerca(){
     if (!el("libreria").classList.contains("on")) return;
@@ -2509,7 +2581,7 @@
     try { history.replaceState(null, "", "mam2.html" + (pezzi.length ? "?" + pezzi.join("&") : "")); } catch (e) {}
   }
   function gettoniDaUrl(f){
-    try { GETTONI = (JSON.parse(f) || []).map(function(x){ return { t: x[0], v: x[1], eti: x[2] || x[1], sq: x[3] || "", img: x[4] || "", al: x[5] ? 1 : 0 }; }).filter(function(x){ return NOMI_TIPO_G[x.t] || x.t === "p" || x.t === "d"; }); } catch (e) { GETTONI = []; }
+    try { GETTONI = (JSON.parse(f) || []).map(function(x){ return { t: x[0], v: x[1], eti: x[2] || x[1], sq: x[3] || "", img: x[4] || "", al: x[5] ? 1 : 0 }; }).filter(function(x){ return NOMI_TIPO_G[x.t] || x.t === "p" || x.t === "d"; }); GETTONI.forEach(function(x){ if (x.t !== "g" && x.t !== "s") x.eti = etiValore(x.t, x.v) || x.eti; }); } catch (e) { GETTONI = []; }
     disegnaGettoni();
   }
   (function(){
@@ -2562,6 +2634,10 @@
     var frase = /"([^"]{2,})"|“([^”]{2,})”/.exec(Q);
     var libero = Q.replace(/"[^"]*"?|“[^”]*”?/g, " ").replace(/\s+/g, " ").trim();
     var qAz = frase ? "" : [gio ? gio.v : "", libero].join(" ").trim();
+    // SOLO SQUADRE (30/09/2026): le azioni si chiedono lo stesso, con i nomi
+    // delle squadre (fra loro: tutte e due), e il tipo di azione va al ponte
+    var sqQ = gettone("s").map(function(x){ return x.v; }), taQ = scelti("ta"), soloSq = false;
+    if (!frase && !qAz && sqQ.length) { qAz = (SQ_TRA ? sqQ : sqQ.slice(0, 1)).join(" "); soloSq = true; }
     // DELL'ALLENATORE NIENTE TELECRONACHE (28/09/2026): "buona manovra della
     // squadra di Inzaghi" lo nomina ma non lo fa vedere. Solo una frase tra virgolette
     var qDet = frase ? (frase[1] || frase[2]) : gio && gio.al ? "" : [gio ? gio.v : "", libero].join(" ").trim();
@@ -2572,7 +2648,7 @@
       RIS.azioni = RACCOLTA.azioni.filter(function(x){ var t = piatto([x.titolo, x.giocatore, x.partita, x.tipo, x.ruolo].join(" ")); return parole.every(function(w){ return t.indexOf(w) >= 0; }); });
       RIS.dette = []; RIS.scheda = null; disegnaRisultati(); return;
     }
-    var chiave = JSON.stringify([qAz, qDet, gio ? gio.sq : "", gio && gio.al ? 1 : 0]);
+    var chiave = JSON.stringify([qAz, qDet, gio ? gio.sq : "", gio && gio.al ? 1 : 0, taQ]);
     // la stessa domanda al ponte (e' cambiato solo un gettone che si filtra in pagina): si ridisegna e basta
     if (chiave === CHIAVE_RIC) { disegnaRisultati(); return; }
     CHIAVE_RIC = chiave;
@@ -2585,7 +2661,7 @@
       // domanda per non ripeterla, e se la prima cadeva (il ponte che si
       // riavvia) non la rifaceva piu' — risultati vuoti qualunque cosa si toccasse
       var riprova = function(){ if (CHIAVE_RIC !== chiave) return; CHIAVE_RIC = ""; setTimeout(function(){ if (!CHIAVE_RIC) cerca(el("cercaLib").value); }, 3000); };
-      if (qAz.length >= 3) post(gio && gio.al ? { tipo:"clip-tabellino-cerca", q: qAz, quante: 1000, allenatore: gio.v } : { tipo:"clip-tabellino-cerca", q: qAz, quante: 500, giocatore: gio ? gio.v : "", squadra: gio ? gio.sq : "" }).then(function(j){ if (CHIAVE_RIC !== chiave) return; if (!j || j.ok === false) return riprova(); RIS.azioni = j.righe || []; RIS.scheda = j.scheda || null; disegnaRisultati(); }).catch(riprova);
+      if (qAz.length >= 3) post(gio && gio.al ? { tipo:"clip-tabellino-cerca", q: qAz, quante: 1000, allenatore: gio.v } : { tipo:"clip-tabellino-cerca", q: qAz, quante: soloSq || taQ.length ? 3000 : 500, giocatore: gio ? gio.v : "", squadra: gio ? gio.sq : "", cat: taQ.length ? taQ : undefined }).then(function(j){ if (CHIAVE_RIC !== chiave) return; if (!j || j.ok === false) return riprova(); RIS.azioni = j.righe || []; RIS.categorie = j.categorie || {}; RIS.scheda = j.scheda || null; disegnaRisultati(); }).catch(riprova);
       if (qDet.length >= 3) post({ tipo:"clip-parlato-cerca", q: qDet, quante: 300 }).then(function(j){ if (CHIAVE_RIC !== chiave) return; RIS.dette = j.righe || []; disegnaRisultati(); }).catch(function(){});
     }, 300);
   }
@@ -2719,19 +2795,34 @@
   // spunta. Dentro una colonna vale "o", fra colonne "e". I numeri di una
   // colonna tengono conto delle scelte delle ALTRE colonne, non delle sue:
   // cosi' si vede sempre cosa succede spuntando anche un'altra voce.
+  // IL PANNELLO A SEZIONI (30/09/2026): Azione · Partita · Tempo e punteggio · Audio e materiale
   var COLONNE = [
-    { t: "r", eti: "Giocata", soloAzioni: true },
-    { t: "c", eti: "Competizione" },
-    { t: "st", eti: "Stagione" },
-    { t: "s", eti: "Squadra" },
-    { t: "l", eti: "Lingua" },
-    { t: "p", eti: "Punto", soloAzioni: true }
+    { t: "ta", eti: "Tipo di azione", soloAzioni: true, sez: "Azione" },
+    { t: "si", eti: "Situazione", soloAzioni: true, sez: "Azione" },
+    { t: "r", eti: "Giocata", soloAzioni: true, sez: "Azione" },
+    { t: "c", eti: "Competizione", sez: "Partita" },
+    { t: "st", eti: "Stagione", sez: "Partita" },
+    { t: "s", eti: "Squadra", sez: "Partita" },
+    { t: "ct", eti: "Casa o trasferta", sez: "Partita" },
+    { t: "sd", eti: "Stadio", sez: "Partita" },
+    { t: "ar", eti: "Arbitro", sez: "Partita" },
+    { t: "te", eti: "Tempo", soloAzioni: true, sez: "Tempo e punteggio" },
+    { t: "mi", eti: "Minuto", soloAzioni: true, sez: "Tempo e punteggio" },
+    { t: "sp", eti: "Punteggio", soloAzioni: true, sez: "Tempo e punteggio" },
+    { t: "l", eti: "Audio", sez: "Audio e materiale" },
+    { t: "cl", eti: "Materiale del club", sez: "Audio e materiale" },
+    { t: "p", eti: "Precisione", soloAzioni: true, sez: "Audio e materiale" }
   ];
   var PANNELLO_APERTO = false, COLONNA_TUTTE = {}, COLONNA_CERCA = {};
   try { PANNELLO_APERTO = localStorage.getItem("mam2-filtri") === "1"; } catch (e) {}
   function etiValore(t, v){
     if (t === "r") return (RUOLI[v] || {}).eti || v;
-    if (t === "l") return v === "AUDIO" ? "Solo audio" : v;
+    if (t === "l") return ETI_L[v === "AUDIO" ? "INT" : v] || v;
+    if (t === "te") return ETI_TE[v] || v;
+    if (t === "mi") return ETI_MI[v] || v;
+    if (t === "sp") return ETI_SP[v] || v;
+    if (t === "ct") return ETI_CT[v] || v;
+    if (t === "cl") return "Con materiale del club";
     if (t === "p") return ETI_P[v] || v;
     if (t === "d") return ETI_D[v] || v;
     if (t === "st") return v;
@@ -2741,16 +2832,23 @@
   function filtraRisultati(escludi){
     var sel = function(t){ return t === escludi ? [] : scelti(t); };
     var gio = gettone("g")[0], sqs = sel("s"), cmps = sel("c"), rls = sel("r"), sts = sel("st"), lgs = sel("l"), prs = sel("p"), dvs = sel("d");
+    var tas = sel("ta"), sis = sel("si"), tes = sel("te"), mis = sel("mi"), sps = sel("sp"), cts = sel("ct"), sds = sel("sd"), ars = sel("ar"), cls = sel("cl");
     var frase = /"([^"]{2,})"|“([^”]{2,})”/.exec(Q);
     var libero = Q.replace(/"[^"]*"?|“[^”]*”?/g, " ");
     var q = piatto(libero).split(/\s+/).filter(function(w){ return w && !FERMA.has(w); });
     var perRec = PER_REC;
     var evDi = function(x){ return perRec[x.rec]; };
     var nomiSq = function(ev, titolo){ return piatto([titolo || "", ev ? (ev.partita || "") : "", ev && ev.squadre ? ev.squadre.map(function(s){ return s.nome; }).join(" ") : ""].join(" ")); };
-    var metaOk = function(ev, titolo){
+    var azX = null;
+    var metaOk = function(ev, titolo, x){
+      azX = x || null;
       if (cmps.length && (!ev || cmps.indexOf(compNome(ev)) < 0)) return false;
       if (sts.length && (!ev || sts.indexOf(stagioneDi(ev.quando)) < 0)) return false;
-      if (lgs.length && lgs.indexOf(linguaDi(titolo || (ev && ev.partita))) < 0) return false;
+      if (lgs.length && !audioDi(ev, titolo).some(function(v){ return lgs.indexOf(v) >= 0 || (v === "INT" && lgs.indexOf("AUDIO") >= 0); })) return false;
+      if (cts.length && cts.indexOf(ctDi(ev, azX)) < 0) return false;
+      if (sds.length && sds.indexOf((ev && ev.stadio) || (azX && azX.sd) || "") < 0) return false;
+      if (ars.length && ars.indexOf((ev && ev.arbitro) || (azX && azX.ar) || "") < 0) return false;
+      if (cls.length && !((ev && ev.club) || (azX && azX.club))) return false;
       if (dvs.length && dvs.indexOf(ev && !ev.s3 ? "nas" : "arrivo") < 0) return false;
       if (sqs.length) { var t = nomiSq(ev, titolo), c = function(s){ return piatto(s).split(/\s+/).filter(Boolean).every(function(w){ return t.indexOf(w) >= 0; }); }; if (!(sqs.length > 1 && SQ_TRA ? sqs.every(c) : sqs.some(c))) return false; }
       return true;
@@ -2764,12 +2862,26 @@
       if (q.length) { var t = piatto([x.partita, x.nome, x.competizione, x.compVista].join(" ")); if (!q.every(function(w){ return t.indexOf(w) >= 0; })) return false; }
       return true;
     });
+    var azOk = function(x){
+      if (tas.length && tas.indexOf(x.cat) < 0) return false;
+      if (sis.length && !(x.sit || []).some(function(v){ return sis.indexOf(v) >= 0; })) return false;
+      if (tes.length && tes.indexOf(String(x.tp || "")) < 0) return false;
+      if (mis.length && mis.indexOf(miDi(x)) < 0) return false;
+      if (sps.length && sps.indexOf(spDi(x)) < 0) return false;
+      return true;
+    };
     var tutteAz = RIS_AZ_UNICHE.filter(function(x){
-      if (!metaOk(evDi(x), x.partita)) return false;
+      if (!metaOk(evDi(x), x.partita, x)) return false;
+      if (!azOk(x)) return false;
       if (prs.length && prs.indexOf(x.certezza && x.certezza !== "minuto" ? "secondo" : "minuto") < 0) return false;
       return true;
     });
     var azioni = rls.length ? tutteAz.filter(function(x){ return rls.indexOf(x.ruolo) >= 0; }) : tutteAz.slice();
+    // CON UN FILTRO D'AZIONE le partite sono quelle dove quelle azioni ci sono
+    if (tas.length || sis.length || tes.length || mis.length || sps.length) {
+      var conQuelle = new Set(azioni.map(function(x){ return x.rec; }));
+      partite = partite.filter(function(ev){ return conQuelle.has(ev.rec); });
+    }
     var dette = RIS.dette.filter(function(x){ return metaOk(evDi(x), x.titolo) && !(gio && gio.al && rosa && !rosa.has(x.rec)); });
     return { partite: partite, tutteAz: tutteAz, azioni: azioni, dette: dette, gio: gio, frase: frase, q: q, evDi: evDi };
   }
@@ -3249,14 +3361,31 @@
       else if (col.t === "c") evs.forEach(function(ev){ conta(compNome(ev), "", ev.rec); });
       else if (col.t === "st") evs.forEach(function(ev){ conta(stagioneDi(ev.quando), "", ev.rec); });
       else if (col.t === "s") evs.forEach(function(ev){ (ev.squadre || []).forEach(function(s){ conta(s.nome, s.stemma, ev.rec); }); });
-      else if (col.t === "l") evs.forEach(function(ev){ conta(linguaDi(ev.partita), "", ev.rec); });
+      else if (col.t === "l") evs.forEach(function(ev){ audioDi(ev).forEach(function(v){ conta(v, "", ev.rec); }); });
+      // i tipi li conta il ponte (su tutte le righe della domanda, minori compresi): se no, scelto
+      // "Angolo", le altre voci sparirebbero perche' il ponte da' solo angoli
+      else if (col.t === "ta") { var cats = RIS.categorie || {}; if (Object.keys(cats).length) Object.keys(cats).forEach(function(k){ if (k && k !== "Altro") m[k] = { n: cats[k], visti: {} }; }); else az.forEach(function(x){ conta(x.cat); }); }
+      else if (col.t === "si") az.forEach(function(x){ (x.sit || []).forEach(function(v){ conta(v); }); });
+      else if (col.t === "te") az.forEach(function(x){ if (x.tp) conta(String(x.tp)); });
+      else if (col.t === "mi") az.forEach(function(x){ conta(miDi(x)); });
+      else if (col.t === "sp") az.forEach(function(x){ conta(spDi(x)); });
+      else if (col.t === "ct") { F.partite.forEach(function(ev){ conta(ctDi(ev), "", ev.rec); }); az.forEach(function(x){ conta(ctDi(F.evDi(x), x), "", x.rec); }); }
+      else if (col.t === "sd") { F.partite.forEach(function(ev){ conta(ev.stadio, "", ev.rec); }); az.forEach(function(x){ conta(x.sd, "", x.rec); }); }
+      else if (col.t === "ar") { F.partite.forEach(function(ev){ conta(ev.arbitro, "", ev.rec); }); az.forEach(function(x){ conta(x.ar, "", x.rec); }); }
+      else if (col.t === "cl") evs.forEach(function(ev){ if (ev.club) conta("si", "", ev.rec); });
       else if (col.t === "p") az.forEach(function(x){ conta(x.certezza && x.certezza !== "minuto" ? "secondo" : "minuto"); });
       else if (col.t === "d") evs.forEach(function(ev){ conta(ev.s3 ? "arrivo" : "nas", "", ev.rec); });
       var sel = scelti(col.t);
       sel.forEach(function(v){ if (!m[v]) m[v] = { n: 0 }; });   // una scelta a zero resta, spenta
       var voci = Object.keys(m);
+      var ordina = function(o){ voci.sort(function(a, b){ var i = o.indexOf(a), j = o.indexOf(b); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j) || a.localeCompare(b); }); };
       if (col.t === "r") voci.sort(function(a, b){ return ORDINE_RUOLI.indexOf(a) - ORDINE_RUOLI.indexOf(b); });
       else if (col.t === "st") voci.sort().reverse();
+      else if (col.t === "ta") ordina(ORDINE_TA);
+      else if (col.t === "si") ordina(ORDINE_SI);
+      else if (col.t === "te") ordina(ORDINE_TE);
+      else if (col.t === "mi") ordina(ORDINE_MI);
+      else if (col.t === "sp") ordina(ORDINE_SP);
       else voci.sort(function(a, b){ return m[b].n - m[a].n || a.localeCompare(b); });
       if (col.soloAzioni && !az.length && !sel.length) return "";
       if (voci.length < 2 && !sel.length) return "";
@@ -3270,14 +3399,18 @@
         var segno = col.t === "c" ? '<span class="gt-dot" style="background:' + coloreComp(v) + '"></span>'
                   : col.t === "r" ? '<span class="gt-dot" style="background:' + ((RUOLI[v] || {}).c || "#9AA7B8") + '"></span>'
                   : col.t === "s" ? (m[v].extra ? '<img class="gt-st" src="' + esc(m[v].extra) + '" alt="">' : '<span class="gt-av gt-sigla">' + esc(siglaSquadra(v)) + '</span>') : "";
-        return '<label class="col-v' + (n ? "" : " zero") + '" for="' + id + '"><input type="checkbox" id="' + id + '" data-col="' + col.t + '" data-eti="' + esc(col.t === "st" ? "Stagione " + v : etiValore(col.t, v)) + '" value="' + esc(v) + '"' + (on ? " checked" : "") + '>' +
+        return '<label class="col-v' + (n ? "" : " zero") + '" for="' + id + '"><input type="checkbox" id="' + id + '" data-col="' + col.t + '" data-eti="' + esc(col.t === "st" ? "Stagione " + v : (col.t === "sd" || col.t === "ar") ? v : etiValore(col.t, v)) + '" value="' + esc(v) + '"' + (on ? " checked" : "") + '>' +
           segno + '<span class="col-n">' + esc(etiValore(col.t, v)) + '</span><b>' + n + '</b></label>';
       }).join("");
-      return '<fieldset class="col-f"><legend>' + col.eti + (sel.length ? ' <em>' + sel.length + '</em>' : '') + '<small>' + (col.soloAzioni ? "azioni" : "partite") + '</small></legend>' +
+      var etiCol = (col.t === "sp" || col.t === "ct") ? col.eti + " · " + squadraRif() : col.eti;
+      return '<fieldset class="col-f" data-sez="' + esc(col.sez || "") + '"><legend>' + etiCol + (sel.length ? ' <em>' + sel.length + '</em>' : '') + '<small>' + (col.soloAzioni ? "azioni" : "partite") + '</small></legend>' +
         (voci.length > 10 ? '<input class="col-cerca" type="search" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" id="colcerca-' + col.t + '" data-colcerca="' + col.t + '" placeholder="Filtra…" value="' + esc(COLONNA_CERCA[col.t] || "") + '" autocomplete="off">' : '') +
         righe + (visibili.length > MAX ? '<button type="button" class="col-tutte" data-coltutte="' + col.t + '">' + (tutte ? "Meno" : "Mostra tutte (" + visibili.length + ")") + '</button>' : '') + '</fieldset>';
     }).join("");
     var nFiltri = GETTONI.filter(function(x){ return x.t !== "g"; }).length;
+    // la stessa sezione una volta sola, prima delle sue colonne
+    var visto = {};
+    cols = cols.replace(/<fieldset class="col-f" data-sez="([^"]*)">/g, function(t, sez){ if (!sez || visto[sez]) return t; visto[sez] = 1; return '<h4 class="col-sez">' + sez + '</h4>' + t; });
     return '<div class="pannello-filtri" id="pannelloFiltri">' + (cols || '<p class="col-vuoto">Nessun filtro utile per questa ricerca.</p>') +
       (nFiltri ? '<button type="button" class="col-azzera" data-azzera="1">Togli tutti i filtri</button>' : '') + '</div>';
   }

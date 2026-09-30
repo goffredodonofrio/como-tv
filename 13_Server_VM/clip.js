@@ -12979,6 +12979,146 @@ async function giroRileggiEspn() {
     if (coda.length) console.log("[clip] espn riletto: " + RILEGGI.fatte + " partite, " + RILEGGI.fallite + " non lette");
   } finally { RILEGGI.inCorso = false; }
 }
+// ── I DETTAGLI DI ESPN PER I FILTRI (30/09/2026) ─────────────────────────
+//  Angoli, punizioni, fuorigioco e falli: in un montato non ci vanno, e nel
+//  tabellino coprirebbero le cose che contano. Ma cercarli si': stanno a
+//  parte (e.minori), e la ricerca li mostra solo a chi li chiede. Con loro
+//  stadio, citta', arbitro e spettatori (e.info).
+const TIPI_MINORI = [[/corner/i, "Angolo"], [/wins a free kick/i, "Punizione"], [/offside/i, "Fuorigioco"], [/^foul by|hand ball/i, "Fallo"]];
+function leggiMinori(sm) {
+  const fuori = [];
+  (sm.commentary || []).forEach((c) => {
+    const testo = String(c.text || "").trim(); if (!testo) return;
+    const mm = minutoEspn((c.time || {}).displayValue || ""); if (!mm) return;
+    const pl = c.play || {}, tt = ((pl.type || {}).text) || "";
+    if (tipoGamecast(testo, tt).peso >= 4) return;               // quelle stanno gia' nella cronaca
+    const t = TIPI_MINORI.find(([re]) => re.test(testo) || re.test(tt)); if (!t) return;
+    const g = { tipo: t[1], min: mm.min, stopp: mm.stopp, periodo: ((pl.period || {}).number) || (mm.min > 45 ? 2 : 1),
+                giocatore: chiFaGamecast(testo), testo: testo.slice(0, 160) };
+    const sec = +((c.time || {}).value); if (sec > 0) g.sec = sec;
+    fuori.push(g);
+  });
+  return fuori;
+}
+function infoEspn(sm) {
+  const gi = sm.gameInfo || {}, v = gi.venue || {}, arb = (gi.officials || []).find((o) => /referee/i.test(((o.position || {}).name) || "")) || (gi.officials || [])[0];
+  const x = {};
+  if (v.fullName) x.stadio = v.fullName;
+  if (v.address && v.address.city) x.citta = v.address.city;
+  if (arb && (arb.displayName || arb.fullName)) x.arbitro = arb.displayName || arb.fullName;
+  if (+gi.attendance > 0) x.spettatori = +gi.attendance;
+  return x;
+}
+const DETTAGLI = { fatte: 0, fallite: 0, totale: 0, inCorso: false, ultima: "" };
+async function giroEspnDettagli() {
+  if (CODE_SPENTE || DETTAGLI.inCorso) return; DETTAGLI.inCorso = true;
+  try {
+    const perId = {};
+    Object.keys(ESPN).forEach((rec) => { const e = ESPN[rec]; if (!e || !e.id || !e.lega || e.dett) return; (perId[e.id] = perId[e.id] || []).push(rec); });
+    const peso = (ids) => ids.some((rec) => ARCHIVIO[rec] && primaSquadraComo(ARCHIVIO[rec])) ? 0 : ids.some((rec) => ARCHIVIO[rec]) ? 1 : 2;
+    const coda = Object.keys(perId).sort((a, b) => peso(perId[a]) - peso(perId[b]));
+    DETTAGLI.totale = coda.length + DETTAGLI.fatte;
+    for (const id of coda) {
+      const recs = perId[id], e0 = ESPN[recs[0]];
+      try {
+        const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e0.lega + "/summary?event=" + id);
+        const minori = leggiMinori(sm), info = infoEspn(sm);
+        recs.forEach((rec) => { const e = ESPN[rec]; if (!e || String(e.id) !== String(id)) return; e.minori = minori; e.info = info; e.dett = 1; });
+        DETTAGLI.fatte++; DETTAGLI.ultima = e0.nome || id;
+      } catch (err) { DETTAGLI.fallite++; recs.forEach((rec) => { if (ESPN[rec]) ESPN[rec].dett = "errore " + String(err.message).slice(0, 40); }); }
+      if ((DETTAGLI.fatte + DETTAGLI.fallite) % 50 === 0) { scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0; }
+      await new Promise((ok) => setTimeout(ok, 1200));
+    }
+    if (coda.length) { scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0; console.log("[clip] espn dettagli: " + DETTAGLI.fatte + " partite, " + DETTAGLI.fallite + " non lette"); }
+  } finally { DETTAGLI.inCorso = false; }
+}
+setTimeout(giroEspnDettagli, 600000);
+setInterval(giroEspnDettagli, 6 * 3600000);
+
+// ── I CAMPI DEI FILTRI DI OGNI AZIONE (30/09/2026) ───────────────────────
+//  Tipo (cat), situazione (sit), tempo (tp), minuto (mn), recupero (rc) e
+//  punteggio PRIMA dell'azione (pp: [casa, ospite], dall'ordine di ESPN).
+const CAT_MINORI = new Set(["Angolo", "Punizione", "Fuorigioco", "Fallo"]);
+function categoriaAzione(x) {
+  const t = String(x.tipo || x.tag || ""), tit = String(x.titolo || ""), d = String(x.dettaglio || "");
+  if (CAT_MINORI.has(t)) return t;
+  if (/annullat|disallow/i.test(t + " " + tit)) return "VAR";
+  if (x.gol || /^(gol|autogol)$/i.test(t) || x.ruolo === "gol") return "Gol";
+  if (/rigore/i.test(t)) return "Rigore";
+  if (/espuls|^rosso/i.test(t) || (/cartellino/i.test(t) && /rosso|espuls/i.test(tit))) return "Rosso";
+  if (/ammoni|giallo|cartellino/i.test(t)) return "Giallo";
+  if (/^var$/i.test(t)) return "VAR";
+  if (/palo|traversa/i.test(t)) return "Palo";
+  if (/^attempt saved/i.test(d) || /^parata$/i.test(t)) return "Tiro in porta";
+  if (/^attempt missed/i.test(d)) return "Tiro fuori";
+  if (/^attempt blocked/i.test(d)) return "Tiro respinto";
+  if (/cambio|sostituz/i.test(t)) return "Sostituzione";
+  if (/occasione/i.test(t)) return "Occasione";
+  if (/skill/i.test(t)) return "Giocata";
+  if (/angolo/i.test(t)) return "Angolo";
+  if (/punizione/i.test(t)) return "Punizione";
+  if (/fuorigioco/i.test(t)) return "Fuorigioco";
+  if (/fallo/i.test(t)) return "Fallo";
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : "Altro";
+}
+function situazioniAzione(x, cat) {
+  const d = [x.titolo, x.dettaglio].join(" "), s = [];
+  if (/corner|free kick|set piece|calcio d.angolo|punizione|piazzat/i.test(d) && !CAT_MINORI.has(cat)) s.push("Calcio piazzato");
+  if (/contropiede|ripartenza|fast break|counter.?attack/i.test(d)) s.push("Contropiede");
+  if (/header|di testa|colpo di testa|incornat/i.test(d)) s.push("Colpo di testa");
+  if (cat === "Tiro in porta" || /parata|miracolo|respinge/i.test(String(x.tipo || "") + " " + String(x.titolo || ""))) s.push("Parata");
+  if (/outside the box|da fuori/i.test(d)) s.push("Da fuori area");
+  if ((+x.boato || 0) > 0) s.push("Boato del pubblico");
+  return s;
+}
+function minutoAzione(rec, x) {
+  const m = /(\d{1,3})\s*(?:\+\s*(\d{1,2}))?/.exec(String(x.minuto || ""));
+  if (m) return { min: +m[1], stopp: m[2] ? +m[2] : 0 };
+  const o = ARCHIVIO[rec] && ARCHIVIO[rec].orologio, t = x.t !== undefined ? x.t : x.dentro;
+  if (!o || !(o.inizio1 >= 0) || !(t >= 0)) return null;
+  if (o.inizio2 && t >= o.inizio2 - 30) return { min: 46 + Math.max(0, Math.floor((t - o.inizio2) / 60)), stopp: 0, p: 2 };
+  return { min: 1 + Math.max(0, Math.floor((t - o.inizio1) / 60)), stopp: 0, p: 1 };
+}
+function tempoAzione(x, m) {
+  const p = +x.periodo;
+  if (p >= 1 && p <= 5) return p === 4 ? 3 : p;
+  if (!m) return 0;
+  if (m.p) return m.p;
+  if (m.stopp) return m.min <= 45 ? 1 : m.min <= 90 ? 2 : 3;
+  return m.min <= 45 ? 1 : m.min <= 90 ? 2 : 3;
+}
+// i gol di una partita, col punteggio dopo ciascuno ("Goal! Genoa 1, Como 0.")
+function golDellaPartita(rec) {
+  const C = global.__TAB_CACHE || {}; const G = C.goli || (C.goli = new Map());
+  if (G.has(rec)) return G.get(rec);
+  const e = ESPN[rec], fuori = [];
+  ((e && e.eventi) || []).forEach((g) => {
+    if (!/goal/i.test(g.tipo || "") || /disallow|cancel/i.test(g.tipo || "")) return;
+    const m = /([^.!,]+?)\s+(\d+),\s+([^.!,]+?)\s+(\d+)\./.exec(String(g.lungo || "")); if (!m) return;
+    const p = +g.periodo || (g.min > 90 ? 3 : g.min > 45 ? 2 : 1);
+    fuori.push({ k: (p === 4 ? 3 : p) * 100000 + (+g.min || 0) * 100 + (+g.stopp || 0), pp: [+m[2], +m[4]] });
+  });
+  fuori.sort((a, b) => a.k - b.k);
+  G.set(rec, fuori);
+  return fuori;
+}
+function punteggioPrima(rec, tp, m) {
+  if (!m || !tp) return null;
+  const goli = golDellaPartita(rec); if (!goli.length) return ESPN[rec] && (ESPN[rec].eventi || []).length ? [0, 0] : null;
+  const k = tp * 100000 + m.min * 100 + (m.stopp || 0);
+  let pp = [0, 0]; for (const g of goli) { if (g.k < k) pp = g.pp; else break; }
+  return pp;
+}
+function datiFiltri(rec, x) {
+  const cat = categoriaAzione(x), m = minutoAzione(rec, x), tp = tempoAzione(x, m);
+  const e = ESPN[rec] || {}, info = e.info || {};
+  const d = { cat, sit: situazioniAzione(x, cat), tp, mn: m ? m.min : null, rc: !!(m && m.stopp), pp: punteggioPrima(rec, tp, m) };
+  if ((e.squadre || []).length === 2) d.sq = e.squadre;
+  if (info.stadio) d.sd = info.stadio;
+  if (info.arbitro) d.ar = info.arbitro;
+  return d;
+}
+
 function leggiGamecast(sm) {
   const fuori = [];
   (sm.commentary || []).forEach((c) => {
@@ -15854,7 +15994,7 @@ async function costruisciCercaCache() {
         if (es && es.eventi) es.eventi.forEach((x) => {
           const ita = tipoItaliano(x.tipo);
           const de = dEspn(Object.assign({ periodo: x.periodo || 1 }, x)), d = dove(x.periodo || 1, de.d); if (!d) return;
-          righe.push(Object.assign({ espnSec: de.alSecondo && orologioLetto(rec, x.periodo || 1) ? 1 : 0, titolo: ita + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: ita, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "espn", fonti: ["espn"],
+          righe.push(Object.assign({ periodo: x.periodo || 1, espnSec: de.alSecondo && orologioLetto(rec, x.periodo || 1) ? 1 : 0, titolo: ita + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: ita, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "espn", fonti: ["espn"],
             giocatore: x.giocatore || "", squadra: x.squadra || "", dettaglio: x.lungo || x.testo || "", gol: /Gol/.test(ita), tag: etichettaAzione(ita, x.testo), rating: 0, certezza: "minuto" }, d));
           if (righe[righe.length - 1].espnSec) righe[righe.length - 1].certezza = "espn";
         });
@@ -15864,13 +16004,28 @@ async function costruisciCercaCache() {
         if (es && es.gamecast) es.gamecast.forEach((x) => {
           const de = dEspn(Object.assign({ periodo: x.periodo || 1 }, x)), d = dove(x.periodo || 1, de.d); if (!d) return;
           if (righe.some((y) => Math.abs(y.t - d.t) < 50)) return;
-          righe.push(Object.assign({ titolo: [x.tipo, x.giocatore].filter(Boolean).join(" \u00b7 "), tipo: x.tipo, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "gamecast", fonti: ["gamecast"],
+          righe.push(Object.assign({ periodo: x.periodo || 1, titolo: [x.tipo, x.giocatore].filter(Boolean).join(" \u00b7 "), tipo: x.tipo, minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "gamecast", fonti: ["gamecast"],
             giocatore: x.giocatore || "", squadra: "", dettaglio: x.testo || "", gol: x.tipo === "Gol", tag: etichettaAzione(x.tipo, x.testo), rating: 0, certezza: "minuto" }, d));
         });
         if (!righe.length) return;
         per["arch:" + rec] = righe.map((x) => Object.assign(x, { t: Math.round(x.t * 10) / 10, dentro: Math.max(0, x.t - (x.gol ? GOL_PRE : APP_PRE)), fuori: x.t + (x.gol ? GOL_POST : APP_POST) }));
         finti["arch:" + rec] = { titolo: a.partita || rec, arch: { rec: rec, chiave: a.chiave, bucket: a.bucket }, avviata: Date.parse(a.quando) || 0, finita: 0, finto: true };
       });
+      // I MINORI (angoli, punizioni, fuorigioco, falli), segnati: la ricerca li
+      // da' solo a chi li chiede col filtro Tipo di azione
+      await aPezzi(Object.keys(per), (k) => {
+        const r = R.reg[k] || finti[k], rec = r && r.arch && r.arch.rec; if (!rec) return;
+        const es = ESPN[rec], a = ARCHIVIO[rec]; if (!es || !(es.minori || []).length || !a) return;
+        es.minori.forEach((x) => {
+          const de = dEspn(Object.assign({ periodo: x.periodo || 1 }, x));
+          const w = secondoNelFile(rec, { s: x.periodo || 1, d: Math.max(0, de.d) }); if (!w) return;
+          const pz = (a.pezzi || [])[w.pezzo], t = ((pz && pz.da) || 0) + w.secondi;
+          per[k].push({ minore: 1, periodo: x.periodo || 1, titolo: x.tipo + (x.giocatore ? " \u00b7 " + x.giocatore : ""), tipo: x.tipo, tag: x.tipo,
+            minuto: x.min + (x.stopp ? "+" + x.stopp : "'"), fonte: "gamecast", fonti: ["gamecast"], giocatore: x.giocatore || "", squadra: "",
+            dettaglio: x.testo || "", gol: false, rating: 0, certezza: "minuto", t: Math.round(t * 10) / 10, dentro: Math.max(0, t - 8), fuori: t + 6,
+            chiave: (pz && pz.chiave) || a.chiave, dentroFile: Math.max(0, w.secondi - 8) });
+        });
+      }, 25);
       // il testo di ogni riga, gia' pronto per il primo scarto della ricerca
       await aPezzi(Object.keys(per), (k) => per[k].forEach((x) => { x._t = piattaMinuscola([x.titolo, x.giocatore, x.squadra, x.dettaglio].join(" ")); }), 50);
       global.__TAB_CACHE = { quando: ora, per, finti };
@@ -16156,7 +16311,20 @@ const AZIONI = {
       suS3++;
     });
     fuori.sort((a, b) => b.quando - a.quando);
-    return { ok: true, eventi: fuori, peso: fuori.reduce((n, x) => n + x.peso, 0), quanti: fuori.length, suS3: suS3, scrivibile: qnapSiScrive() };
+    // LE GEMELLE ALLINEATE NON SONO PARTITE A SE' (ENG, AUDIO ONLY: stanno nella
+    // ITA), e ogni partita porta i dati dei filtri: lingue, materiale del club,
+    // casa (da ESPN), stadio, arbitro
+    const gem = gemelleLingua();
+    const tutte = fuori.filter((v) => !(v.rec && gem.has(v.rec)));
+    tutte.forEach((v) => {
+      if (!v.rec) return;
+      const ll = lingueDi(v.rec); if (ll.length) v.lingue = ll;
+      const nc = clubN(v.rec); if (nc) v.club = nc;
+      const e = ESPN[v.rec]; if (!e) return;
+      if ((e.squadre || []).length === 2) v.casaEspn = e.squadre[0];
+      const i = e.info || {}; if (i.stadio) v.stadio = i.stadio; if (i.arbitro) v.arbitro = i.arbitro;
+    });
+    return { ok: true, eventi: tutte, peso: tutte.reduce((n, x) => n + x.peso, 0), quanti: tutte.length, suS3: suS3, scrivibile: qnapSiScrive() };
   },
   "clip-qnap-peso": qnapPeso,
   // L'AVANZAMENTO DELLA COPIA S3 -> NAS, per la barra della Libreria
@@ -16856,6 +17024,10 @@ const AZIONI = {
       const e = ESPN[rec]; if (!e || !e.rose || !Object.keys(e.rose).length) return false;
       return !Object.keys(e.rose).some((k) => (!gSq || piattaMinuscola(k) === gSq) && (e.rose[k] || []).some((n) => nomeParole(n).join(" ") === gEsatto));
     };
+    // IL FILTRO TIPO DI AZIONE (30/09/2026) si applica qui, prima del taglio:
+    // "tutti i rossi del Como" non deve perdersi fra i primi 500 gol. E i
+    // conteggi di ogni tipo tornano alla pagina, minori compresi
+    const catSel = Array.isArray(p.cat) && p.cat.length ? new Set(p.cat.map(String)) : null, contaCat = {};
     Object.keys(per).forEach((k) => {
       const r = R.reg[k] || finti[k]; if (!r) return;
       const recR = (r.arch && r.arch.rec) || r.evento || "";
@@ -16871,6 +17043,10 @@ const AZIONI = {
       const coinvolto = chi.length > 0 && giocate.some((f) => ruoloIn(f, chi));
       const titoloP = piattaMinuscola(r.titolo || "");
       per[k].forEach((x) => {
+        if (x.minore && (!catSel || !catSel.has(x.tipo))) {
+          if (!tipi.length && x._t !== undefined && parole.every((w) => x._t.indexOf(w) >= 0 || titoloP.indexOf(w) >= 0)) contaCat[x.tipo] = (contaCat[x.tipo] || 0) + 1;
+          return;
+        }
         if (!coinvolto && x._t !== undefined && !parole.every((w) => x._t.indexOf(w) >= 0 || titoloP.indexOf(w) >= 0)) return;
         // il tipo si legge da tipo ed etichetta (che classificano gia' il
         // titolo): guardare la prosa faceva prendere "angolo" per "gol"
@@ -16882,12 +17058,16 @@ const AZIONI = {
           if (da !== "espn" && !combaciaRiga(x, r.titolo, [], parole)) return;
         } else if (!combaciaRiga(x, r.titolo, tipi, parole)) return;
         x = Object.assign({}, x, { ruolo, ruoloDa: da });
+        const df = datiFiltri(recR, x);
+        contaCat[df.cat] = (contaCat[df.cat] || 0) + 1;
+        if (catSel && !catSel.has(df.cat)) return;
         let chiave = x.chiave || "", dentroFile = x.dentroFile !== undefined ? x.dentroFile : x.dentro;
         if (r.arch && !r.finto) { const pa = pezzoAl(r, x.dentro); if (pa && pa.pezzo && pa.pezzo.chiave) { chiave = pa.pezzo.chiave; dentroFile = pa.dentro; } else chiave = r.arch.chiave || ""; }
         fuori.push({ reg: r.finto ? "" : k, partita: r.titolo || k, rec: (r.arch && r.arch.rec) || r.evento || "", t: x.t, dentro: x.dentro, fuori: x.fuori, s3: !!(r.arch && magazzinoInventario(r.arch.bucket) && !inCasaReg(r)),
                      tipo: x.tipo, tag: x.tag, titolo: x.titolo, minuto: x.minuto, fonte: x.fonte, fonti: x.fonti, squadra: x.squadra, giocatore: x.giocatore,
                      gol: x.gol, certezza: x.certezza, chiave, dentroFile, quando: r.finita || r.avviata || 0, ruolo: x.ruolo || "", ruoloDa: x.ruoloDa || "", rating: x.rating || 0, boato: x.boato || 0,
-                     lingue: r.arch && r.arch.rec ? lingueDi(r.arch.rec) : [], club: r.arch && r.arch.rec ? clubN(r.arch.rec) : 0 });
+                     lingue: r.arch && r.arch.rec ? lingueDi(r.arch.rec) : [], club: r.arch && r.arch.rec ? clubN(r.arch.rec) : 0,
+                     cat: df.cat, sit: df.sit, tp: df.tp, mn: df.mn, rc: df.rc, pp: df.pp, sq: df.sq, sd: df.sd, ar: df.ar });
       });
     });
     // LO STESSO FILE APERTO DUE VOLTE (26/09/2026): due registrazioni sulla
@@ -16915,7 +17095,7 @@ const AZIONI = {
       });
       scheda.inRosa = inRosa;
     }
-    return { ok: true, righe: fuori.slice(0, num(p.quante, 1, 2000, 500)), totale: fuori.length, partite, tipi: tipi.length, parole, scheda };
+    return { ok: true, righe: fuori.slice(0, num(p.quante, 1, 3000, 500)), totale: fuori.length, partite, tipi: tipi.length, parole, scheda, categorie: contaCat };
   },
   // I NOMI DIETRO LE FOTO: una foto premium si chiama col cognome
   // (foto-premium-paz), ma chi cerca scrive "nico paz". Da qui la pagina
@@ -17396,6 +17576,7 @@ const AZIONI = {
                competizione: a.competizione || "", soloS3: !!a.soloS3,
                dataSospetta: !!a.soloS3 && ms > domani,
                pezzi: pz.length || 1, sicuro: !!a.sicuro, intera: intera, minuti: Math.round(minuti), lingue: lingueDi(rec), club: clubN(rec),
+               casa: ((ESPN[rec] || {}).squadre || [])[0] || "", stadio: ((ESPN[rec] || {}).info || {}).stadio || "", arbitro: ((ESPN[rec] || {}).info || {}).arbitro || "",
                kickoff: a.kickoff === undefined ? null : a.kickoff };
     }).sort((x, y) => (x.dataSospetta - y.dataSospetta) || ((Date.parse(y.quando) || 0) - (Date.parse(x.quando) || 0)));
     return { ok: true, quante: fuori.length, partite: fuori.slice(0, quante) };
@@ -17720,6 +17901,18 @@ const AZIONI = {
     return { ok: true, versione: await allineaLingua(rec, l) };
   },
   "clip-lingue-giro": () => { giroLingue(); return { ok: true }; },
+  "clip-espn-dettagli": async (p) => {
+    // una partita subito (anche in dev, dove i giri sono spenti)
+    if (p && p.rec) {
+      const e = ESPN[String(p.rec)]; if (!e || !e.id || !e.lega) throw new Error("partita senza ESPN");
+      const sm = await espnPrendi("https://site.api.espn.com/apis/site/v2/sports/soccer/" + e.lega + "/summary?event=" + e.id);
+      Object.keys(ESPN).forEach((rec) => { const x = ESPN[rec]; if (x && String(x.id) === String(e.id)) { x.minori = leggiMinori(sm); x.info = infoEspn(sm); x.dett = 1; } });
+      scriviEspn(); if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0;
+      return { ok: true, minori: e.minori.length, info: e.info };
+    }
+    if (p && p.avvia) giroEspnDettagli();
+    return { ok: true, stato: DETTAGLI };
+  },
   // il materiale del club di una partita del Como, per gruppi
   "clip-club-materiale": (p) => ({ ok: true, club: clubDi(String(p.rec || "")) }),
   // per i player della pagina: dove sta, in ENG e INT, ogni secondo della ITA
