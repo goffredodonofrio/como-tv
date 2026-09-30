@@ -3540,7 +3540,12 @@ function normalizzaSeq(q) {
   q.audio.forEach((a) => {
     const x = a.legato && vivi[a.legato];
     if (!x) return;
-    a.t0 = x.t0; a.dentro = x.dentro; a.fuori = x.fuori;
+    // FUORI SINCRONO MA LEGATO (30/09/2026, come in Premiere): l'audio resta
+    // legato al suo video ma sta "sfaso" secondi piu' in la' (o piu' in qua);
+    // la pagina lo scrive in rosso in fotogrammi. Zero = in sincrono.
+    const sf = +a.sfaso || 0;
+    a.t0 = Math.round(Math.max(0, x.t0 + sf) * 1000) / 1000; a.dentro = x.dentro; a.fuori = x.fuori;
+    if (sf) { a.sfaso = Math.round((a.t0 - x.t0) * 1000) / 1000; if (Math.abs(a.sfaso) < 0.005) delete a.sfaso; }
     if (!a.titolo) a.titolo = x.titolo || "";
   });
   q.audio.forEach((a) => { if (TRACCE_A.indexOf(a.traccia) < 0) a.traccia = "A1"; });
@@ -3669,7 +3674,7 @@ function audioSemplice(q) {
   const legati = {};
   au.forEach((a) => { if (a.legato) legati[a.legato] = true; });
   if (pz.some((x) => (x.traccia || "V1") === "V1" && !legati[x.id])) return false;
-  return au.every((a) => a.legato && a.traccia === "A1" && !a.gain
+  return au.every((a) => a.legato && !a.sfaso && a.traccia === "A1" && !a.gain
                                    && !a.entra && !a.esce && !a.muto && !a.canale
                                    && !((a.volumi || []).length));
 }
@@ -3815,7 +3820,7 @@ function hlAudio(p) {
   toccataAMano(q);
 
   if (azione === "scollega") {
-    delete a.legato;
+    delete a.legato; delete a.sfaso;
     a.titolo = (a.titolo || "audio") + " · scollegato";
   } else if (azione === "lega") {
     // si riattacca al video che sta sotto: quello che comincia prima di
@@ -3832,9 +3837,14 @@ function hlAudio(p) {
       a.traccia = n;
     }
     if (p.t0 !== undefined) {
-      // spostarlo nel tempo lo scollega: un audio legato sta sul suo video
-      if (a.legato) delete a.legato;
-      a.t0 = Math.round(Math.max(0, num(p.t0, 0, 86400, a.t0)) * 1000) / 1000;
+      const t0n = Math.round(Math.max(0, num(p.t0, 0, 86400, a.t0)) * 1000) / 1000;
+      // UN AUDIO LEGATO SPOSTATO DA SOLO RESTA LEGATO (30/09/2026, come in
+      // Premiere): diventa fuori sincrono di tanto. Rimesso sotto il suo video
+      // (a meno di un fotogramma) torna in sincrono. Per staccarlo c'e' Scollega.
+      if (a.legato && x) {
+        const sf = Math.round((t0n - (x.t0 || 0)) * 1000) / 1000;
+        if (Math.abs(sf) < 0.02) delete a.sfaso; else a.sfaso = sf;
+      } else a.t0 = t0n;
     }
   } else if (azione === "taglia") {
     if (a.legato) delete a.legato;
@@ -17075,8 +17085,10 @@ const AZIONI = {
     toccataAMano(q);
     // SOLO IL VIDEO (30/09/2026, selezione collegata spenta, come in Premiere):
     // l'audio legato si stacca e resta dov'e'; lo stesso passo di Annulla
-    let staccati = 0;
-    if (p.soloVideo) (q.audio || []).forEach((a) => { if (a.legato === x.id) { delete a.legato; a.titolo = (a.titolo || "audio") + " · scollegato"; staccati++; } });
+    // (30/09/2026) Non lo scollega piu': l'audio resta legato e fuori sincrono,
+    // al secondo dove stava, come in Premiere
+    const fermi = p.soloVideo ? (q.audio || []).filter((a) => a.legato === x.id).map((a) => ({ a, t: a.t0 || 0 })) : [];
+    const staccati = fermi.length;
     const prima = x.t0 || 0;
     const dopo = Math.max(0, Math.round(num(p.t0, 0, 86400, prima) * 1000) / 1000);
     const eraLibera = !!q.libera;
@@ -17096,6 +17108,11 @@ const AZIONI = {
     const d = dopo - prima;
     if (d) (q.audio || []).forEach((a) => { if (a.legato === x.id) a.t0 = Math.max(0, (a.t0 || 0) + d); });
     riallinea(q);
+    // solo il video: l'audio legato torna dov'era, cioe' fuori sincrono di quanto si e' mosso il video
+    if (fermi.length) {
+      fermi.forEach((z) => { const sf = Math.round((z.t - (x.t0 || 0)) * 1000) / 1000; if (Math.abs(sf) < 0.02) delete z.a.sfaso; else z.a.sfaso = sf; });
+      normalizzaSeq(q);
+    }
     scrivi(); annuncia(0, "clip");
     return { ok: true, seq: q, buchi: buchiDi(q).length, infilato: fatto.infilato || 0, staccati };
   },
