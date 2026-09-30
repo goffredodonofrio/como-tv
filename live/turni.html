@@ -112,10 +112,14 @@
   thead th.oggi{background:var(--oggi);}
   thead th.oggi .gg{color:var(--oro);}
   th.riga1,td.riga1{position:sticky;left:0;z-index:11;text-align:center;color:var(--testo3);font-size:11px;}
-  th.nome,td.nome{position:sticky;left:30px;z-index:11;text-align:left;padding:3px 10px;
+  th.nome,td.nome{position:sticky;left:26px;z-index:11;text-align:left;padding:3px 10px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   thead th.riga1,thead th.nome{z-index:14;}
   td.nome b{font-weight:700;font-size:13.5px;display:block;line-height:1.25;}
+  /* un nome lunghissimo rimpicciolisce invece di finire coi puntini o di
+     rubare larghezza alle attivita' */
+  td.nome b.lungo{font-size:12px;letter-spacing:-.01em;}
+  td.nome b.lunghissimo{font-size:11px;letter-spacing:-.02em;}
   td.nome small{color:var(--testo3);font-size:11.5px;}
   tr.gruppo td{position:sticky;left:0;z-index:10;background:var(--linea2);padding:5px 12px;font-size:11.5px;font-weight:700;
     letter-spacing:.09em;text-transform:uppercase;color:var(--testo2);border-right:0;}
@@ -471,7 +475,7 @@
     var largo = 0;
     [].forEach.call(finto.querySelectorAll("b"), function (x) { largo = Math.max(largo, x.getBoundingClientRect().width); });
     document.body.removeChild(finto);
-    return Math.min(210, Math.max(110, Math.ceil(largo) + 22));   // 22 = i margini della cella
+    return Math.min(164, Math.max(110, Math.ceil(largo) + 22));   // 22 = i margini della cella
   }
 
   /* ── la griglia ───────────────────────────────────────────────────── */
@@ -498,8 +502,13 @@
     // anche quella orizzontale, e sembra che la settimana non ci stia
     // 180 e' il minimo perche' la parola piu' lunga che scriviamo
     // ("COORDINAMENTO") stia su una riga sola: sotto, si scorre in orizzontale
-    var largaGiorno = Math.max(largaOra + 84, Math.floor((spazio - 30 - largaNome - 16) / gg.length));
+    var restante = spazio - 26 - largaNome - 10;          // 10: il filo di margine destro
+    var largaGiorno = Math.max(largaOra + 84, Math.floor(restante / gg.length));
     var largaAtt = largaGiorno - largaOra;
+    // i pixel avanzati dall'arrotondamento non si buttano: vanno alle attivita'
+    var avanzo = Math.max(0, restante - largaGiorno * gg.length);
+    var inPiu = gg.map(function (x, i) { return i < avanzo ? 1 : 0; });
+    var largaTot = largaGiorno * gg.length + Math.min(avanzo, gg.length);
     // l'attivita' piu' lunga deve stare nella sua colonna: se non ci sta,
     // la pastiglia si rimpicciolisce (fino a 8px) invece di uscire dalla cella
     var largaAttPiu = misuraPastiglie(paroleAttivita(gg, persone), "att");
@@ -508,9 +517,9 @@
     var corpoAtt = 10, postoTesto = largaAtt - 12 - 10, testoPiu = Math.max(1, largaAttPiu - 10);
     if (testoPiu > postoTesto) corpoAtt = Math.max(7.5, Math.floor(10 * postoTesto / testoPiu * 10) / 10);
     var h = ['<style>table.corta td.cella.att .pill.stretta{font-size:' + corpoAtt + 'px;padding:0 3px;overflow-wrap:normal}</style>' +
-             '<table class="' + (ALTEZZA || "corta") + '" style="width:' + (30 + largaNome + largaGiorno * gg.length) + 'px">' +
-             '<colgroup><col style="width:30px"><col style="width:' + largaNome + 'px">' +
-             gg.map(function () { return '<col style="width:' + largaOra + 'px"><col style="width:' + largaAtt + 'px">'; }).join("") + "</colgroup>" +
+             '<table class="' + (ALTEZZA || "corta") + '" style="width:' + (26 + largaNome + largaTot) + 'px">' +
+             '<colgroup><col style="width:26px"><col style="width:' + largaNome + 'px">' +
+             gg.map(function (x, i) { return '<col style="width:' + largaOra + 'px"><col style="width:' + (largaAtt + inPiu[i]) + 'px">'; }).join("") + "</colgroup>" +
              '<thead><tr><th class="riga1" rowspan="2"></th><th class="nome" rowspan="2">Persona</th>'];
     gg.forEach(function (g) {
       var d = dataDa(g), fine = d.getDay() === 0 || d.getDay() === 6;
@@ -557,7 +566,7 @@
                  '<td class="cella att ' + c + '"' + dati + '><button class="cel' + spenta + '"' + dati + ">" + destra + "</button></td>";
         }).join("");
         h.push("<tr" + (S.io && p.nome.toLowerCase().indexOf(S.io.toLowerCase()) >= 0 ? ' class="io"' : "") + '><td class="riga1">' + n + "</td>" +
-               '<td class="nome"><b>' + esc(p.nome) + "</b></td>" + celle + "</tr>");
+               '<td class="nome"><b' + (p.nome.length > 21 ? ' class="lunghissimo"' : (p.nome.length > 18 ? ' class="lungo"' : "")) + ">" + esc(p.nome) + "</b></td>" + celle + "</tr>");
       });
     });
 
