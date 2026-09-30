@@ -4977,8 +4977,13 @@
       pz.push(x.id);
     });
     if ((!sola || sola === "G") && !traccaBloccata("G")) GRAF.forEach(function(z){ if (prende(z.dentro, z.fuori)) g.push(z.id); });
+    // gli audio: gli staccati che cadono dopo il punto, e (30/09/2026) anche
+    // quelli legati ai video presi, come in Premiere, dove A prende le clip di
+    // TUTTE le tracce: cosi' la scelta li contiene anche con Collegati spento,
+    // e trascinandola con la freccia si muovono insieme
+    var presi = {}; pz.forEach(function(id){ presi[id] = 1; });
     AUD.forEach(function(z){
-      if (z.legato) return;
+      if (z.legato) { if (presi[z.legato]) a.push(z.id); return; }
       var tr = z.traccia || "A1", a0 = z.t0 || 0, b0 = a0 + (z.fuori - z.dentro);
       if ((!sola || sola === tr) && !traccaBloccata(tr) && prende(a0, b0)) a.push(z.id);
     });
@@ -4992,7 +4997,7 @@
     PZ.forEach(function(x){ var o = { tr: x.traccia || "V1", a: x.t0 || 0, b: (x.t0 || 0) + (x.fuori - x.dentro) }; (sp[x.id] ? mob : fer).push(o); if (!sp[x.id]) punti.push(o.a, o.b); });
     AUD.forEach(function(z){
       var pz = z.legato ? PZ.filter(function(y){ return y.id === z.legato; })[0] : null;
-      var a0 = pz ? (pz.t0 || 0) : (z.t0 || 0), o = { tr: z.traccia || "A1", a: a0, b: a0 + (z.fuori - z.dentro) };
+      var a0 = pz ? (pz.t0 || 0) + (+z.sfaso || 0) : (z.t0 || 0), o = { tr: z.traccia || "A1", a: a0, b: a0 + (z.fuori - z.dentro) };
       var muove = sa[z.id] || (z.legato && sp[z.legato]);
       (muove ? mob : fer).push(o); if (!muove) punti.push(o.a, o.b);
     });
@@ -5546,7 +5551,9 @@
       TRASC = { tipo: "gruppo", x0: e.clientX, d: 0, mosso: false, sel: selT, lim: limitiTs(selT), setP: setOf(selT.pz), setG: setOf(selT.g), setA: setOf(selT.a) };
       disegnaEditor(); return;
     }
-    if (!(e.shiftKey || e.metaKey || e.ctrlKey)) { SELGS = []; SELAS = []; }
+    // (prendere una clip gia' scelta non azzera la scelta: e' per trascinarla tutta)
+    var pzGiu = e.target.closest(".ed-pezzo[data-i]"), giaScelta = pzGiu && PZ[+pzGiu.dataset.i] && scelto(PZ[+pzGiu.dataset.i].id) && !e.target.closest(".bordo");
+    if (!(e.shiftKey || e.metaKey || e.ctrlKey) && !giaScelta) { SELGS = []; SELAS = []; }
     // LA LAMETTA ANCHE SULL'AUDIO (30/09/2026, come in Premiere): con Collegati
     // acceso un audio legato si taglia insieme al suo video; spento, o su un
     // audio staccato, si taglia solo lui
@@ -5603,6 +5610,15 @@
     // che restino in fila non e' montare.
     if (!bordo && SELS.length > 1 && scelto(x.id)) {
       TRASC.gruppo = PZ.filter(function(z){ return scelto(z.id); }).map(function(z){ return { id: z.id, t0: z.t0 || 0 }; });
+    }
+    // LA SCELTA CON DENTRO AUDIO O GRAFICHE (30/09/2026, Federico: "premo A,
+    // mi prende solo il video"): presa con la freccia si muove TUTTA, come in
+    // Premiere, nello stesso modo del tasto A (un solo passo di Annulla).
+    // Il clic secco, senza trascinare, restringe ancora la scelta alla clip.
+    if (!bordo && !conTasto && scelto(x.id) && (SELAS.length || SELGS.length)) {
+      var selV = { pz: SELS.slice(), g: SELGS.slice(), a: SELAS.slice() };
+      var insiemeDi = function(l){ var o = {}; l.forEach(function(id){ o[id] = 1; }); return o; };
+      TRASC = { tipo: "gruppo", x0: e.clientX, d: 0, mosso: false, sel: selV, lim: limitiTs(selV), setP: insiemeDi(selV.pz), setG: insiemeDi(selV.g), setA: insiemeDi(selV.a), clicSu: x.id };
     }
     e.preventDefault(); disegnaEditor();
   });
@@ -5743,6 +5759,7 @@
       return;
     }
     if (tr.tipo === "gruppo") {
+      if (!tr.mosso && tr.clicSu) { SELS = [tr.clicSu]; SEL = tr.clicSu; SELAS = []; SELGS = []; disegnaEditor(); return; }
       if (!tr.mosso || Math.abs(tr.d) < 0.005) { disegnaEditor(); return; }
       var n3 = tr.sel.pz.length + tr.sel.g.length + tr.sel.a.length;
       post({ tipo:"clip-hl-sposta-gruppo", seq: SEQ.id, d: Math.round(tr.d * 1000) / 1000, pezzi: tr.sel.pz, grafiche: tr.sel.g, audio: tr.sel.a })
@@ -6010,8 +6027,10 @@
       var passi = [], ultima = null;
       if (SELS.length) passi.push({ tipo:"clip-hl-pezzo", seq: SEQ.id, togli: true, pezzi: SELS.slice() });
       SELGS.forEach(function(g){ passi.push({ tipo:"clip-hl-grafica", seq: SEQ.id, grafica: g, togli: 1 }); });
-      SELAS.forEach(function(a){ passi.push({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: a }); });
-      var giro = Promise.resolve(), n = passi.length;
+      // l'audio legato a un video che si toglie se ne va con lui: non si toglie due volte
+      SELAS.filter(function(a){ var au = AUD.filter(function(z){ return z.id === a; })[0]; return au && !(au.legato && SELS.indexOf(au.legato) >= 0); })
+        .forEach(function(a){ passi.push({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: a }); });
+      var giro = Promise.resolve(), n = passi.length + Math.max(0, SELS.length - 1);
       passi.forEach(function(c){ giro = giro.then(function(){ return post(c).then(function(d){ ultima = d; }); }); });
       giro.then(function(){ SELGS = []; SELAS = []; SELG = null; SELA = null; scegli(null); if (ultima && ultima.seq) ricaricaSeq(ultima.seq); avviso("ok", n + (n === 1 ? " elemento tolto." : " elementi tolti.")); })
           .catch(function(er){ avviso("err", esc(er.message)); if (ultima && ultima.seq) ricaricaSeq(ultima.seq); });
