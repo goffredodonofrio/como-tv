@@ -899,6 +899,8 @@
   .pan-srg .srg-io{font:10.5px ui-monospace,Menlo,monospace;color:var(--fumo);white-space:nowrap;} .pan-srg .srg-io b{color:var(--ivory2);font-weight:500;}
   .pan-srg #srgInserisci{background:var(--oro);color:var(--navy);border-color:var(--oro);font-weight:700;}
   .pan-srg #srgInserisci:disabled{opacity:.35;}
+  /* il Como 1907 non ha regia, vMix, Diretta: i loro tasti non ci sono */
+  .ambito-1907 #vaiLive, .ambito-1907 #pannelloRegia, .ambito-1907 [data-regiaesp], .ambito-1907 #eRegia, .ambito-1907 #regiaEsp { display: none !important; }
   /* BUMPER ED ENDTAG (30/09/2026): grafiche animate con la trasparenza, alla testina della timeline */
   .anim-tasti{display:inline-flex;gap:4px;align-items:center;}
   .anim-tasti .anim{height:26px;padding:0 8px;border-radius:4px;border:1px solid rgba(201,162,75,.55);background:rgba(201,162,75,.10);color:var(--oro2);font:700 10px/1 'Mazzard',sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;white-space:nowrap;}
@@ -1748,6 +1750,7 @@
   // Como TV non va dentro Como 1907"). Le sequenze montate dal MAM Como 1907
   // (origine "1907") si vedono solo in ?ambito=1907; nel resto dell'Editing no.
   var AMBITO = new URLSearchParams(location.search).get("ambito") === "1907" ? "1907" : "";
+  if (AMBITO) document.documentElement.classList.add("ambito-1907");   // nascosti i tasti di regia, vMix e Diretta (CSS)
   function delMioAmbito(q){ return ((q && q.origine === "1907") ? "1907" : "") === AMBITO; }
   var BASE = PONTE.replace(/\/api$/, "");
   var TOKEN = ""; try { TOKEN = (window.ChiaveComoTV ? ChiaveComoTV.valore() : "") || ""; } catch (e) {}
@@ -2779,7 +2782,7 @@
   function inSeqDaUrl(js){
     var c = null; try { c = JSON.parse(js); } catch (e) {}
     if (!c || !c.p) { vai("libreria"); return avviso("err", "Non so quale clip mettere in timeline."); }
-    document.title = "Metto in timeline… · MAM Como TV";
+    document.title = "Metto in timeline… · " + (AMBITO ? "Como 1907" : "MAM Como TV");
     post({ tipo:"clip-monta-scelte", titolo: "Dalla ricerca · " + c.d, domanda: c.d, seq: c.s || "", pezzi: [c.p] }).then(function(d){
       if (!d || d.ok === false || !d.seq) throw new Error((d && d.errore) || "non entra in timeline" + (d && d.saltate && d.saltate.length ? ": " + d.saltate[0] : ""));
       try { localStorage.setItem("mam2-seq-ricerca", JSON.stringify({ q: c.d, id: d.seq.id })); sessionStorage.setItem("mam2-avviso", "«" + c.n + "» in timeline" + (d.inCoda ? ", in coda a «" + d.seq.titolo + "»" : ", in una sequenza nuova: «" + d.seq.titolo + "»") + "."); } catch (e) {}
@@ -3472,11 +3475,13 @@
   // ricorda: da li' in poi l'XML esce con i percorsi veri e Premiere apre
   // la sequenza gia' attaccata al materiale, senza ricollegare niente.
   function volumeMontaggio(chiedi){
-    var v = ""; try { v = localStorage.getItem("mam2-volume") || ""; } catch (e) {}
+    // nel 1907 i file stanno sulla NAS del club (COMOTV - FRAME): un'impostazione sua (30/09/2026)
+    var CH = AMBITO ? "mam2-volume-1907" : "mam2-volume", DEF = AMBITO ? "/Volumes/COMOTV - FRAME" : "/Volumes/COMOTV - VOD";
+    var v = ""; try { v = localStorage.getItem(CH) || ""; } catch (e) {}
     if (!chiedi && v) return v;
-    var n = window.prompt("Dove hai montato l’archivio sul tuo computer?\nSe lo lasci vuoto l’XML esce coi soli nomi dei file, e in Premiere li ricolleghi a mano.", v || "/Volumes/COMOTV - VOD");
+    var n = window.prompt("Dove hai montato l’archivio sul tuo computer?\nSe lo lasci vuoto l’XML esce coi soli nomi dei file, e in Premiere li ricolleghi a mano.", v || DEF);
     if (n === null) return null;
-    v = n.trim(); try { localStorage.setItem("mam2-volume", v); } catch (e) {}
+    v = n.trim(); try { localStorage.setItem(CH, v); } catch (e) {}
     return v;
   }
   // NIENTE "RIPRENDI" (25/09/2026, Goffredo): quando si entra si riparte
@@ -3522,7 +3527,7 @@
       if (r.mini) el("sMini").src = BASE + r.mini;
       posa(r.id, undefined, function(u){ el("sMini").src = u; });
       briciole([r.titolo || "partita"]);
-      document.title = (r.titolo || "MAM") + " · MAM Como TV";
+      document.title = (r.titolo || "MAM") + " · " + (AMBITO ? "Editing Como 1907" : "MAM Como TV");
       if (r.arch && !r.inCasa && !r.via) {
         V.removeAttribute("src"); try { V.load(); } catch (e) {}
         avviso("err", "Il file di questa partita non \u00e8 sulla NAS.");
@@ -4108,7 +4113,7 @@
   function apriEditorVuoto(){
     vai("editor"); VE = armaVE(el("videoE"));
     SEQ = null; REGE = null; PZ = []; GRAF = []; AUD = []; SEL = null; SELS = [];
-    briciole(["Montaggio"]); document.title = "Montaggio \u00b7 MAM Como TV";
+    briciole(["Montaggio"]); document.title = "Montaggio \u00b7 " + (AMBITO ? "Como 1907" : "MAM Como TV");
     el("panProgNome").textContent = "nessuna sequenza"; el("panTlNome").textContent = "nessuna sequenza";
     el("tlVuota").hidden = false; el("palcoE").style.visibility = "hidden";   // niente riquadro nero senza sequenza
     mostraScheda("srg", true); mostraScheda("browser", true);
@@ -4167,7 +4172,7 @@
       el("eProg").textContent = "Progetto" + (SEQ.prog ? " ✓" : "");
       el("eTitolo").textContent = SEQ.titolo || "sequenza"; el("panProgNome").textContent = el("panTlNome").textContent = SEQ.titolo || "sequenza"; el("eMeta").textContent = (REGE.titolo || "") + " · " + PZ.length + " pezzi · " + tc(fineTutto());
       briciole([REGE.titolo || "partita", SEQ.titolo || "sequenza"]);
-      document.title = (SEQ.titolo || "sequenza") + " · MAM Como TV";
+      document.title = (SEQ.titolo || "sequenza") + " · " + (AMBITO ? "Editing Como 1907" : "MAM Como TV");
       // una sequenza vuota ha il Programma nero, non il primo fotogramma della partita
       if (PZ.length) VE.src = BASE + REGE.via;
       el("eAsset").onclick = vaiAllaPartita;
@@ -4601,7 +4606,7 @@
       // INVIA IN REGIA (28/09/2026): lo stesso pannello del tasto In regia, con le
       // opzioni di sempre (nome in scaletta, vMix o progetto, audio); dalla scheda
       // della partita manda la bozza
-      { e: "Invia in regia\u2026", t: "", per: { editor: function(){ if (AMBITO) return avviso("err", "Il materiale del Como 1907 non va in regia da qui."); apriInRegia(); }, asset: function(){ if (!ASSET) return avviso("err", "Apri prima una partita."); el("bBozzaRegia").click(); } } },
+      { e: "Invia in regia\u2026", t: "", no1907: 1, per: { editor: function(){ if (AMBITO) return avviso("err", "Il materiale del Como 1907 non va in regia da qui."); apriInRegia(); }, asset: function(){ if (!ASSET) return avviso("err", "Apri prima una partita."); el("bBozzaRegia").click(); } } },
       { riga: 1 },
       vc("Chiudi il progetto", "", function(){ location.href = "mam2.html"; })
     ],
@@ -4734,7 +4739,8 @@
     Object.keys(per).forEach(function(k){ v.per[k] = per[k] === true ? v.f : per[k]; });
   }
   var OVUNQUE = { libreria: true, asset: true, live: true };
-  function fnDi(v){ if (!v || v.riga || v.capo) return null; if (!v.per) return VISTA_ORA === "editor" ? v.f : null; return v.per[VISTA_ORA] || null; }
+  // (30/09/2026, Goffredo: "Como 1907 non ha alcun ponte per regia, vmix e cose cosi'")
+  function fnDi(v){ if (!v || v.riga || v.capo) return null; if (AMBITO && v.no1907) return null; if (!v.per) return VISTA_ORA === "editor" ? v.f : null; return v.per[VISTA_ORA] || null; }
   function dopoLaVoce(menu, nome, voci){
     var m = MENU[menu], i = -1; m.forEach(function(z, k){ if (z.e === nome) i = k; });
     Array.prototype.splice.apply(m, [i < 0 ? m.length : i + 1, 0].concat(voci));
@@ -4769,7 +4775,7 @@
   MENU.app = [
     { capo: "Il MAM" },
     { e: "Libreria", t: "", per: { editor: vaiA_("mam2.html"), asset: vaiA_("mam2.html"), live: vaiA_("mam2.html"), libreria: function(){ vai("libreria"); } } },
-    { e: "MAM Como TV | Live", t: "", per: { editor: vaiA_("mam2.html?live=1"), libreria: function(){ apriLive(); }, asset: vaiA_("mam2.html?live=1"), live: function(){} } },
+    { e: "MAM Como TV | Live", t: "", no1907: 1, per: { editor: vaiA_("mam2.html?live=1"), libreria: function(){ apriLive(); }, asset: vaiA_("mam2.html?live=1"), live: function(){} } },
     { e: "Editing", t: "", per: { editor: vaiA_("mam2.html?montaggio=1"), libreria: vaiA_("mam2.html?montaggio=1"), asset: vaiA_("mam2.html?montaggio=1"), live: vaiA_("mam2.html?montaggio=1") } },
     { e: "Magazzino", t: "", per: { editor: vaiA_("magazzino.html"), libreria: vaiA_("magazzino.html"), asset: vaiA_("magazzino.html"), live: vaiA_("magazzino.html") } },
     { e: "Finder della QNAP", t: "", per: { editor: vaiA_("qnap.html"), libreria: vaiA_("qnap.html"), asset: vaiA_("qnap.html"), live: vaiA_("qnap.html") } },
@@ -4847,7 +4853,7 @@
     { e: "Sorgente", t: "", per: { live: function(){ WSL.mostra("sorgente"); } } },
     { e: "Clip della partita", t: "", per: { live: function(){ WSL.mostra("clip"); } } },
     { e: "Formati", t: "", per: { live: function(){ WSL.mostra("formati"); } } },
-    { e: "Esporta (Diretta)", t: "", per: { live: function(){ WSL.mostra("esporta"); } } },
+    { e: "Esporta (Diretta)", t: "", no1907: 1, per: { live: function(){ WSL.mostra("esporta"); } } },
     { riga: 1 });
   perVista("aiuto", "Scelte rapide da tastiera", OVUNQUE);
   function scegliFormatoMenu(f){
@@ -5078,7 +5084,7 @@
   function sorgenteAudio(a){
     if (a.animata) return BASE + "/clip/_hl/_grafiche/animate/" + encodeURIComponent(a.animata) + ".wav";
     var p = a.legato ? PZ.filter(function(z){ return z.id === a.legato; })[0] : null;
-    if (p && p.media) return BASE + "/video/" + encodeURIComponent(p.media);
+    if ((p && p.media) || a.media) return BASE + "/video/" + encodeURIComponent((p && p.media) || a.media);
     var rid = a.reg || (p && p.reg) || (SEQ && SEQ.reg), r = rid ? (REGS[rid] || (REGE && REGE.id === rid ? REGE : null)) : REGE;
     return r && r.via ? BASE + r.via : (REGE && REGE.via ? BASE + REGE.via : "");
   }
@@ -5159,16 +5165,27 @@
   //    il montaggio diventa un lavoro di mira al pixel.
   var MAGNETE = true, AGGANCIO = null, RETE = null;
   try { MAGNETE = localStorage.getItem("mam2-magnete") !== "0"; } catch (e) {}
+  // I BORDI DOVE IL MAGNETE ATTACCA (30/09/2026): dove stanno DAVVERO le
+  // clip (t0: la sequenza puo' avere buchi, la somma delle durate non dice
+  // piu' dove sono), le grafiche e anche gli audio, tranne quello che si
+  // sta trascinando. Una copia fatta con Alt invece attacca proprio al suo
+  // originale: e' li' che la si vuole, sotto di lui e sotto il video.
   function puntiDiAggancio(saltaPezzo){
-    var p = [0, durSeq(), tSeq()], acc = 0;
+    var p = [0, durSeq(), tSeq()];
     PZ.forEach(function(x, i){
-      var d = x.fuori - x.dentro;
-      if (i !== saltaPezzo) { p.push(acc); p.push(acc + d); }
-      acc += d;
+      if (i === saltaPezzo) return;
+      var a = x.t0 || 0; p.push(a); p.push(a + (x.fuori - x.dentro));
     });
     if (INS !== null) p.push(INS);
     if (OUTS !== null) p.push(OUTS);
     GRAF.forEach(function(g){ p.push(g.dentro); p.push(g.fuori); });
+    var salta = TRASC && TRASC.tipo === "a-muovi" && !TRASC.duplica ? TRASC.a_id : null;
+    AUD.forEach(function(a){
+      if (a.id === salta) return;
+      var pzA = a.legato ? PZ.filter(function(z){ return z.id === a.legato; })[0] : null;
+      var t0a = pzA ? (pzA.t0 || 0) + (+a.sfaso || 0) : (a.t0 || 0);
+      p.push(t0a); p.push(t0a + Math.max(0, a.fuori - a.dentro));
+    });
     return p;
   }
   var ALT_GIU = false;
@@ -5179,7 +5196,8 @@
     AGGANCIO = null;
     // tenendo alt il magnete si scavalca per un attimo, senza spegnerlo:
     // serve nelle due volte in cui vuoi il bordo dove dici tu e basta
-    if (!MAGNETE || ALT_GIU) return t;
+    // (la copia con Alt: l'Alt serve a duplicare, il magnete resta acceso, come in Premiere)
+    if (!MAGNETE || (ALT_GIU && !(TRASC && TRASC.duplica))) return t;
     var span = Math.max(0.001, LENTE.b - LENTE.a), w = el("pista").clientWidth || 800;
     var soglia = 9 / w * span, buono = null, vicino = soglia;
     puntiDiAggancio(saltaPezzo).forEach(function(q){
@@ -5625,6 +5643,10 @@
         }
         if (!TRASC.legato) {
           var dur3 = TRASC.b - TRASC.a; TRASC.a = Math.max(0, aggancia(TRASC.t00 + ds, -1));
+          // si aggancia anche con la CODA, non solo con la testa
+          var testaA = AGGANCIO, codaA = aggancia(TRASC.t00 + ds + dur3, -1);
+          if (AGGANCIO !== null && (testaA === null || Math.abs(codaA - (TRASC.t00 + ds + dur3)) < Math.abs(TRASC.a - (TRASC.t00 + ds)))) TRASC.a = Math.max(0, codaA - dur3);
+          else AGGANCIO = testaA;
           // IL SINCRONO CALAMITA SEMPRE (anche col magnete spento): riportato vicino al suo video, ci si attacca
           if (TRASC.eraLegato && TRASC.pzT0 !== null) { var sogliaS = 10 / (el("pista").clientWidth || 800) * Math.max(0.001, LENTE.b - LENTE.a); if (Math.abs(TRASC.t00 + ds - TRASC.pzT0) < sogliaS) { TRASC.a = TRASC.pzT0; AGGANCIO = TRASC.pzT0; } }
           TRASC.b = TRASC.a + dur3;
@@ -5686,7 +5708,7 @@
         // Alt+clic senza muovere: il punto del volume, come prima
         if (!tr.mosso && !cambiaTraccia) { if (tr.altNodo) aggiungiPuntoVolume(tr.altNodo, { clientX: tr.x0, clientY: tr.y0 }); disegnaTl(); return; }
         post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"duplica", audio: tr.a_id, t0: Math.round(tr.a * 1000) / 1000, traccia: tr.trA || tr.trDa })
-          .then(function(d){ ricaricaSeq(d.seq); SELA = d.audio || null; disegnaTl(); avviso("ok", "Audio duplicato su " + (tr.trA || tr.trDa) + "."); })
+          .then(function(d){ if (d.audio && ONDE[tr.a_id]) ONDE[d.audio] = ONDE[tr.a_id]; ricaricaSeq(d.seq); if (d.audio && !ONDE[d.audio]) { ONDE_CHIESTE = 0; chiediOnde(); } SELA = d.audio || null; disegnaTl(); avviso("ok", "Audio duplicato su " + (tr.trA || tr.trDa) + "."); })
           .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
         return;
       }
@@ -7938,6 +7960,7 @@
   }
   function ricordaDoveRegia(v){ try { if (v) localStorage.setItem("mam2-regia-dove", v); } catch (e) {} }
   function apriRegiaEsp(b){
+    if (AMBITO) return avviso("err", "Il Como 1907 non ha la regia: il montato si scarica o va in Premiere.");
     var p = pannelloRegiaEsp(); p.dataset.modo = "uscita";
     var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
     var sceltoDove = doveRegia(opz, dest);
@@ -7968,6 +7991,7 @@
   // la sequenza da mandare: quella aperta nell'Editor, o la bozza della partita
   function seqEditor(){ return SEQ ? { id: SEQ.id, reg: SEQ.reg, titolo: SEQ.titolo, pezzi: PZ.length, dur: durSeq(), grafiche: !!(GRAF && GRAF.length) } : null; }
   function apriInRegia(q){
+    if (AMBITO) return avviso("err", "Il Como 1907 non ha la regia: il montato si scarica o va in Premiere.");
     q = q || seqEditor();
     if (!q) return avviso("err", "Apri prima una sequenza.");
     if (!q.pezzi) return avviso("err", "La sequenza è vuota.");
@@ -8076,6 +8100,7 @@
   // quanto pesa (bitrate). Come il pannello di un encoder, senza l'encoder.
   var LIVE = { reg: null, hls: null, porte: [], giro: null, sotto: false, lingua: "it", da: 0, righe: [], ultimoSeg: null, ultimoQuando: 0, ricezione: true, parti: null, fermoVoluto: false, parlata: "" };
   function apriLive(){
+    if (AMBITO) { avviso("err", "Il Como 1907 non ha la Diretta."); return; }
     vai("live"); briciole(["Diretta"]); document.title = "Diretta · MAM Como TV";
     giroLive();
   }
