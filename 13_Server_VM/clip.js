@@ -17062,6 +17062,10 @@ const AZIONI = {
     if (!x) throw new Error("pezzo sconosciuto");
     if ((tracceDi(q).V1 || {}).bloccata) throw new Error("la traccia V1 e' bloccata");
     toccataAMano(q);
+    // SOLO IL VIDEO (30/09/2026, selezione collegata spenta, come in Premiere):
+    // l'audio legato si stacca e resta dov'e'; lo stesso passo di Annulla
+    let staccati = 0;
+    if (p.soloVideo) (q.audio || []).forEach((a) => { if (a.legato === x.id) { delete a.legato; a.titolo = (a.titolo || "audio") + " · scollegato"; staccati++; } });
     const prima = x.t0 || 0;
     const dopo = Math.max(0, Math.round(num(p.t0, 0, 86400, prima) * 1000) / 1000);
     const eraLibera = !!q.libera;
@@ -17082,7 +17086,7 @@ const AZIONI = {
     if (d) (q.audio || []).forEach((a) => { if (a.legato === x.id) a.t0 = Math.max(0, (a.t0 || 0) + d); });
     riallinea(q);
     scrivi(); annuncia(0, "clip");
-    return { ok: true, seq: q, buchi: buchiDi(q).length, infilato: fatto.infilato || 0 };
+    return { ok: true, seq: q, buchi: buchiDi(q).length, infilato: fatto.infilato || 0, staccati };
   },
   // SPOSTARE IN GRUPPO (30/09/2026, il tasto A di Premiere e lo spazio vuoto
   // che si toglie con Canc). Pezzi su V1 e V2, grafiche e audio staccato

@@ -1684,6 +1684,7 @@
             <div class="ed-barra barra-tl">
               <span class="tc tc-tl" id="eOraTl" title="la posizione della testina">00:00:00</span>
               <button id="eMagnete" title="magnetismo: i bordi si attaccano agli stacchi, alla testina e all'entrata/uscita (S)">&#129522; Magnete</button>
+              <button id="eCollega" title="Selezione collegata: audio e video di una clip si prendono e si spostano insieme. Spenta, trascini solo l'audio o solo il video (l'altro resta dov'e')">&#128279; Collegati</button>
               <span class="spazio"></span>
               <button id="eMeno" title="allontana (−)">−</button><button id="eTutta" title="tutta la sequenza (\)">tutta</button><button id="ePiu" title="avvicina (+)">+</button>
             </div>
@@ -4233,7 +4234,14 @@
       if (suSopra) hv2 += pezzoHtml; else hv += pezzoHtml;
       // l'audio legato sta sotto il suo video; se e' stato tolto, sotto c'e' silenzio
       var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
-      if (au) haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xa, ww);
+      if (au) {
+        var xaA = xa, wwA = ww;
+        if (TRASC && TRASC.tipo === "a-muovi" && TRASC.a_id === au.id && !TRASC.legato && TRASC.mosso) { xaA = Math.max(0, X(TRASC.a)); wwA = Math.max(6, Math.min(w, X(TRASC.b)) - xaA); }
+        else if (TRASC && TRASC.soloVideo && TRASC.mosso && TRASC.tipo === "muovi" && (TRASC.i === i || (TRASC.gruppo && TRASC.gruppo.some(function(z){ return z.id === x.id; })))) {
+          var a0v = x.t0 || 0; xaA = Math.max(0, X(a0v)); wwA = Math.max(6, Math.min(w, X(a0v + d)) - xaA);
+        }
+        haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xaA, wwA);
+      }
       var velX = velDi(x), fineX = x.dentro + d * velX, regX = regDelPezzo(x);
       righeDi(x).forEach(function(s){ if (s.b <= x.dentro || s.a >= fineX) return; var sa = a + Math.max(0, s.a - x.dentro) / velX, sb = a + Math.min(d, (s.b - x.dentro) / velX); if (sb < LENTE.a || sa > LENTE.b) return; var t2 = testoRiga(s).t; hs += '<div class="ed-st' + (s.m ? " mod" : "") + (TS_SEL === regX + "|" + s.k ? " sel" : "") + '" data-k="' + esc(s.k || "") + '" data-reg="' + esc(regX) + '" data-t="' + sa + '" style="left:' + Math.max(0, X(sa)) + 'px;width:' + Math.max(4, Math.min(w, X(sb)) - Math.max(0, X(sa))) + 'px" title="' + esc(t2) + '">' + esc(t2) + '</div>'; });
     });
@@ -4567,6 +4575,7 @@
       bt("Aggiungi modifica (taglierino)", "cmd K", "eTaglia"),
       bt("Chiudi gli spazi vuoti", "", "eAttacca"),
       bt("Magnetismo", "S", "eMagnete"),
+      bt("Selezione collegata", "", "eCollega"),
       { riga: 1 },
       { capo: "Nuovo elemento" },
       vc("Testo…", "T", chiediTitolo),
@@ -5090,6 +5099,18 @@
     if (buono === null) return t;
     AGGANCIO = buono; return buono;
   }
+  // LA SELEZIONE COLLEGATA (30/09/2026, come in Premiere). Accesa: audio e
+  // video di una clip vanno insieme. Spenta: trascinando l'audio si sposta
+  // solo l'audio, trascinando il video solo il video, e l'altro resta dov'e'
+  // (il ponte li scollega nello stesso passo di Annulla; Cmd+L li rilega).
+  var COLLEGATI = true;
+  try { COLLEGATI = localStorage.getItem("mam2-collegati") !== "0"; } catch (e) {}
+  function segnaCollega(){ el("eCollega").classList.toggle("on", COLLEGATI); }
+  el("eCollega").addEventListener("click", function(){
+    COLLEGATI = !COLLEGATI; try { localStorage.setItem("mam2-collegati", COLLEGATI ? "1" : "0"); } catch (e) {}
+    segnaCollega(); avviso("ok", COLLEGATI ? "Selezione collegata: audio e video si spostano insieme." : "Selezione scollegata: trascini solo l\u2019audio o solo il video.");
+  });
+  segnaCollega();
   function segnaMagnete(){ el("eMagnete").classList.toggle("on", MAGNETE); }
   el("eMagnete").addEventListener("click", function(){
     MAGNETE = !MAGNETE; try { localStorage.setItem("mam2-magnete", MAGNETE ? "1" : "0"); } catch (e) {}
@@ -5371,8 +5392,9 @@
       if (traccaBloccata(au.traccia)) { avviso("err", "La traccia " + (au.traccia || "A1") + " e' bloccata."); disegnaTl(); return; }
       // anche l'audio legato si prende: non per spostarlo nel tempo (quello
       // lo scollegherebbe dal suo video) ma per portarlo su un'altra traccia
-      TRASC = { tipo: "a-muovi", a_id: au.id, legato: !!au.legato, trDa: au.traccia || "A1", trA: au.traccia || "A1",
-                x0: e.clientX, y0: e.clientY, a: au.t0 || 0, b: (au.t0 || 0) + (au.fuori - au.dentro), t00: au.t0 || 0, mosso: false };
+      var pzAu = au.legato ? PZ.filter(function(z){ return z.id === au.legato; })[0] : null, t0Au = pzAu ? (pzAu.t0 || 0) : (au.t0 || 0);
+      TRASC = { tipo: "a-muovi", a_id: au.id, legato: !!au.legato && COLLEGATI, eraLegato: !!au.legato, trDa: au.traccia || "A1", trA: au.traccia || "A1",
+                x0: e.clientX, y0: e.clientY, a: t0Au, b: t0Au + (au.fuori - au.dentro), t00: t0Au, mosso: false };
       e.preventDefault(); disegnaTl(); return;
     }
     SELG = null; SELA = null;
@@ -5392,7 +5414,7 @@
     // si puo' sceglierla, ma non spostarla: e' quello che fa il lucchetto
     if (traccaBloccata(x.traccia || "V1")) { avviso("err", "La traccia " + (x.traccia || "V1") + " e' bloccata."); disegnaTl(); e.preventDefault(); return; }
     TRASC = { i: i, x0: e.clientX, tipo: bordo ? bordo.dataset.lato : "muovi", dentro: x.dentro, fuori: x.fuori,
-              t00: x.t0 || 0, a: x.t0 || 0, b: (x.t0 || 0) + (x.fuori - x.dentro), mosso: false, conTasto: conTasto };
+              t00: x.t0 || 0, a: x.t0 || 0, b: (x.t0 || 0) + (x.fuori - x.dentro), mosso: false, conTasto: conTasto, soloVideo: !COLLEGATI };
     // PIU' CLIP INSIEME. Se quella che prendi fa parte di una scelta, si
     // muovono tutte mantenendo le distanze: spostarle una per una e sperare
     // che restino in fila non e' montare.
@@ -5511,7 +5533,7 @@
       // spostarlo nel tempo lo scollega dal video: si fa solo se lo si e'
       // davvero mosso in orizzontale, e solo se era gia' staccato
       if (!tr.legato && tr.mosso) c2.t0 = Math.round(tr.a * 1000) / 1000;
-      post(c2).then(function(d){ ricaricaSeq(d.seq); if (cambiaTraccia) avviso("ok", "Audio su " + tr.trA + "."); })
+      post(c2).then(function(d){ ricaricaSeq(d.seq); if (tr.eraLegato && c2.t0 !== undefined) avviso("ok", "Solo l\u2019audio spostato: ora \u00e8 staccato dal suo video (Cmd+L lo rilega)."); else if (cambiaTraccia) avviso("ok", "Audio su " + tr.trA + "."); })
         .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
       return;
     }
@@ -5550,14 +5572,14 @@
       // si muove va a sbattere contro quelli che non si sono ancora mossi
       var quali = (tr.gruppo || [{ id: x.id, t0: tr.t00 }]).slice()
         .sort(function(p1, p2){ return salto > 0 ? p2.t0 - p1.t0 : p1.t0 - p2.t0; });
-      var passo = Promise.resolve(), ultima = null;
+      var passo = Promise.resolve(), ultima = null, staccatiV = 0;
       quali.forEach(function(z){
         passo = passo.then(function(){
-          return post({ tipo:"clip-hl-sposta", seq: SEQ.id, pezzo: z.id, t0: Math.round(Math.max(0, z.t0 + salto) * 1000) / 1000 })
-            .then(function(d){ ultima = d; });
+          return post({ tipo:"clip-hl-sposta", seq: SEQ.id, pezzo: z.id, t0: Math.round(Math.max(0, z.t0 + salto) * 1000) / 1000, soloVideo: !!tr.soloVideo })
+            .then(function(d){ ultima = d; staccatiV += d.staccati || 0; });
         });
       });
-      passo.then(function(){ if (ultima) ricaricaSeq(ultima.seq); if (quali.length > 1) avviso("ok", quali.length + " pezzi spostati."); })
+      passo.then(function(){ if (ultima) ricaricaSeq(ultima.seq); if (staccatiV) avviso("ok", "Solo il video spostato: l\u2019audio resta dov\u2019era, staccato (Cmd+L lo rilega)."); else if (quali.length > 1) avviso("ok", quali.length + " pezzi spostati."); })
         .catch(function(er){ avviso("err", esc(er.message)); disegnaTl(); });
     }
   });
