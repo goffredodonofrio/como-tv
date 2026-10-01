@@ -4024,7 +4024,7 @@
   // vedeva niente. Si prende il pezzo che contiene t, e t dentro di lui.
   function pezzoDiReg(r, t){
     var pz = (r && r.pezziArch) || [];
-    for (var i = pz.length - 1; i >= 0; i--) if (pz[i].via && t >= (+pz[i].da || 0) - 0.01) return { via: pz[i].via, t: t - (+pz[i].da || 0) };
+    for (var i = pz.length - 1; i >= 0; i--) if (pz[i].via && t >= (+pz[i].da || 0) - 0.01) return { via: pz[i].via, t: t - (+pz[i].da || 0), i: i, dur: +pz[i].durata || 0, da: +pz[i].da || 0, n: pz.length };
     return r && r.via ? { via: r.via, t: t } : null;
   }
   function viaDiReg(card, t){
@@ -4099,7 +4099,7 @@
     }
     var t = +card.dataset.t || 0;
     card.classList.add("ant-attesa");
-    viaDiReg(card, t).then(function(x){ if (ANT.card === card) videoAnteprima(card, mini, BASE + x.via, Math.max(0, x.t - 4), x.t + 6); })
+    viaDiReg(card, t).then(function(x){ if (ANT.card === card) videoAnteprima(card, mini, BASE + x.via, Math.max(0, x.t - 4), x.t + 6, null, false, canaliDi(REGS[card.dataset.reg])); })
       .catch(function(){ card.classList.remove("ant-attesa"); });
   }
   // il video dell'anteprima: parte da "da" con l'audio e torna a "da" arrivato ad "a";
@@ -4112,8 +4112,9 @@
     au.src = "/como-tv/mam-1907/suono/" + x.k1907 + ".m4a?v=" + encodeURIComponent(x.via1907) + "&t=" + Math.floor(da || 0);
     ANT.audio = au;
   }
-  function videoAnteprima(card, mini, src, da, a, seNo, muto){
+  function videoAnteprima(card, mini, src, da, a, seNo, muto, canali){
     var v = document.createElement("video"); v.className = "ant-video"; v.muted = !!muto; v.volume = 0.8; v.playsInline = true; v.preload = "auto";
+    if (!muto && canali > 2) soloProgramma(v, canali);
     var bi = barraAnt(mini), fallito = false;
     var male = function(){ if (fallito) return; fallito = true; v.remove(); if (ANT.video === v) ANT.video = null; if (seNo && ANT.card === card) seNo(); else card.classList.remove("ant-attesa"); };
     // con l'audio (Goffredo, 28/09/2026); se il browser non lo lascia partire, muto
@@ -4342,13 +4343,13 @@
     if (LINGUE_INFO.hasOwnProperty(rec)) return Promise.resolve(LINGUE_INFO[rec]);
     return post({ tipo:"clip-lingue-di", rec: rec }).then(function(d){ return (LINGUE_INFO[rec] = d.lingue || null); }).catch(function(){ return (LINGUE_INFO[rec] = null); });
   }
-  function PlayerLingua(video, boxId){
+  function PlayerLingua(video, boxId, tempo){
     var o = { l: "ita", info: null, au: null, video: video };
     function secondo(t){ var i = o.info, v = i && i[o.l]; if (!v) return null; var off = (i.taglio && t >= i.taglio) ? v.o2 : v.o1; return (off === null || off === undefined) ? null : t + off; }
     o.giro = function(){
       var v = o.video(); if (!v) return;
       if (o.l === "ita" || !o.au) { if (o.au && !o.au.paused) o.au.pause(); return; }
-      var dove = secondo(v.currentTime || 0);
+      var dove = secondo(tempo ? tempo() : (v.currentTime || 0));
       if (dove === null) { if (!o.au.paused) o.au.pause(); return; }
       if (Math.abs((o.au.currentTime || 0) - dove) > 0.2) { try { o.au.currentTime = dove; } catch (e) {} }
       try { o.au.volume = v.volume; if (o.au.playbackRate !== v.playbackRate) o.au.playbackRate = v.playbackRate; } catch (e) {}
@@ -4380,8 +4381,8 @@
     setInterval(o.giro, 250);
     return o;
   }
-  var LIN_ASSET = PlayerLingua(function(){ return el("video"); }, "lingueAsset");
-  var LIN_SRG = PlayerLingua(function(){ return el("videoS"); }, "lingueSrg");
+  var LIN_ASSET = PlayerLingua(function(){ return el("video"); }, "lingueAsset", function(){ return tA(); });
+  var LIN_SRG = PlayerLingua(function(){ return el("videoS"); }, "lingueSrg", function(){ return tS(); });
   function linguaPer(o){ return o && o.l !== "ita" ? o.l : undefined; }
   // ── IL MATERIALE DEL CLUB (30/09/2026). La partita del Como che sta nella
   //    Sorgente (o quella della sequenza) porta con se' la cartella della
@@ -4450,9 +4451,8 @@
       if (r.arch && !r.inCasa && !r.via) {
         V.removeAttribute("src"); try { V.load(); } catch (e) {}
         avviso("err", "Il file di questa partita non \u00e8 sulla NAS.");
-      } else V.src = BASE + r.via;
+      } else { V.removeAttribute("src"); VA_DA = 0; soloProgramma(V, canaliDi(r)); aFile(t ? Math.max(0, t - 3) : 0); }
       V.onerror = function(){ avviso("err", "Questo video non si apre: il file sulla NAS non risponde."); };
-      if (t) V.addEventListener("loadedmetadata", function unaVolta(){ V.removeEventListener("loadedmetadata", unaVolta); try { V.currentTime = Math.max(0, t - 3); } catch (e) {} });
       // una partita non ancora misurata: la durata la dice il video appena carica
       V.addEventListener("loadedmetadata", function durataVera(){ V.removeEventListener("loadedmetadata", durataVera); if (!r.durata && isFinite(V.duration) && V.duration > 0) { r.durata = Math.round(V.duration); ASSET.durata = r.durata; el("aMeta").innerHTML = [r.competizione, quando(r.avviata), durata(r.durata)].filter(Boolean).map(esc).join(" · "); ponte1907(r); disegnaScheda(el("cercaS").value); disegnaMomenti(); } });
       el("aMam").onclick = function(){ apriNelMontaggio(r); };
@@ -4580,7 +4580,7 @@
   function ancora(cosa, b){
     if (!ASSET) return;
     var q = { tipo:"clip-archivio-ancora", reg: ASSET.id };
-    if (cosa === "1" || cosa === "2") { q.tempo = cosa; q.t = Math.round((V && V.currentTime) || 0); }
+    if (cosa === "1" || cosa === "2") { q.tempo = cosa; q.t = Math.round(tA()); }
     else if (cosa === "auto") q.auto = true;
     else if (cosa === "cronometro") q.cronometro = true;
     else if (cosa === "via") q.via = true;
@@ -4605,7 +4605,29 @@
   el("cercaS").addEventListener("input", function(){ disegnaScheda(this.value); });
 
   // ── il player e il trasporto ──
-  function seek(t){ if (!V) return; try { V.currentTime = Math.max(0, t); } catch (e) {} if (V.paused) V.play().catch(function(){}); }
+  // LA SCHEDA DI UNA PARTITA IN PIU' FILE (01/10/2026): come la Sorgente, il
+  // tempo e' quello della partita intera e il file aperto comincia a VA_DA
+  var VA_DA = 0;
+  function tA(){ return ((V && V.currentTime) || 0) + VA_DA; }
+  function aFile(t, parti){
+    if (!V || !ASSET) return;
+    var x = pezzoDiReg(ASSET, Math.max(0, t)); if (!x) return;
+    if (x.dur && x.t > x.dur - 0.05 && x.i < x.n - 1) return aFile(+ASSET.pezziArch[x.i + 1].da || 0, parti);
+    var src = BASE + x.via;
+    if (V.getAttribute("src") !== src) {
+      var eraInPlay = !V.paused || parti, v0 = V;
+      VA_DA = x.da; V.setAttribute("src", src);
+      v0.addEventListener("loadedmetadata", function una(){ v0.removeEventListener("loadedmetadata", una); try { v0.currentTime = Math.max(0, x.t); } catch (e) {} if (eraInPlay) v0.play().catch(function(){}); });
+      return;
+    }
+    try { V.currentTime = Math.max(0, x.t); } catch (e) {}
+    if (parti && V.paused) V.play().catch(function(){});
+  }
+  el("video").addEventListener("ended", function(){
+    var pz = (ASSET && ASSET.pezziArch) || [], x = ASSET ? pezzoDiReg(ASSET, tA()) : null;
+    if (x && x.i < pz.length - 1) aFile(+pz[x.i + 1].da || 0, true);
+  });
+  function seek(t){ if (!V) return; aFile(Math.max(0, t), true); }
   // che segno fa ogni tipo di azione: colore, altezza e nome per la legenda
   var SEGNI = {
     gol:         { c: "#E3C271", h: 26, n: "gol" },
@@ -4757,9 +4779,9 @@
     m.addEventListener("pointerdown", function(e){ if (!V) return; var ix = vicina(e); nascondiScheda(); giu = true; eraInPlay = !V.paused; V.pause(); m.classList.add("scrub"); m.setPointerCapture(e.pointerId);
       // sopra un'azione si va al suo inizio, non al pixel cliccato
       var x = ix !== null ? TAB[ix] : null, dove = x ? (x.dentro !== undefined ? x.dentro : Math.max(0, x.t - 5)) : tAl(e);
-      try { V.currentTime = dove; } catch (er) {} if (x) giu = "azione"; etichetta(e, true); e.preventDefault(); });
-    m.addEventListener("pointermove", function(e){ if (!V) return; etichetta(e, true); if (!giu) { mostraScheda(e); return; } if (giu === "azione") { giu = true; } var ora = performance.now(); if (ora - ultimo < 60) return; ultimo = ora; try { V.currentTime = tAl(e); } catch (er) {} });
-    m.addEventListener("pointerup", function(e){ if (!giu) return; var suAzione = giu === "azione"; giu = false; m.classList.remove("scrub"); if (!suAzione) { try { V.currentTime = tAl(e); } catch (er) {} } if (eraInPlay) V.play().catch(function(){}); etichetta(e, false); });
+      aFile(dove); if (x) giu = "azione"; etichetta(e, true); e.preventDefault(); });
+    m.addEventListener("pointermove", function(e){ if (!V) return; etichetta(e, true); if (!giu) { mostraScheda(e); return; } if (giu === "azione") { giu = true; } var ora = performance.now(); if (ora - ultimo < 60) return; ultimo = ora; aFile(tAl(e)); });
+    m.addEventListener("pointerup", function(e){ if (!giu) return; var suAzione = giu === "azione"; giu = false; m.classList.remove("scrub"); if (!suAzione) { aFile(tAl(e)); } if (eraInPlay) V.play().catch(function(){}); etichetta(e, false); });
     m.addEventListener("pointerleave", function(e){ if (!giu) { etichetta(e, false); nascondiScheda(); } });
     m.addEventListener("pointercancel", function(){ giu = false; m.classList.remove("scrub"); });
   })();
@@ -4769,19 +4791,19 @@
     el("tDur").textContent = ok ? tc(FUORI - DENTRO) : "—";
     el("bClip").disabled = !ok; el("bBozza").disabled = !ok; disegnaMomenti();
   }
-  el("bIn").addEventListener("click", function(){ DENTRO = V.currentTime; if (FUORI !== null && FUORI <= DENTRO) FUORI = null; inOut(); });
-  el("bOut").addEventListener("click", function(){ FUORI = V.currentTime; if (DENTRO !== null && DENTRO >= FUORI) DENTRO = null; inOut(); });
+  el("bIn").addEventListener("click", function(){ DENTRO = tA(); if (FUORI !== null && FUORI <= DENTRO) FUORI = null; inOut(); });
+  el("bOut").addEventListener("click", function(){ FUORI = tA(); if (DENTRO !== null && DENTRO >= FUORI) DENTRO = null; inOut(); });
   el("bGoIn").addEventListener("click", function(){ if (DENTRO !== null) seek(DENTRO); });
   el("bGoOut").addEventListener("click", function(){ if (FUORI !== null) seek(FUORI); });
   el("bPulisci").addEventListener("click", function(){ DENTRO = FUORI = null; inOut(); });
   el("bMarker").addEventListener("click", function(){
     if (!ASSET || !V) return;
-    var t = V.currentTime || 0, testo = window.prompt("Marker a " + tc(t) + ":", ""); if (testo === null) return;
+    var t = tA(), testo = window.prompt("Marker a " + tc(t) + ":", ""); if (testo === null) return;
     post({ tipo:"clip-marker", reg: ASSET.id, secondi: Math.round(t * 10) / 10, testo: testo }).then(function(d){ MARKER = d.marker || []; ASSET.marker = MARKER; disegnaScheda(el("cercaS").value); disegnaMomenti(); avviso("ok", "Marker segnato."); }).catch(function(e){ avviso("err", esc(e.message)); });
   });
   el("bPlay").addEventListener("click", function(){ if (V.paused) V.play().catch(function(){}); else V.pause(); });
-  el("bIndietro").addEventListener("click", function(e){ if (e.shiftKey) return seek(V.currentTime - 10); V.pause(); V.currentTime = Math.max(0, V.currentTime - 0.04); });
-  el("bAvanti").addEventListener("click", function(e){ if (e.shiftKey) return seek(V.currentTime + 10); V.pause(); V.currentTime = V.currentTime + 0.04; });
+  el("bIndietro").addEventListener("click", function(e){ if (e.shiftKey) return seek(tA() - 10); V.pause(); aFile(Math.max(0, tA() - 0.04)); });
+  el("bAvanti").addEventListener("click", function(e){ if (e.shiftKey) return seek(tA() + 10); V.pause(); aFile(tA() + 0.04); });
   document.querySelectorAll("button[data-v]").forEach(function(b){ b.addEventListener("click", function(){ V.playbackRate = +b.dataset.v; document.querySelectorAll("button[data-v]").forEach(function(z){ z.classList.toggle("on", z === b); }); }); });
   el("bClip").addEventListener("click", function(){
     if (!ASSET) return;
@@ -4880,7 +4902,7 @@
   document.querySelectorAll("#asset [data-sub]").forEach(function(b){ b.addEventListener("click", function(){ accendiSub(b.dataset.sub); }); });
   function giro(){
     if (!V || !ASSET) return;
-    var t = V.currentTime || 0, D = ASSET.durata || V.duration || 1;
+    var t = tA(), D = ASSET.durata || V.duration || 1;
     el("tOra").textContent = tc(t);
     var mt = el("mTestina"); if (mt) mt.style.left = (t / D * 100) + "%";
     el("bPlay").innerHTML = V.paused ? '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>' : '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>';
@@ -4908,12 +4930,12 @@
     else if (e.key === "," && perSeq()) inserisciInPer();
     else if (e.key === "," || e.key === "b" || e.key === "B") { if (!el("bBozza").disabled) el("bBozza").click(); else avviso("err", "Segna prima IN e OUT."); }
     else if (e.key === "k" || e.key === "K") { V.pause(); V.playbackRate = 1; }
-    else if (e.key === "j" || e.key === "J") seek(V.currentTime - (e.shiftKey ? 60 : 10));
+    else if (e.key === "j" || e.key === "J") seek(tA() - (e.shiftKey ? 60 : 10));
     else if (e.key === "l" || e.key === "L") { if (V.paused) V.play().catch(function(){}); else V.playbackRate = Math.min(4, V.playbackRate * 2); }
-    else if (e.key === "ArrowLeft") { e.preventDefault(); V.pause(); V.currentTime = Math.max(0, V.currentTime - (e.shiftKey ? 0.2 : 0.04)); }
-    else if (e.key === "ArrowRight") { e.preventDefault(); V.pause(); V.currentTime = V.currentTime + (e.shiftKey ? 0.2 : 0.04); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); V.pause(); aFile(Math.max(0, tA() - (e.shiftKey ? 0.2 : 0.04))); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); V.pause(); aFile(tA() + (e.shiftKey ? 0.2 : 0.04)); }
     else if (e.key === "Home") { e.preventDefault(); seek(0); V.pause(); }
-    else if (e.key === "End") { e.preventDefault(); V.pause(); V.currentTime = Math.max(0, (V.duration || 0) - 0.1); }
+    else if (e.key === "End") { e.preventDefault(); V.pause(); aFile(Math.max(0, ((ASSET && ASSET.durata) || V.duration || 0) - 0.1)); }
     else if (e.key === "m" || e.key === "M") el("bMarker").click();
     else if (e.key === "/") { e.preventDefault(); el("cercaTesta").focus(); }
   });
@@ -6163,13 +6185,34 @@
   // casse solo la coppia della clip che suona (o un canale solo, su tutti e due
   // i lati), come nel mix dell'export (panDi nel ponte).
   function canaliDi(r){ return Math.max(1, +(r && r.canali) || 2); }
-  function instrada(elem, n, coppia, canale){
-    if (!elem || !VU_CTX) return;
+  // FUORI DALL'EDITING (anteprime, Sorgente): un file a sei canali fa sentire
+  // il programma (1-2), non i sei sommati. Serve un contesto audio acceso: il
+  // browser lo accende solo dopo un gesto, quindi se non e' ancora acceso si
+  // lascia fare al browser (meglio il suono sommato che il silenzio).
+  var CTX_P = null;
+  function ctxProgramma(){
+    try {
+      if (!CTX_P) { var C = window.AudioContext || window.webkitAudioContext; if (!C) return null; CTX_P = new C(); }
+      if (CTX_P.state === "suspended") CTX_P.resume().catch(function(){});
+      return CTX_P.state === "running" ? CTX_P : null;
+    } catch (e) { return null; }
+  }
+  document.addEventListener("pointerdown", function(){ ctxProgramma(); }, true);
+  document.addEventListener("keydown", function(){ ctxProgramma(); }, true);
+  function soloProgramma(elem, n){
+    if (!elem) return;
+    if (!elem.__instr && !(n > 2)) return;          // stereo: niente da fare
+    var c = elem.__instr ? CTX_P : ctxProgramma(); if (!c) return;
+    instrada(elem, n, 0, "", c, c.destination);
+  }
+  function instrada(elem, n, coppia, canale, ctx, uscita){
+    ctx = ctx || VU_CTX; uscita = uscita || VU_AN;
+    if (!elem || !ctx || !uscita) return;
     var g = elem.__instr;
     try {
       if (!g) {
-        g = elem.__instr = { src: VU_CTX.createMediaElementSource(elem), div: VU_CTX.createChannelSplitter(8), uni: VU_CTX.createChannelMerger(2), firma: "" };
-        g.src.connect(g.div); g.uni.connect(VU_AN);
+        g = elem.__instr = { src: ctx.createMediaElementSource(elem), div: ctx.createChannelSplitter(8), uni: ctx.createChannelMerger(2), firma: "" };
+        g.src.connect(g.div); g.uni.connect(uscita);
       }
       n = Math.max(1, +n || 2);
       var k = Math.max(0, Math.min(Math.floor((n - 1) / 2), parseInt(coppia || 0, 10) || 0));
@@ -6433,7 +6476,7 @@
     vai: function(t){ vaiTempo(Math.min(t, Math.max(0, fineTutto() - 0.04)), false); }
   });
   var BT_SRG = BarraTempo(el("btSrg"), {
-    dur: function(){ var v = el("videoS"); return SRG.r && isFinite(v.duration) ? v.duration : 0; }, ora: function(){ return el("videoS").currentTime || 0; },
+    dur: function(){ return durS(); }, ora: function(){ return tS(); },
     dentro: function(){ return SRG.dentro; }, fuori: function(){ return SRG.fuori; },
     segni: function(){ return SRG.r && SRG.r.marker ? SRG.r.marker.map(function(m){ return Math.round(m.secondi * 10) / 10; }) : []; },
     inPlay: function(){ return !el("videoS").paused; }, ferma: function(){ el("videoS").pause(); }, riprendi: function(){ el("videoS").play().catch(function(){}); },
@@ -8508,8 +8551,9 @@
       el("srgNome").textContent = r.titolo || "partita"; el("srgTitolo").textContent = r.titolo || "partita";
       el("srgMeta").textContent = [r.competizione, r.durata ? durata(r.durata) : ""].filter(Boolean).join(" · ");
       el("srgVuoto").hidden = true; el("srgLibreria").disabled = false;
-      v.src = BASE + r.via;
-      if (dove !== null) v.addEventListener("loadedmetadata", function una(){ v.removeEventListener("loadedmetadata", una); try { v.currentTime = dove; } catch (e) {} });
+      v.removeAttribute("src"); SRG_DA = 0;
+      soloProgramma(v, canaliDi(r));
+      srgFile(dove !== null ? dove : 0);
       srgInOut(); scegliBrowser(rec); srgRicorda(); ptCarica();
     }).catch(function(er){ el("srgTitolo").textContent = "Nessuna partita"; avviso("err", esc(er.message)); });
   }
@@ -8518,7 +8562,7 @@
   // e nel 1907 un Football Show (uno studio) non si ricorda e non si riapre mai
   var SRG_CHIAVE = "mam2-srg" + (AMBITO ? "-" + AMBITO : "");
   function srgAmmessa(titolo){ return !(AMBITO === "1907" && /football\s*show|studio/i.test(String(titolo || ""))); }
-  function srgRicorda(){ if (!SRG.r || !srgAmmessa(SRG.r.titolo)) return; try { localStorage.setItem(SRG_CHIAVE, JSON.stringify({ rec: SRG.rec, t: Math.round(el("videoS").currentTime || 0), titolo: SRG.r.titolo || "" })); } catch (e) {} }
+  function srgRicorda(){ if (!SRG.r || !srgAmmessa(SRG.r.titolo)) return; try { localStorage.setItem(SRG_CHIAVE, JSON.stringify({ rec: SRG.rec, t: Math.round(tS()), titolo: SRG.r.titolo || "" })); } catch (e) {} }
   function srgRiapriUltima(){
     if (SRG.r) return;
     var u = null; try { u = JSON.parse(localStorage.getItem(SRG_CHIAVE) || "null"); } catch (e) {}
@@ -8532,18 +8576,51 @@
     el("srgInserisci").disabled = !ok;
     if (typeof ptSegniIO === "function") ptSegniIO();
   }
-  function srgVai(t){ var v = el("videoS"); if (!SRG.r) return; try { v.currentTime = Math.max(0, Math.min((v.duration || 1e9) - 0.05, t)); } catch (e) {} }
-  el("srgIn").addEventListener("click", function(){ if (!SRG.r) return; SRG.dentro = Math.round(el("videoS").currentTime * 100) / 100; if (SRG.fuori !== null && SRG.fuori <= SRG.dentro) SRG.fuori = null; srgInOut(); });
-  el("srgOut").addEventListener("click", function(){ if (!SRG.r) return; SRG.fuori = Math.round(el("videoS").currentTime * 100) / 100; if (SRG.dentro !== null && SRG.dentro >= SRG.fuori) SRG.dentro = null; srgInOut(); });
+  // UNA PARTITA IN PIU' FILE NELLA SORGENTE (01/10/2026). Il monitor apriva
+  // solo il primo: il secondo tempo di Inter-Como (e di altre 117 partite) non
+  // si vedeva. Il tempo della Sorgente e' quello della partita intera; il file
+  // aperto comincia a SRG_DA, e alla fine di un file si passa al successivo.
+  var SRG_DA = 0;
+  function tS(){ return (el("videoS").currentTime || 0) + SRG_DA; }
+  function durS(){
+    var v = el("videoS"), pz = (SRG.r && SRG.r.pezziArch) || [];
+    if (pz.length > 1) { var u = pz[pz.length - 1]; return ((+u.da || 0) + (+u.durata || 0)) || (SRG.r.durata || 0); }
+    return SRG.r && isFinite(v.duration) ? v.duration : 0;
+  }
+  function srgFile(t, parti){
+    var v = el("videoS"), r = SRG.r; if (!r) return;
+    var x = pezzoDiReg(r, t); if (!x) return;
+    // nel buco fra due file (l'intervallo che non c'e'): l'inizio del file dopo
+    if (x.dur && x.t > x.dur - 0.05 && x.i < x.n - 1) { var nx = r.pezziArch[x.i + 1]; return srgFile(+nx.da || 0, parti); }
+    var src = BASE + x.via;
+    if (v.getAttribute("src") !== src) {
+      var eraInPlay = !v.paused || parti;
+      SRG_DA = x.da; v.setAttribute("src", src);
+      v.addEventListener("loadedmetadata", function una(){ v.removeEventListener("loadedmetadata", una); try { v.currentTime = Math.max(0, x.t); } catch (e) {} if (eraInPlay) v.play().catch(function(){}); });
+      return;
+    }
+    try { v.currentTime = Math.max(0, x.t); } catch (e) {}
+  }
+  function srgVai(t){ if (!SRG.r) return; srgFile(Math.max(0, Math.min((durS() || 1e9) - 0.05, t))); }
+  // finito un file, il successivo
+  // riaperta da sola prima di un clic, la Sorgente non aveva il contesto audio: al play si', che e' un gesto
+  el("videoS").addEventListener("play", function(){ if (SRG.r) soloProgramma(this, canaliDi(SRG.r)); });
+  el("video").addEventListener("play", function(){ if (ASSET) soloProgramma(this, canaliDi(ASSET)); });
+  el("videoS").addEventListener("ended", function(){
+    var pz = (SRG.r && SRG.r.pezziArch) || [], x = pezzoDiReg(SRG.r, tS());
+    if (x && x.i < pz.length - 1) srgFile(+pz[x.i + 1].da || 0, true);
+  });
+  el("srgIn").addEventListener("click", function(){ if (!SRG.r) return; SRG.dentro = Math.round(tS() * 100) / 100; if (SRG.fuori !== null && SRG.fuori <= SRG.dentro) SRG.fuori = null; srgInOut(); });
+  el("srgOut").addEventListener("click", function(){ if (!SRG.r) return; SRG.fuori = Math.round(tS() * 100) / 100; if (SRG.dentro !== null && SRG.dentro >= SRG.fuori) SRG.dentro = null; srgInOut(); });
   el("srgGoIn").addEventListener("click", function(){ if (SRG.dentro !== null) srgVai(SRG.dentro); });
   el("srgGoOut").addEventListener("click", function(){ if (SRG.fuori !== null) srgVai(SRG.fuori); });
-  el("srgIndietro").addEventListener("click", function(e){ srgVai(el("videoS").currentTime - (e.shiftKey ? 10 : 0.04)); });
-  el("srgAvanti").addEventListener("click", function(e){ srgVai(el("videoS").currentTime + (e.shiftKey ? 10 : 0.04)); });
+  el("srgIndietro").addEventListener("click", function(e){ srgVai(tS() - (e.shiftKey ? 10 : 0.04)); });
+  el("srgAvanti").addEventListener("click", function(e){ srgVai(tS() + (e.shiftKey ? 10 : 0.04)); });
   el("srgPlay").addEventListener("click", function(){ var v = el("videoS"); if (!SRG.r) return; if (v.paused) { if (VE && !VE.paused) VE.pause(); v.play().catch(function(){}); } else v.pause(); });
   el("videoS").addEventListener("play", function(){ el("srgPlay").innerHTML = '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>'; });
   el("videoS").addEventListener("pause", function(){ el("srgPlay").innerHTML = '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>'; srgRicorda(); });
-  el("videoS").addEventListener("timeupdate", function(){ el("srgOra").firstChild.nodeValue = tcf(this.currentTime); ptTestina(); });
-  el("videoS").addEventListener("loadedmetadata", function(){ el("srgTot").textContent = isFinite(this.duration) ? " / " + tcf(this.duration) : ""; });
+  el("videoS").addEventListener("timeupdate", function(){ el("srgOra").firstChild.nodeValue = tcf(tS()); ptTestina(); });
+  el("videoS").addEventListener("loadedmetadata", function(){ el("srgTot").textContent = durS() ? " / " + tcf(durS()) : ""; });
   // ══════════ LA PARTITA NELL'EDITING (28/09/2026) ══════════
   // La scheda "Partita" (pannello in basso a sinistra): i dati della partita
   // che sta nella Sorgente, come nella scheda della Libreria ma accanto al
@@ -8702,7 +8779,7 @@
   function ptAncora(cosa, b){
     if (!SRG.r) return;
     var q = { tipo:"clip-archivio-ancora", reg: SRG.r.id };
-    if (cosa === "1" || cosa === "2") { q.tempo = cosa; q.t = Math.round(el("videoS").currentTime || 0); }
+    if (cosa === "1" || cosa === "2") { q.tempo = cosa; q.t = Math.round(tS()); }
     else if (cosa === "auto") q.auto = true; else if (cosa === "cronometro") q.cronometro = true;
     if (b) { b.disabled = true; b.textContent = "…"; }
     post(q).then(function(d){
@@ -8715,7 +8792,7 @@
   // la linea rossa: dove sta la Sorgente, tra le righe della cronologia
   function ptTestina(){
     var o = el("ptOra"), cr = el("ptCr"); if (!o || !cr || !SRG.r) return;
-    var t = el("videoS").currentTime || 0, dopo = null, righe = cr.querySelectorAll("[data-tt]");
+    var t = tS(), dopo = null, righe = cr.querySelectorAll("[data-tt]");
     for (var i = 0; i < righe.length; i++) if (+righe[i].dataset.tt > t) { dopo = righe[i]; break; }
     if (dopo) { if (o.nextSibling !== dopo) cr.insertBefore(o, dopo); } else if (cr.lastChild !== o) cr.appendChild(o);
     o.hidden = !righe.length; o.firstChild.textContent = (ptMinuto(t) || tcBreve(t)) + " · sorgente";
@@ -8786,7 +8863,7 @@
   });
   el("srgLibreria").addEventListener("click", function(){
     if (!SRG.r) return;
-    location.href = "mam2.html?asset=" + encodeURIComponent(SRG.rec) + "&reg=" + SRG.r.id + "&t=" + Math.floor(el("videoS").currentTime + 3) + (SEQ ? "&per=" + encodeURIComponent(SEQ.id) : "") + "&scheda=1";
+    location.href = "mam2.html?asset=" + encodeURIComponent(SRG.rec) + "&reg=" + SRG.r.id + "&t=" + Math.floor(tS() + 3) + (SEQ ? "&per=" + encodeURIComponent(SEQ.id) : "") + "&scheda=1";
   });
   // i tasti della Sorgente, quando e' lei il pannello attivo
   function tastiSorgente(e){
@@ -8795,10 +8872,10 @@
     else if (k === "I" && e.shiftKey) el("srgGoIn").click(); else if (k === "O" && e.shiftKey) el("srgGoOut").click();
     else if (k === "i" || k === "I") el("srgIn").click(); else if (k === "o" || k === "O") el("srgOut").click();
     else if (k === ",") { e.preventDefault(); el("srgInserisci").click(); }
-    else if (k === "ArrowLeft" || k === "ArrowRight") { e.preventDefault(); srgVai(v.currentTime + (k === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 0.04)); }
+    else if (k === "ArrowLeft" || k === "ArrowRight") { e.preventDefault(); srgVai(tS() + (k === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 0.04)); }
     else if (k === "k" || k === "K") v.pause();
     else if (k === "l" || k === "L") { v.playbackRate = v.paused ? 1 : Math.min(8, v.playbackRate * 2); v.play().catch(function(){}); }
-    else if (k === "j" || k === "J") srgVai(v.currentTime - 5);
+    else if (k === "j" || k === "J") srgVai(tS() - 5);
     else return false;
     return true;
   }
