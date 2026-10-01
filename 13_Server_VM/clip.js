@@ -10898,9 +10898,22 @@ async function orologioDallaMappa(rec) {
              inizio2, inizio1: inizio2 - H - 900, punti: punti.length, verificato: r2.p.length >= 3,
              gruppi: buoni.map((g) => ({ o: Math.round(g.o), n: g.p.length, da: minC(g), a: maxC(g) })) };
   }
-  // il primo tempo: il primo gruppo che parte da poco (entro mezz'ora di gioco)
-  const g1 = buoni.find((g) => minC(g) < Math.min(1800, H));
-  if (!g1) return null;
+  // il primo tempo: il primo gruppo che parte da poco (entro mezz'ora di gioco);
+  // se no un gruppo del finale del primo tempo (il file comincia al 35')
+  const g1 = buoni.find((g) => minC(g) < Math.min(1800, H)) || buoni.find((g) => minC(g) < H - 60);
+  if (!g1) {
+    // SOLO IL SECONDO TEMPO, ANCHE SE IL NOME NON LO DICE (01/10/2026). Le
+    // partite sudamericane dell'archivio (Liga Profesional, Libertadores,
+    // Sudamericana) sono spesso file che cominciano all'intervallo: il
+    // cronometro c'e' ed e' leggibile, ma dice 56:05 al 25' del file, e
+    // senza un primo tempo la lettura si buttava via tutta.
+    const r2 = buoni.find((g) => minC(g) >= H - 60 && minC(g) < H + 2400);
+    if (!r2) return null;
+    const inizio2 = Math.round(r2.o + H);
+    return { letti: punti.length * 2, quando: new Date().toISOString(), fonte: "cronometro", mappa: true, soloSecondo: true,
+             inizio2, inizio1: inizio2 - H - 900, punti: punti.length, verificato: r2.p.length >= 3,
+             gruppi: buoni.map((g) => ({ o: Math.round(g.o), n: g.p.length, da: minC(g), a: maxC(g) })) };
+  }
   const esito = { letti: punti.length * 2, quando: new Date().toISOString(), fonte: "cronometro", mappa: true,
                   inizio1: Math.round(g1.o), punti: punti.length };
   // la ripresa: dopo il primo tempo, e o riparte dalla durata del tempo o da zero
@@ -10914,6 +10927,13 @@ async function orologioDallaMappa(rec) {
     if (esito.inizio2 < esito.inizio1 + H) delete esito.inizio2;
   }
   esito.verificato = g1.p.length >= 3 && (esito.inizio2 === undefined || g2.p.length >= 3);
+  // SOLO IL PRIMO TEMPO: il file finisce prima che la ripresa possa
+  // cominciare (file da 55-65 minuti). Non manca niente: il secondo tempo
+  // sta in un altro file, e la partita e' puntata per quello che contiene
+  if (esito.inizio2 === undefined) {
+    const fineFile = Math.max.apply(null, (a.pezzi || [{ da: 0, minuti: 0 }]).map((z) => (z.da || 0) + (z.minuti || 0) * 60));
+    if (fineFile > 0 && fineFile < g1.o + H + 1200) esito.soloPrimo = true;
+  }
   esito.gruppi = buoni.map((g) => ({ o: Math.round(g.o), n: g.p.length, da: minC(g), a: maxC(g) }));
   return esito;
 }
