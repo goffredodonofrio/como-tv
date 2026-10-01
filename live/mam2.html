@@ -1228,6 +1228,14 @@
   .esp-av small{font-size:11px;color:var(--fumo);}
   #espUscite .uscita{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border:1px solid var(--riga);border-radius:7px;}
   #espUscite .uscita b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
+  #inviiRegia{position:fixed;left:14px;bottom:14px;z-index:60;width:340px;max-width:calc(100vw - 28px);background:var(--navy2);border:1px solid var(--oro);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:8px 10px 10px;display:flex;flex-direction:column;gap:7px;font-size:12px;}
+  #inviiRegia .ir-testa{display:flex;align-items:center;gap:8px;} #inviiRegia .ir-testa b{color:var(--oro);font-size:12px;} #inviiRegia .ir-testa span{color:var(--fumo);font-size:11px;}
+  #inviiRegia .ir-x{margin-left:auto;background:none;border:0;color:var(--fumo);font-size:18px;line-height:1;cursor:pointer;padding:0 4px;}
+  #inviiRegia .ir-riga{display:grid;grid-template-columns:1fr auto;gap:3px 8px;align-items:center;border-top:1px solid var(--riga);padding-top:6px;}
+  #inviiRegia .ir-t{display:flex;flex-direction:column;min-width:0;grid-column:1/-1;} #inviiRegia .ir-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;} #inviiRegia .ir-t span{color:var(--fumo);font-size:11px;}
+  #inviiRegia .ir-st{font:11px ui-monospace,Menlo,monospace;color:var(--fumo);grid-column:1/-1;}
+  #inviiRegia .ir-riga.fatto .ir-st{color:#7BD88F;} #inviiRegia .ir-riga.errore .ir-st{color:var(--rosso);} #inviiRegia .ir-riga.lavora .ir-st{color:var(--oro);}
+  #inviiRegia .ir-barra{height:4px;background:var(--riga);border-radius:3px;overflow:hidden;} #inviiRegia .ir-barra i{display:block;height:100%;background:var(--oro);}
   .coda-esp{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;} .coda-esp-t{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--oro);font-weight:700;}
   .coda-esp .uscita .st{font:11px ui-monospace,Menlo,monospace;color:var(--fumo);white-space:nowrap;} .coda-esp .uscita.lavora .st{color:var(--oro);}
   /* L'ARCHIVIO SULLA NAS: la scheda nella Libreria e
@@ -3634,30 +3642,17 @@
     var titolo = (el("regiaTitolo").value || "").trim().toUpperCase().slice(0, 60) || "AZIONI";
     var dove = el("regiaDove").value, conAudio = el("regiaAudio").checked;
     if (el("lCanale") && dove) { el("lCanale").value = dove; try { el("lCanale").dispatchEvent(new Event("change")); } catch (e) {} }
-    REGIA_APERTO = false; REGIA_LAVORO = { stato: "lavora", fase: "taglio", fatti: 0, tot: lista.length }; disegnaBarraScelte();
+    if (dove === "__nuovo") return avviso("err", "Scegli dove mandarlo.");
+    REGIA_APERTO = false; REGIA_LAVORO = null; disegnaBarraScelte();
     var fallito = function(er){ REGIA_LAVORO = null; disegnaBarraScelte(); avviso("err", "Alla regia non è andato: " + esc(er.message)); };
-    post({ tipo:"clip-raccolta-regia", titolo: titolo,
+    post({ tipo:"clip-raccolta-regia", titolo: titolo, dest: Destinazione.corrente(), muto: !conAudio, origine: location.origin + BASE,
       pezzi: lista.map(function(x){ if (x.voce === "1907") return pezzo1907(x); return x.voce === "montato" ? { montato: true, file: x.file, durata: x.durata || 0, titolo: x.titolo || "" } : { chiave: x.chiave || "", rec: x.rec || "", reg: x.reg || "", partita: x.partita || "", titolo: x.titolo || "",
         secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)) }; }) })
     .then(function(d){
-      var L = d.lavoro; REGIA_LAVORO = L; disegnaBarraScelte();
-      var giro = function(){
-        post({ tipo:"clip-raccolta-regia-stato", id: L.id }).then(function(j){
-          REGIA_LAVORO = j.lavoro; disegnaBarraScelte();
-          if (j.lavoro.stato === "lavora") return setTimeout(giro, 1500);
-          if (j.lavoro.stato === "errore") throw new Error(j.lavoro.errore || "taglio non riuscito");
-          var src = location.origin + BASE + j.lavoro.file;
-          return post(Destinazione.corpo({ grafica: "video", titolo: titolo,
-            dati: { k: "video", src: src, dur: j.lavoro.durata || 0, fit: "contain", loop: false, mute: !conAudio, bg: "nero" } }))
-          .then(function(){
-            REGIA_LAVORO = null; disegnaBarraScelte();
-            var salt = j.lavoro.saltate && j.lavoro.saltate.length;
-            avviso("ok", "“" + esc(titolo) + "” in scaletta su " + esc(Destinazione.dove()) + " · " + j.lavoro.tot + (j.lavoro.tot === 1 ? " azione" : " azioni") + ", " + tc(j.lavoro.durata || 0) +
-              (salt ? " · " + salt + " saltate (non ancora sulla NAS)" : "") + ' · <a href="' + esc(src) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">guarda</a>');
-          });
-        }).catch(fallito);
-      };
-      setTimeout(giro, 1200);
+      REGIA_LAVORO = null; disegnaBarraScelte();
+      var salt = d.lavoro && d.lavoro.saltate && d.lavoro.saltate.length;
+      avviso("ok", "“" + esc(titolo) + "” in preparazione per " + esc(d.invio ? d.invio.dove : Destinazione.dove()) + (salt ? " · " + salt + " saltate (non ancora sulla NAS)" : "") + ": lo segui in Invii in regia, qui in basso.");
+      giroInvii(true);
     }).catch(fallito);
   }
   function togliDallaRaccolta(bottone){
@@ -9143,6 +9138,42 @@
   // IL MENU' DEI PANNELLI "INVIA ALLA REGIA" (01/10/2026): i vMix e i progetti
   // del menu' delle grafiche, piu' "Nuovo progetto…" come nelle altre grafiche
   // (prima si scartava: un progetto si poteva solo scegliere, non creare).
+  // ── INVII IN REGIA (01/10/2026): tutti quelli in corso e quelli appena
+  // fatti, in basso a sinistra in ogni schermata, con la fase e l'Annulla
+  var INVII = [], GIRO_INV = null, INVII_CHIUSO = false;
+  function giroInvii(subito){
+    clearTimeout(GIRO_INV);
+    if (subito) INVII_CHIUSO = false;
+    post({ tipo:"clip-regia-invii" }).then(function(d){ INVII = (d && d.invii) || []; }).catch(function(){}).then(function(){
+      disegnaInvii();
+      var attivi = INVII.some(function(x){ return x.stato === "lavora" || x.stato === "invio"; });
+      GIRO_INV = setTimeout(giroInvii, attivi ? 1500 : (document.hidden ? 60000 : 20000));
+    });
+  }
+  function disegnaInvii(){
+    var box = el("inviiRegia");
+    if (!box) { box = document.createElement("div"); box.id = "inviiRegia"; box.setAttribute("role", "region"); box.setAttribute("aria-label", "Invii in regia"); document.body.appendChild(box);
+      box.addEventListener("click", function(e){
+        var a = e.target.closest("[data-annullainv]");
+        if (a) { a.disabled = true; post({ tipo:"clip-regia-annulla", id: a.dataset.annullainv }).then(function(d){ INVII = d.invii || INVII; disegnaInvii(); avviso("ok", "Invio annullato."); }).catch(function(er){ a.disabled = false; avviso("err", esc(er.message)); }); return; }
+        if (e.target.closest("[data-chiudiinv]")) { INVII_CHIUSO = true; disegnaInvii(); }
+      });
+    }
+    // quelli in corso, e i finiti degli ultimi 20 minuti
+    var vis = INVII.filter(function(x){ return x.stato === "lavora" || x.stato === "invio" || Date.now() - (x.finito || x.creato) < 1200000; }).slice(0, 8);
+    var attivi = vis.filter(function(x){ return x.stato === "lavora" || x.stato === "invio"; }).length;
+    if (!vis.length || (INVII_CHIUSO && !attivi)) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = '<div class="ir-testa"><b>&#128225; Invii in regia</b><span>' + (attivi ? attivi + " in corso" : "finiti") + '</span><button type="button" class="ir-x" data-chiudiinv="1" title="nascondi (torna al prossimo invio)">&times;</button></div>' +
+      vis.map(function(x){
+        var q = x.export ? avanzaExport(x.export) : (x.tot ? Math.min(0.95, (x.fatti || 0) / x.tot) : (x.stato === "invio" ? 0.97 : 0));
+        var st = x.stato === "fatto" ? "in scaletta \u2713" : x.stato === "errore" ? "non riuscito: " + (x.errore || "") : x.stato === "annullato" ? "annullato" : (x.fase || "in preparazione");
+        return '<div class="ir-riga ' + esc(x.stato) + '"><div class="ir-t"><b>' + esc(x.titolo) + '</b><span>' + esc(x.dove) + '</span></div>' +
+          '<div class="ir-st">' + esc(st) + (x.stato === "lavora" && q > 0 ? " \u00b7 " + Math.round(q * 100) + "%" : "") + '</div>' +
+          (x.stato === "lavora" ? '<div class="ir-barra"><i style="width:' + Math.max(3, q * 100).toFixed(1) + '%"></i></div><button type="button" class="b mini" data-annullainv="' + esc(x.id) + '">Annulla</button>' : '') + '</div>';
+      }).join("");
+  }
+  if (!AMBITO) setTimeout(function(){ giroInvii(false); }, 2500);
   function opzioniRegia(scelto){
     var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
     return opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (o.value === scelto ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") +
@@ -9196,7 +9227,6 @@
     if (!q) return avviso("err", "Apri prima una sequenza.");
     if (!q.pezzi) return avviso("err", "La sequenza è vuota.");
     if (!window.Destinazione) return avviso("err", "Manca destinazione.js: non so dove mandarlo.");
-    if (REGIA_ED) { el("regiaEsp").hidden = false; return; }
     REGIA_SEQ = q;
     var p = pannelloRegiaEsp(); p.dataset.modo = "editor";
     var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
@@ -9214,43 +9244,20 @@
     p.innerHTML = '<div class="pr-testa"><b>&#128225; In regia</b><span>' + esc(REGIA_ED ? REGIA_ED.titolo : "") + ' · ' + esc(testo) + '</span></div>' +
       (quota !== undefined ? '<div class="esp-av-barra" style="margin-top:8px"><i style="width:' + Math.max(2, quota * 100).toFixed(1) + '%"></i></div>' : '');
   }
+  // (01/10/2026) l'invio lo porta in fondo il ponte: export 16:9 in coda con
+  // gli altri, poi la scaletta da se'. Se ne fanno quanti se ne vuole, e si
+  // seguono (e si annullano) in "Invii in regia"
   function mandaDaEditor(p){
-    if (REGIA_ED || !REGIA_SEQ) return;
+    if (!REGIA_SEQ) return;
     var titolo = (el("regiaEspTitolo").value || "").trim().toUpperCase().slice(0, 60) || "MONTATO", dove = el("regiaEspDove").value, audio = el("regiaEspAudio").checked;
+    if (dove === "__nuovo") return avviso("err", "Scegli dove mandarlo.");
     ricordaDoveRegia(dove);
     if (el("lCanale") && dove) { el("lCanale").value = dove; try { el("lCanale").dispatchEvent(new Event("change")); } catch (e) {} }
-    var seq = REGIA_SEQ.id, reg = REGIA_SEQ.reg, t0 = Date.now();
-    REGIA_ED = { titolo: titolo, seq: seq };
-    statoRegiaEd(p, "preparo il filmato 16:9…", 0.02);
-    var finisci = function(ok, testo){
-      REGIA_ED = null;
-      if (ok) { avviso("ok", testo); p.hidden = true; } else { p.hidden = true; avviso("err", testo); }
-    };
-    post({ tipo:"clip-hl-esporta", seq: seq, formato: "16:9", esatto: el("eEsatto").checked, sotto: "", sottoLingua: el("eSottoL").value }).then(function(d){
-      // un altro export era gia' in corso su questa sequenza: il 16:9 potrebbe non arrivare
-      if (!d.formati && d.export && d.export.stato === "lavora" && d.export.formato !== "16:9") return finisci(false, "C’è già un export in corso su questa sequenza: riprova appena finisce.");
-      var giri = 0;
-      var guarda = function(){
-        post({ tipo:"clip-hl-elenco", reg: reg, tutte: true }).then(function(x){
-          var q = (x.seq || []).filter(function(z){ return z.id === seq; })[0];
-          if (!q) return finisci(false, "La sequenza non c’è più.");
-          if (q.export && q.export.stato === "errore") return finisci(false, "Il filmato non è uscito: " + esc(q.export.errore || ""));
-          var f = (q.esportati || {})["16:9"];
-          if (f && f.file && (f.quando || 0) >= t0 - 2000) {
-            statoRegiaEd(p, "mando in scaletta…", 1);
-            return post(Destinazione.corpo({ grafica: "video", titolo: titolo,
-              dati: { k: "video", src: location.origin + BASE + f.file, dur: f.durata || 0, fit: "contain", loop: false, mute: !audio, bg: "nero" } }))
-              .then(function(){ finisci(true, "“" + esc(titolo) + "” in scaletta su " + esc(Destinazione.dove()) + " · " + tc(f.durata || 0) + (f.copiato ? " · pezzi incollati, senza ricodificare" : "") + ". Dalla regia lo mandano in onda."); giroUscite(); })
-              .catch(function(er){ finisci(false, "La regia non l’ha preso: " + esc(er.message)); });
-          }
-          var q2 = q.export && q.export.stato === "lavora" ? avanzaExport(q.export) : 0;
-          statoRegiaEd(p, q.export && q.export.fase ? q.export.fase + " · " + Math.round(q2 * 100) + "%" : "preparo il filmato 16:9…", Math.max(0.03, q2));
-          if (++giri > 900) return finisci(false, "Il filmato ci mette troppo: lo trovi nelle uscite quando è pronto.");
-          setTimeout(guarda, 1500);
-        }).catch(function(){ if (++giri > 900) return finisci(false, "Il ponte non risponde."); setTimeout(guarda, 3000); });
-      };
-      setTimeout(guarda, 1000);
-    }).catch(function(er){ finisci(false, esc(er.message)); });
+    var btn = p.querySelector("[data-fa=mandaEd]"); if (btn) btn.disabled = true;
+    post({ tipo:"clip-regia-invia", seq: REGIA_SEQ.id, titolo: titolo, dest: Destinazione.corrente(), muto: !audio, origine: location.origin + BASE,
+           esatto: el("eEsatto").checked, sottoLingua: el("eSottoL").value })
+      .then(function(d){ p.hidden = true; avviso("ok", "“" + esc(titolo) + "” in preparazione per " + esc(d.invio.dove) + ": lo segui in Invii in regia, qui in basso."); giroInvii(true); })
+      .catch(function(er){ if (btn) btn.disabled = false; avviso("err", "Non è partito: " + esc(er.message)); });
   }
   el("eRegia").addEventListener("click", function(){ apriInRegia(); });
   if (AMBITO) el("eRegia").hidden = true;          // l'Editing del MAM 1907 non va in regia
