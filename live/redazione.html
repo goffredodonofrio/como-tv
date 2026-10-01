@@ -100,6 +100,9 @@
     border:1px solid var(--line-gold);background:#070B1D;}
   #prev{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;
     transform-origin:top left;pointer-events:none;background:#070B1D;color-scheme:dark;}
+  /* i video in scaletta: un lettore vero, col play, la barra e l'audio */
+  #prevVideo{position:absolute;inset:0;width:100%;height:100%;background:#000;object-fit:contain;}
+  .voce .t small i{font-style:normal;color:var(--gold-bright);}
   #prevcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
   .tasti{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px;}
   .tasti .spazio{flex:1;}
@@ -226,7 +229,8 @@
       <h2 id="dtit">Grafica</h2>
       <div id="nessuna">Scegli una grafica dalla scaletta.</div>
       <div class="avviso" id="avviso"></div>
-      <div id="prevbox"><iframe id="prev" scrolling="no"></iframe></div>
+      <div id="prevbox"><iframe id="prev" scrolling="no"></iframe>
+        <video id="prevVideo" controls playsinline preload="metadata" hidden></video></div>
       <div id="prevcap"></div>
       <div class="tasti">
         <button type="button" id="btnEditor" class="primary">&#9998; Apri l'editor completo</button>
@@ -554,7 +558,7 @@
     el("vuota").style.display = voci.length ? "none" : "block";
     var h = "";
     voci.forEach(function (v, i) {
-      var sotto = v.tipo + (v.dest ? " · " + (v.dest === "partita" ? "LIVE MATCH" : "LIVE STUDIO") : "") +
+      var sotto = (v.tipo === "video" ? "<i>&#9654;</i> video" : esc(v.tipo)) + (v.dest ? " · " + (v.dest === "partita" ? "LIVE MATCH" : "LIVE STUDIO") : "") +
                   (v.ts ? " · " + quando(v.ts) : "");
       if (v.mod && v.mod.chi) sotto += ' · <b>corretta da ' + esc(v.mod.chi) + ' alle ' + quando(v.mod.ts) + '</b>';
       h += '<div class="voce' + (sel && sel.id === v.id ? " sel" : "") + (onair[v.id] ? " onair" : "") +
@@ -602,8 +606,48 @@
     }).catch(function () { dimmi("Non riesco a leggere questa grafica.", "err"); });
   }
   function motoreDi(tipo) { return ENGINES[tipo] || ENGINES.formazione; }
+  // I VIDEO IN SCALETTA (01/10/2026): il motore dei contributi in anteprima
+  // li mostrava fermi su un fotogramma, muti e senza tasti. Qui invece si
+  // guardano davvero: lettore con play, barra e audio, dal punto d'inizio
+  // scelto in regia (da) fino a quello di fine (a), come andra' in onda.
+  var lettore = el("prevVideo"), pezzo = { da: 0, a: 0 };
+  function eVideo(d) { return !!(d && d.k === "video" && d.src); }
+  function fermaVideo() {
+    lettore.pause(); lettore.hidden = true;
+    lettore.removeAttribute("src"); lettore.load();
+    el("prev").style.visibility = "";
+  }
+  lettore.addEventListener("loadedmetadata", function () {
+    if (pezzo.da) try { lettore.currentTime = Math.min(pezzo.da, (lettore.duration || pezzo.da) - 0.05); } catch (e) {}
+  });
+  lettore.addEventListener("timeupdate", function () {
+    if (pezzo.a > pezzo.da && lettore.currentTime >= pezzo.a) { lettore.pause(); try { lettore.currentTime = pezzo.a; } catch (e) {} }
+  });
+  lettore.addEventListener("play", function () {
+    // ripartendo dalla fine del pezzo si torna al suo inizio, non al file intero
+    if (pezzo.a > pezzo.da && lettore.currentTime >= pezzo.a - 0.05) try { lettore.currentTime = pezzo.da; } catch (e) {}
+  });
+  function durataTxt(s) {
+    s = Math.round(s || 0); return Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60);
+  }
+  function anteprimaVideo(parti) {
+    var d = sel.dati;
+    pezzo = { da: Math.max(0, parseFloat(d.da) || 0), a: Math.max(0, parseFloat(d.a) || 0) };
+    el("prev").removeAttribute("src"); el("prev").style.visibility = "hidden";
+    lettore.hidden = false;
+    lettore.muted = false;
+    if (lettore.getAttribute("src") !== d.src) lettore.src = d.src;
+    else try { lettore.currentTime = pezzo.da; } catch (e) {}
+    if (parti) { var p = lettore.play(); if (p && p.catch) p.catch(function () {}); }
+    var lungo = pezzo.a > pezzo.da ? pezzo.a - pezzo.da : (parseFloat(d.dur) || 0);
+    el("prevcap").textContent = "Video in scaletta" + (lungo ? " · " + durataTxt(lungo) : "") +
+      (pezzo.da || pezzo.a ? " · dal punto scelto in regia" : "") +
+      (d.mute ? " · in onda va MUTO" : " · con l'audio") + ". Premi play per guardarlo.";
+  }
   function anteprima(ferma) {
     if (!sel || !sel.dati) return;
+    if (eVideo(sel.dati)) { anteprimaVideo(!ferma); return; }
+    if (!lettore.hidden) fermaVideo();
     var url = motoreDi(sel.tipo) + "?d=" + b64url(sel.dati) + "&muto=1" + (ferma ? "&still=1" : "&n=" + Date.now());
     el("prev").src = url;
     el("prevcap").textContent = ferma ? "Anteprima ferma sul risultato, com'e' adesso coi tuoi campi."
@@ -754,7 +798,7 @@
     el("btnRegia").disabled = niente;
     el("btnAnteprima").disabled = niente;
     el("btnRivedi").disabled = niente;
-    if (!sel || !sel.dati) { box.classList.add("vuoto"); el("dtit").textContent = "Grafica"; el("campi").innerHTML = ""; return; }
+    if (!sel || !sel.dati) { if (lettore && !lettore.hidden) fermaVideo(); box.classList.add("vuoto"); el("dtit").textContent = "Grafica"; el("campi").innerHTML = ""; return; }
     box.classList.remove("vuoto");
     var d = sel.dati, h = "";
     // le chiavi col trattino basso sono della regia, non della grafica: "_da" e'
