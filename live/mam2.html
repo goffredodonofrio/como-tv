@@ -1228,6 +1228,8 @@
   .esp-av small{font-size:11px;color:var(--fumo);}
   #espUscite .uscita{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border:1px solid var(--riga);border-radius:7px;}
   #espUscite .uscita b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
+  .coda-esp{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;} .coda-esp-t{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--oro);font-weight:700;}
+  .coda-esp .uscita .st{font:11px ui-monospace,Menlo,monospace;color:var(--fumo);white-space:nowrap;} .coda-esp .uscita.lavora .st{color:var(--oro);}
   /* L'ARCHIVIO SULLA NAS: la scheda nella Libreria e
      l'indicatore nei menu. Pieno = partite gia' in casa (tutte le parti);
      velato = byte gia' arrivati, file a meta' compresi. */
@@ -9263,15 +9265,35 @@
       avviso("ok", (d.nuove ? "Montato messo" : "Montato aggiornato") + " in «" + esc(d.raccolta.nome) + "» \u00b7 <a href=\"mam2.html?rac=" + encodeURIComponent(d.raccolta.id) + "\" target=\"_blank\" style=\"color:inherit;text-decoration:underline\">apri</a>");
     }).catch(function(er){ avviso("err", esc(er.message)); });
   }); });
+  // LA CODA DEGLI EXPORT, COME MEDIA ENCODER (01/10/2026): tutti gli export
+  // del MAM, uno dopo l'altro; ognuno si toglie dalla coda o si ferma a meta'
+  var CODA_E = [];
+  function codaHtml(){
+    if (!CODA_E.length) return "";
+    return '<div class="coda-esp"><div class="coda-esp-t">Coda degli export · ' + CODA_E.length + '</div>' + CODA_E.map(function(l){
+      var mia = SEQ && l.seq === SEQ.id;
+      var st = l.annullato ? "annullo…" : l.stato === "lavora" ? (l.export ? (l.export.fase || "lavoro") + " · " + Math.round(avanzaExport(l.export) * 100) + "%" : "in lavorazione") : (l.posto ? l.posto + "º in attesa" : "in attesa");
+      return '<div class="uscita' + (l.stato === "lavora" ? " lavora" : "") + '"' + (mia ? ' style="border-color:var(--oro)"' : '') + '><b>' + esc(l.titolo || "sequenza") + '</b><span>' + esc((l.formati || []).join(" · ")) + '</span><span class="st">' + esc(st) + '</span>' +
+        (l.annullato ? '' : '<button type="button" class="b mini" data-annullaesp="' + esc(l.id) + '" title="' + (l.stato === "lavora" ? "ferma questo export" : "toglilo dalla coda") + '">Annulla</button>') + '</div>';
+    }).join("") + '</div>';
+  }
+  document.addEventListener("click", function(e){
+    var b = e.target.closest && e.target.closest("[data-annullaesp]"); if (!b) return;
+    b.disabled = true;
+    post({ tipo:"clip-hl-esporta-annulla", lavoro: b.dataset.annullaesp }).then(function(d){ CODA_E = d.coda || []; avviso("ok", "Export annullato."); giroUscite(); })
+      .catch(function(er){ b.disabled = false; avviso("err", esc(er.message)); });
+  });
   function giroUscite(){
     if (!SEQ) return;
     clearTimeout(GIRO_E);
-    post({ tipo:"clip-hl-elenco", reg: SEQ.reg, tutte: true }).then(function(d){
+    post({ tipo:"clip-hl-esporta-coda" }).then(function(c){ CODA_E = (c && c.coda) || []; }).catch(function(){}).then(function(){ return post({ tipo:"clip-hl-elenco", reg: SEQ.reg, tutte: true }); }).then(function(d){
       var q = (d.seq || []).filter(function(z){ return z.id === SEQ.id; })[0]; if (!q) return;
-      var h = "";
+      var h = codaHtml();
       var lav = q.export && q.export.stato === "lavora";
       if (lav) h += barraExport(q.export);
-      var mini = el("espMini"); if (mini) { mini.hidden = !lav; if (lav) mini.textContent = "\u23fa Esporto " + Math.round(avanzaExport(q.export) * 100) + "%"; }
+      if (q.export && q.export.stato === "annullato" && Date.now() - (q.export.quando || 0) < 600000) h += '<div class="uscita" style="border-color:var(--fumo)"><b>Export annullato</b><span>' + esc((q.export.formati || []).join(" \u00b7 ")) + '</span></div>';
+      var inCoda = q.export && q.export.stato === "in coda";
+      var mini = el("espMini"); if (mini) { mini.hidden = !lav && !inCoda; if (lav) mini.textContent = "\u23fa Esporto " + Math.round(avanzaExport(q.export) * 100) + "%"; else if (inCoda) mini.textContent = "\u23f3 In coda" + (q.export.posto ? " (" + q.export.posto + "\u00ba)" : ""); }
       if (q.export && q.export.stato === "errore") h += '<div class="uscita" style="border-color:var(--rosso)"><b>errore: ' + esc(q.export.errore || "") + '</b></div>';
       if (q.export && q.export.raccolta) h += '<div class="uscita" style="border-color:var(--oro)"><b>In Raccolte / Macchie: ' + esc(q.export.raccolta.nome) + '</b><a class="b mini" href="mam2.html?rac=' + encodeURIComponent(q.export.raccolta.id) + '" target="_blank">Apri</a></div>';
       Object.keys(q.esportati || {}).forEach(function(k){ var f = q.esportati[k]; if (f.adattate && f.adattate.length) h += '<div class="uscita" style="border-color:var(--oro)" title="in questo formato non c\u2019e\u2019 la loro versione: il Generatore la fa, con la grafica scelta in timeline"><b>\u26a0 ' + esc(k) + ': ' + f.adattate.length + ' grafic' + (f.adattate.length > 1 ? 'he adattate' : 'a adattata') + ' \u00b7 ' + esc(f.adattate.join(', ')) + '</b></div>'; h += '<div class="uscita"><b>' + esc(f.nome || k) + '</b><span>' + esc(k) + '</span>' + (AMBITO ? '' : '<button type="button" class="b mini" data-racmont="' + esc(k) + '" title="questo file in una raccolta: da li\u2019 va in regia come macchia">In Raccolte / Macchie</button>') + (window.Destinazione && !AMBITO ? '<button type="button" class="b mini regia-esp" data-regiaesp="' + esc(k) + '" data-file="' + esc(f.file) + '" data-dur="' + (f.durata || 0) + '" title="il file in scaletta su un vMix, come le grafiche">&#128225; Invia alla regia</button>' : '') + '<a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica</a></div>'; });
@@ -9281,7 +9303,7 @@
       el("eUscite").innerHTML = h || '<span style="color:var(--fumo);font-size:12px">Ancora niente.</span>';
       if (ESP.aperta) el("espUscite").innerHTML = el("eUscite").innerHTML;
       el("eInfo").textContent = PZ.length + " pezzi · " + tc(fineTutto()) + (q.chi ? " · " + q.chi : "");
-      var lavora = (q.export && q.export.stato === "lavora") || (q.casa && q.casa.stato === "lavora");
+      var lavora = (q.export && (q.export.stato === "lavora" || q.export.stato === "in coda")) || (q.casa && q.casa.stato === "lavora") || CODA_E.length;
       GIRO_E = setTimeout(giroUscite, lavora ? 1500 : 15000);
       // mai durante un trascinamento o una selezione a riquadro: il gesto tiene
       // l'indice del pezzo, e ricaricando sotto i piedi si toccava un altro pezzo
