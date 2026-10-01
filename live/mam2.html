@@ -3150,6 +3150,26 @@
   var TIPI_1907 = ["Gol", "Intervista", "Conferenza stampa", "Highlights", "Slow motion", "Altro"];
   // LE COLONNE (Goffredo, 01/10/2026): una colonna per categoria, quattro video (due righe da due) e "Vedi tutto",
   // che apre la griglia intera di quella categoria
+  // LE GIOCATE A COLONNE (Goffredo, 01/10/2026: "dividere in sottoriquadri con le giocate"): per un giocatore
+  // una colonna per ruolo (gol, assist, tiri...), se no per tipo di azione; quattro azioni e Vedi tutto (il filtro)
+  var COLORI_TA = { "Gol": "#C9A24B", "Tiro in porta": "#5AA7E8", "Tiro fuori": "#8CC5F2", "Tiro respinto": "#9FE0E0", "Palo": "#E3E08C", "Rigore": "#F29C6B",
+    "Occasione": "#7FDCA9", "Giocata": "#C7A6F2", "Angolo": "#F2C98C", "Punizione": "#E58BD0", "Fuorigioco": "#B8B8C8", "Fallo": "#F2A0A0", "Giallo": "#FCD34D", "Rosso": "#E5484D", "VAR": "#9AA7B8", "Sostituzione": "#9AA7B8" };
+  function colonneAzioni(azioni, perRuolo, evDi, link){
+    var gr = {}, ordine = perRuolo ? ORDINE_RUOLI : ORDINE_TA;
+    azioni.forEach(function(x){ var k = perRuolo ? x.ruolo : x.cat; if (!k) return; (gr[k] = gr[k] || []).push(x); });
+    var voci = ordine.filter(function(k){ return gr[k] && gr[k].length; });
+    if (voci.length < 2) return "";
+    return '<div class="colonne-cat">' + voci.map(function(k){
+      var col = perRuolo ? ((RUOLI[k] || {}).c || "#C9A24B") : (COLORI_TA[k] || "#C9A24B"), eti = perRuolo ? ((RUOLI[k] || {}).eti || k) : k;
+      return '<section class="col-cat" style="--k:' + col + '"><div class="col-cat-t"><b style="color:' + testoSu(col) + '">' + esc(eti) + '<span>' + gr[k].length + '</span></b>' +
+        (gr[k].length > 4 ? '<a href="#" data-vedi-az="' + (perRuolo ? "r" : "ta") + '|' + esc(k) + '|' + esc(eti) + '">Vedi tutto \u2192</a>' : '') + '</div>' +
+        '<div class="col-cat-g">' + gr[k].slice(0, 4).map(function(x){ return tesseraAzione(x, evDi(x), link); }).join("") + '</div></section>';
+    }).join("") + '</div>';
+  }
+  document.addEventListener("click", function(e){
+    var a = e.target.closest && e.target.closest("[data-vedi-az]"); if (!a) return;
+    e.preventDefault(); var v = a.dataset.vediAz.split("|"); RIS_TAB = "azioni"; cambiaFiltroGettone(v[0], v[1], v[2]);
+  });
   var COLORI_CAT = { "Camera offloads": "#E58BD0", "Clip dalle camere": "#F5D76E", "Gionni Cam": "#5AA7E8", "Hudi Cam": "#6EE7A8", "Mat Cam": "#F2C98C",
     "Gol": "#C9A24B", "Intervista": "#8CC5F2", "Conferenza stampa": "#C7A6F2", "Highlights": "#F29C6B", "Slow motion": "#9FE0E0", "Altro": "#9AA7B8" };
   function colonneCat(per, ordine, conti, attr, etichette){
@@ -3304,7 +3324,10 @@
     var etiRuoli = rls.map(function(r){ return (RUOLI[r] || {}).eti || r; }).join(" o ");
     var gruppi = {
       partite: { k: "partite", eti: gio ? "Partite con " + gio.eti : nomeSq ? "Partite · " + nomeSq : "Partite", c: CAT.evento.c, n: partite.length, html: function(max){ return partite.slice(0, max).map(function(x){ return tesseraPartita(x, link); }).join(""); } },
-      azioni: { k: "azioni", eti: gio ? (etiRuoli ? etiRuoli + " · " : "Giocate · ") + gio.eti : (etiRuoli || "Azioni"), c: CAT.azione.c, n: azioni.length, html: function(max){ return azioni.slice(0, max).map(function(x){ return tesseraAzione(x, evDi(x), link); }).join(""); } },
+      azioni: { k: "azioni", eti: gio ? (etiRuoli ? etiRuoli + " · " : "Giocate · ") + gio.eti : (etiRuoli || "Azioni"), c: CAT.azione.c, n: azioni.length, html: function(max){
+        // senza un tipo scelto, a colonne; scelto un tipo (o una raccolta), la griglia di sempre
+        var col = !RACCOLTA && !rls.length && !scelti("ta").length && azioni.length > 8 ? colonneAzioni(azioni, !!gio, evDi, link) : "";
+        return col || azioni.slice(0, max).map(function(x){ return tesseraAzione(x, evDi(x), link); }).join(""); } },
       dette: { k: "dette", eti: "Telecronache", c: CAT.detto.c, n: dette.length, html: function(max){ return dette.slice(0, max).map(function(x){ return tesseraDetto(x, evDi(x), link); }).join(""); } },
       camere: { k: "camere", eti: gio ? "Camere · " + gio.eti : "Camere", c: "#E58BD0", n: CAM.tutte || 0, html: function(max){ return !TIPOCAM && CAM.perTipo ? notaCamere() + colonneCat(CAM.perTipo, TIPI_CAM, CAM.tipi || {}, "data-tcam") : filaCamere() + CAM.clip.slice(0, max).map(tessera1907).join(""); } },
       arch1907: { k: "arch1907", eti: "Dall\u2019Archivio del Como 1907", c: "#C9A24B", n: ARCH1907.q === testo1907 ? (ARCH1907.tutte || ARCH1907.n) : 0, html: function(max){ return !TIPO1907 && ARCH1907.perTipo ? colonneCat(ARCH1907.perTipo, TIPI_1907, ARCH1907.tipi || {}, "data-t1907", ETI_1907) : filaTipi1907() + ARCH1907.clip.slice(0, max).map(tessera1907).join(""); } }

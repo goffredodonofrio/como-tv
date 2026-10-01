@@ -7632,6 +7632,33 @@ function correggiArchivio(voci) {
     if (!a) { esito.push({ rec, errore: "non e' nell'indice" }); return; }
     const suoiFile = (a.pezzi || []).map((z) => z.chiave);
     const iPiano = piano.findIndex((x) => stessiFile(x.file || [], suoiFile));
+    // UNISCI (01/10/2026, Inter-Como di Coppa Italia: "unisci i tempi"): i file di altre voci (il secondo
+    // tempo finito in una voce sua) entrano in questa, che diventa la partita intera a pezzi; le altre voci
+    // spariscono. Cronometro e lingue si rileggono sulla partita intera; ESPN passa alla voce nuova
+    if (v.unisci && v.unisci.length) {
+      if (rec.indexOf("nas:") !== 0 || iPiano < 0) { esito.push({ rec, errore: "si unisce dentro una voce entrata dalla NAS" }); return; }
+      const altri = v.unisci.map(String).filter((r) => r !== rec && ARCHIVIO[r]);
+      const file = [...new Set(suoiFile.concat(...altri.map((r) => (ARCHIVIO[r].pezzi || []).map((z) => z.chiave))))];
+      const pz = Object.assign({}, piano[iPiano], { file }, v.partita ? { partita: String(v.partita) } : {}, v.competizione !== undefined ? { competizione: String(v.competizione) } : {});
+      const fatta = voceNas(pz, secchio);
+      if (!fatta || fatta.voce.pezzi.length < file.length) { esito.push({ rec, errore: "non tutti i file sono sulla NAS" }); return; }
+      const espn = ESPN[rec] || altri.map((r) => ESPN[r]).find(Boolean), base = piano[iPiano];
+      altri.forEach((r) => {          // le voci "nas:" unite escono anche dal piano
+        const fr = (ARCHIVIO[r].pezzi || []).map((z) => z.chiave);
+        const j = piano.findIndex((x) => x !== base && stessiFile(x.file || [], fr));
+        if (j >= 0) piano.splice(j, 1);
+      });
+      [rec].concat(altri).forEach((r) => {
+        delete ARCHIVIO[r]; delete ESPN[r];
+        try { const L = lingue(); if (L[r]) { delete L[r]; scriviLingue(); } } catch (e) {}
+      });
+      ARCHIVIO[fatta.id] = fatta.voce; if (espn) ESPN[fatta.id] = espn;
+      piano[piano.indexOf(base)] = pz;
+      if (v.conferma) conferma(fatta.voce);
+      if (global.__TAB_CACHE) global.__TAB_CACHE.quando = 0;
+      esito.push({ rec: fatta.id, partita: pz.partita, pezzi: fatta.voce.pezzi.map((z) => z.da), uniti: altri });
+      return;
+    }
     if (v.dividi && v.dividi.length) {
       if (rec.indexOf("nas:") !== 0 || iPiano < 0) { esito.push({ rec, errore: "si dividono solo le voci entrate dalla NAS" }); return; }
       const base = piano[iPiano], nuove = [];
