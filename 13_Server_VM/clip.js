@@ -3505,6 +3505,28 @@ function audioDaPezzo(x, traccia) {
   return a;
 }
 
+// LE ALTRE VOCI DELLA PARTITA (01/10/2026). Goffredo: "quando ci sono video
+// con traccia audio ita + eng e li porto in montaggio separami i canali", e
+// "le partite che hanno multitraccia audio mettile gia' in timeline". Le
+// nostre partite non hanno piu' piste nello stesso file (il censimento del
+// 01/10 lo dice: una coppia stereo, o i sei canali dello studio): la ENG e il
+// suono internazionale sono file a parte, allineati alla ITA (lingue.json).
+// Un pezzo che entra in timeline se li porta dietro come in Premiere una
+// clip multitraccia: ITA su A1, ENG su A2, suono internazionale (l'ambiente)
+// su A3, radiocronaca ITA (AUDIO ONLY) su A4, tutti legati al video. Le altre nascono spente, se no si sentono due telecronache: chi
+// monta accende quella che vuole e spegne la ITA.
+function altreVoci(q, x) {
+  if (!x || x.media || x.animata) return [];
+  const prova = audioDaPezzo(x);
+  const rec = recItaDi(q, prova);
+  if (!rec) return [];
+  return lingueDi(rec).filter((l) => tempoInLingua(rec, l, x.dentro) !== null).map((l) => {
+    const a = audioDaPezzo(x, { eng: "A2", int: "A3", radio: "A4" }[l]);
+    a.id = nuovoId("a"); a.lingua = l; a.muto = true;
+    return a;
+  });
+}
+
 // Una sequenza vecchia non ha ne' posizioni ne' audio: gliele si da' qui,
 // la prima volta che la si guarda. Nessuna migrazione, nessun file da
 // convertire — le sequenze di ieri si aprono e basta.
@@ -3532,6 +3554,7 @@ function normalizzaSeq(q) {
     if (haAudio[x.id]) { x.audioFatto = 1; return; }
     if (x.audioFatto) return;
     q.audio.push(audioDaPezzo(x));
+    altreVoci(q, x).forEach((a) => q.audio.push(a));
     x.audioFatto = 1;
   });
   // l'audio di un video che non c'e' piu' se ne va con lui. Quello
@@ -3671,10 +3694,13 @@ function audioSemplice(q) {
   const pz = q.pezzi || [], au = q.audio || [];
   if (pz.length && !au.length) return false;
   if (pz.some((x) => (+x.velocita || 1) !== 1)) return false;
+  // le voci spente (la ENG e l'internazionale sotto la ITA) non suonano: non
+  // contano. Un video con la sua sola voce spenta invece resta muto: mix.
+  const accesi = au.filter((a) => !a.muto);
   const legati = {};
-  au.forEach((a) => { if (a.legato) legati[a.legato] = true; });
+  accesi.forEach((a) => { if (a.legato) legati[a.legato] = true; });
   if (pz.some((x) => (x.traccia || "V1") === "V1" && !legati[x.id])) return false;
-  return au.every((a) => a.legato && !a.sfaso && !a.lingua && a.traccia === "A1" && !a.gain
+  return accesi.every((a) => a.legato && !a.sfaso && !a.lingua && a.traccia === "A1" && !a.gain
                                    && !a.entra && !a.esce && !a.muto && !a.canale
                                    && !((a.volumi || []).length));
 }
@@ -3946,7 +3972,7 @@ function hlAudio(p) {
     const l = String(p.lingua || "").toLowerCase();
     if (!l || l === "ita") delete a.lingua;
     else {
-      if (["eng", "int"].indexOf(l) < 0) throw new Error("lingua sconosciuta");
+      if (VOCI.indexOf(l) < 0) throw new Error("lingua sconosciuta");
       const rec = recItaDi(q, a);
       if (!rec || lingueDi(rec).indexOf(l) < 0) throw new Error("questa partita non ha la versione " + l.toUpperCase() + " allineata");
       if (tempoInLingua(rec, l, a.dentro) === null) throw new Error("in questo tempo la versione " + l.toUpperCase() + " non si ritrova");
@@ -4245,11 +4271,16 @@ async function hlInserisci(p) {
   toccataAMano(q);
   // inserita mentre si ascoltava l'ENG o l'INT: la clip nasce con quella lingua
   const lp = String(p.lingua || "").toLowerCase();
-  if (lp === "eng" || lp === "int") {
+  if (VOCI.indexOf(lp) >= 0) {
     normalizzaSeq(q);
     const au = (q.audio || []).find((a) => a.legato === pezzo.id);
     const rec = au && recItaDi(q, au);
-    if (au && rec && tempoInLingua(rec, lp, au.dentro) !== null) { au.lingua = lp; decoraLingua(q, au); }
+    if (au && rec && tempoInLingua(rec, lp, au.dentro) !== null) {
+      // la sua gemella su A2/A3 diventa la ITA, spenta: le voci restano tutte
+      const gem = q.audio.find((a) => a.legato === pezzo.id && a !== au && a.lingua === lp);
+      if (gem) { delete gem.lingua; decoraLingua(q, gem); }
+      au.lingua = lp; decoraLingua(q, au);
+    }
   }
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q, pezzo: pezzo.id, agganciato: agganciato };
@@ -4543,8 +4574,8 @@ function hlDividi(p) {
   // la lametta taglia anche l'audio, e la meta' nuova si porta dietro
   // volume, traccia e sfumate: in Premiere si comporta cosi'
   normalizzaSeq(q);
-  const suo = (q.audio || []).filter((y) => y.legato === x.id)[0];
-  if (suo) {
+  // tutte le voci legate (ITA, ENG, internazionale), non solo la prima (01/10/2026)
+  (q.audio || []).filter((y) => y.legato === x.id).forEach((suo) => {
     const coda = Object.assign({}, suo, { id: nuovoId("a"), legato: nuovo.id, entra: 0 });
     // i punti del volume contano dall'inizio della clip: la testa tiene i
     // suoi, la coda quelli dopo il taglio, riportati a zero (26/09/2026)
@@ -4555,7 +4586,7 @@ function hlDividi(p) {
     }
     q.audio.push(coda);
     suo.esce = 0;
-  }
+  });
   normalizzaSeq(q);
   scrivi(); annuncia(0, "clip");
   return { ok: true, seq: q, nuovo: nuovo.id };
@@ -6015,10 +6046,13 @@ async function hlEsportaPremiere(q, percorso, volume) {
     const iv = q.pezzi.findIndex((x) => x.id === a.legato);
     let link = "";
     if (iv >= 0) {
+      // il gruppo intero: il video e TUTTE le sue voci (ITA, ENG, ambiente), come
+      // le lega Premiere quando importa una clip multitraccia (01/10/2026)
       link = '<link><linkclipref>v' + iv + '</linkclipref><mediatype>video</mediatype>' +
              '<trackindex>1</trackindex><clipindex>' + posti["v:" + q.pezzi[iv].id] + '</clipindex></link>' +
-             '<link><linkclipref>' + a.id + '</linkclipref><mediatype>audio</mediatype>' +
-             '<trackindex>' + (k + 1) + '</trackindex><clipindex>' + posti["a:" + a.id] + '</clipindex></link>';
+             (q.audio || []).filter((z) => z.legato === a.legato && !z.animata).map((z) =>
+               '<link><linkclipref>' + z.id + '</linkclipref><mediatype>audio</mediatype>' +
+               '<trackindex>' + iTraccia(z.traccia) + '</trackindex><clipindex>' + posti["a:" + z.id] + '</clipindex></link>').join("");
     }
     // il canale diviso: L e' il primo, R il secondo
     const sorg = a.canale === "R" ? 2 : 1;
@@ -14454,9 +14488,37 @@ function cartellaGrafiche() {
 const LINGUE_FILE = () => path.join(DIR, "lingue.json");
 const LINGUE_INSIEME = 2;
 let LINGUE = null, LINGUA_ORA = null, LINGUE_INDICE = { quando: 0, int: new Map() };
+// le versioni accanto alla nostra ITA: commento inglese, suono internazionale
+// (l'ambiente, senza commento) e radiocronaca italiana (le righe AUDIO ONLY)
+const VOCI = ["eng", "int", "radio"];
 function lingue() {
-  if (!LINGUE) { try { LINGUE = JSON.parse(fs.readFileSync(LINGUE_FILE(), "utf8")) || {}; } catch (e) { LINGUE = {}; } }
+  if (!LINGUE) {
+    try { LINGUE = JSON.parse(fs.readFileSync(LINGUE_FILE(), "utf8")) || {}; } catch (e) { LINGUE = {}; }
+    radioNonInt();
+  }
   return LINGUE;
+}
+// IL 30/09 LE AUDIO ONLY ERANO FINITE COME SUONO INTERNAZIONALE (Genoa-Como):
+// sono la radiocronaca. Si spostano una volta, con lo scarto gia' trovato
+// (l'allineamento resta buono: e' lo stesso file), e le clip gia' montate
+// con quell'audio cambiano nome alla voce, non suono.
+function radioNonInt() {
+  const spostate = new Set();
+  Object.keys(LINGUE).forEach((k) => {
+    const v = LINGUE[k].int;
+    if (v && /AUDIO ?ONLY/i.test(String(v.file || "")) && !/INT(ERNATIONAL)? ?SOUND|AUDIO ?FX|\bFX\b/i.test(String(v.file || ""))) {
+      if (!LINGUE[k].radio) LINGUE[k].radio = v;
+      delete LINGUE[k].int; spostate.add(k);
+    }
+  });
+  if (!spostate.size) return;
+  scriviLingue();
+  try {
+    Object.keys(R.seq || {}).forEach((id) => { const q = R.seq[id];
+      (q.audio || []).forEach((a) => { if (a.lingua === "int" && spostate.has(recItaDi(q, a))) a.lingua = "radio"; }); });
+    scrivi();
+  } catch (e) {}
+  console.log("[clip] lingue: " + spostate.size + " AUDIO ONLY spostate da suono internazionale a radiocronaca");
 }
 function scriviLingue() {
   try { fs.writeFileSync(LINGUE_FILE() + ".tmp", JSON.stringify(lingue())); fs.renameSync(LINGUE_FILE() + ".tmp", LINGUE_FILE()); } catch (e) {}
@@ -14465,7 +14527,12 @@ const PRIMA_SQUADRA_NO = /\bU1\d\b|\bU2\d\b|WOMEN|FEMMINIL|PRIMAVERA|ACADEMY|\bS
 // che versione e' una riga dell'archivio: ita, eng, int o niente
 function linguaDiRecord(a) {
   const t = (a.partita || "") + " " + (a.chiave || "") + " " + (a.dove || "");
-  if (/AUDIO ?ONLY|AUDIO ?FX|INT(ERNATIONAL)? ?SOUND|\[INT\]/i.test(t)) return "int";
+  // "[AUDIO ONLY]" NON e' il suono internazionale: e' la RADIOCRONACA in
+  // italiano del Como (Goffredo 01/10/2026: "occhio, non fare casini").
+  // Prima il nome del file: una riga AUDIO ONLY col file INTERNATIONAL SOUND
+  // (Frosinone-Como del 20/09) resta suono internazionale.
+  if (/AUDIO ?FX|INT(ERNATIONAL)? ?SOUND|\[INT\]|\bFX\b/i.test(t)) return "int";
+  if (/AUDIO ?ONLY/i.test(t)) return "radio";
   if (/(^|[^A-Z])ENG([^A-Z]|$)/.test(String(a.partita || "").toUpperCase()) || /FULL MATCH ENG|\/ENG\//i.test(t)) return "eng";
   if (/(^|[^A-Z])ITA([^A-Z]|$)/.test(t.toUpperCase())) return "ita";
   return "";
@@ -14527,6 +14594,7 @@ async function coppieLingue() {
       e[l] = { rec: rec || null, file, stato: "da fare" }; nuove++;
     };
     if (g.eng) metti("eng", g.eng, fileDiRecord(ARCHIVIO[g.eng]));
+    if (g.radio) metti("radio", g.radio, fileDiRecord(ARCHIVIO[g.radio]));
     if (g.int) metti("int", g.int, fileDiRecord(ARCHIVIO[g.int]));
     else if (intClub.has(c)) metti("int", null, intClub.get(c));
   });
@@ -14760,13 +14828,13 @@ function decoraLingua(q, a) {
 // Libreria non sono partite a se', sono l'audio della ITA (Goffredo 30/09/2026)
 function gemelleLingua() {
   const g = new Set(), L = lingue();
-  Object.keys(L).forEach((k) => ["eng", "int"].forEach((l) => { const v = L[k][l]; if (v && v.rec && v.stato === "fatto") g.add(v.rec); }));
+  Object.keys(L).forEach((k) => VOCI.forEach((l) => { const v = L[k][l]; if (v && v.rec && v.stato === "fatto") g.add(v.rec); }));
   return g;
 }
 // quali versioni ha una partita, per la pagina
 function lingueDi(recIta) {
   const e = lingue()[recIta]; if (!e) return [];
-  return ["eng", "int"].filter((l) => e[l] && e[l].stato === "fatto");
+  return VOCI.filter((l) => e[l] && e[l].stato === "fatto");
 }
 // IL GIRO: una versione per volta, mai sopra una diretta o una regia
 let LINGUE_ORFANI_VIA = false;
@@ -14778,7 +14846,7 @@ async function giroLingue() {
   // DUE PER VOLTA (Goffredo 30/09/2026: "non ci sono dirette, spingi al
   // massimo"): una per core; con una diretta o una regia si fermano tutte e due
   const L = lingue(), inCorso = new Set();
-  const prossima = () => { for (const k of Object.keys(L)) for (const l of ["eng", "int"]) if (L[k][l] && L[k][l].stato === "da fare" && !inCorso.has(k + l)) return [k, l]; return null; };
+  const prossima = () => { for (const k of Object.keys(L)) for (const l of VOCI) if (L[k][l] && L[k][l].stato === "da fare" && !inCorso.has(k + l)) return [k, l]; return null; };
   let vivi = 0;
   const avanti = async () => {
     const x = prossima();
@@ -18069,7 +18137,7 @@ const AZIONI = {
   },
   "clip-lingue-allinea": async (p) => {
     const rec = String(p.rec || ""), l = String(p.lingua || "");
-    if (["eng", "int"].indexOf(l) < 0) throw new Error("lingua: eng o int");
+    if (VOCI.indexOf(l) < 0) throw new Error("lingua: eng, int o radio");
     await coppieLingue();
     return { ok: true, versione: await allineaLingua(rec, l) };
   },
@@ -18093,7 +18161,7 @@ const AZIONI = {
     const rec = String(p.rec || ""), e = lingue()[rec];
     if (!e) return { ok: true, lingue: null };
     const fuori = { taglio: e.taglio || null };
-    ["eng", "int"].forEach((l) => { const v = e[l]; if (v && v.stato === "fatto") fuori[l] = { via: viaLingua(rec, l), o1: v.o1, o2: v.o2 }; });
+    VOCI.forEach((l) => { const v = e[l]; if (v && v.stato === "fatto") fuori[l] = { via: viaLingua(rec, l), o1: v.o1, o2: v.o2 }; });
     return { ok: true, lingue: fuori.eng || fuori.int ? fuori : null };
   },
   // UNA GRAFICA ANIMATA ALLA TESTINA: la grafica sopra il video e il suo suono su A3
