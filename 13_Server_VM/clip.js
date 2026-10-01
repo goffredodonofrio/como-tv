@@ -7685,10 +7685,12 @@ const PARTITE_1907 = /(men'?s? first team|men first team)\/(matchdays?|matchday_
 // il filtro interviste"): si mostra sulla tessera e si filtra nella ricerca
 // LE CAMERE (01/10/2026, Goffredo: "le camere offloads devono avere spazio nella ricerca, divise per partita e per
 // giocatore; stesso discorso per Mat Cam, Gionni Cam e Hudi Cam")
-const TIPI_CAMERE = ["Camera offloads", "Gionni Cam", "Hudi Cam", "Mat Cam"];
+const TIPI_CAMERE = ["Camera offloads", "Clip dalle camere", "Gionni Cam", "Hudi Cam", "Mat Cam"];
 function tipoClub1907(via) {
   const t = String(via).toLowerCase();
   if (/camera offload|scarichi/.test(t)) return "Camera offloads";
+  // i tagli fatti dalle camere (4:5, 9:16, clean) nelle cartelle di lavoro della giornata
+  if (/clips? working folder/.test(t)) return "Clip dalle camere";
   if (/gionni/.test(t)) return "Gionni Cam";
   if (/hudi/.test(t)) return "Hudi Cam";
   if (/\bmat(teo)?'?s?[ _-]?cam|cam[ _-]?mat(teo)?\b|match footage matteo/.test(t)) return "Mat Cam";
