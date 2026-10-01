@@ -1248,6 +1248,21 @@
   #inviiRegia .ir-st{font:11px ui-monospace,Menlo,monospace;color:var(--fumo);grid-column:1/-1;}
   #inviiRegia .ir-riga.fatto .ir-st{color:#7BD88F;} #inviiRegia .ir-riga.errore .ir-st{color:var(--rosso);} #inviiRegia .ir-riga.lavora .ir-st{color:var(--oro);}
   #inviiRegia .ir-barra{height:4px;background:var(--riga);border-radius:3px;overflow:hidden;} #inviiRegia .ir-barra i{display:block;height:100%;background:var(--oro);}
+  /* la barra in tre tratti (01/10/2026): montaggio azzurro, codifica oro, upload/download verde */
+  #inviiRegia{width:360px;} #inviiRegia .ir-riga{grid-template-columns:1fr;gap:6px;padding-top:8px;}
+  #inviiRegia .ir-az{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;} #inviiRegia .tre-tempi em + .ir-az{margin-left:8px;}
+  .tre{--f0:var(--blu);--f1:var(--oro);--f2:var(--ok);display:flex;flex-direction:column;gap:5px;}
+  .tre-barra{display:flex;gap:3px;height:8px;}
+  .tre-seg{position:relative;flex:3;background:rgba(237,237,238,.09);border-radius:4px;overflow:hidden;} .tre-seg.f1{flex:5;} .tre-seg.f2{flex:2;}
+  .tre-seg i{display:block;height:100%;border-radius:4px;transition:width .6s ease;} .tre-seg.f0 i{background:var(--f0);} .tre-seg.f1 i{background:var(--f1);} .tre-seg.f2 i{background:var(--f2);}
+  .tre-seg.fisso i{width:100% !important;opacity:.55;background-image:linear-gradient(90deg,transparent 0,rgba(255,255,255,.35) 50%,transparent 100%);background-size:60% 100%;background-repeat:no-repeat;animation:treScorre 1.4s linear infinite;}
+  @keyframes treScorre{from{background-position:-60% 0;}to{background-position:160% 0;}}
+  @media (prefers-reduced-motion:reduce){ .tre-seg.fisso i{animation:none;} .tre-seg i{transition:none;} }
+  .tre-fasi{display:flex;gap:10px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--fumo);}
+  .tre-fasi .ora{font-weight:700;} .tre-fasi .f0.ora,.tre-fasi .f0.fatta{color:var(--f0);} .tre-fasi .f1.ora,.tre-fasi .f1.fatta{color:var(--f1);} .tre-fasi .f2.ora,.tre-fasi .f2.fatta{color:var(--f2);} .tre-fasi .fatta{opacity:.75;}
+  .tre-testo{font-size:12px;} .tre-testo.f0{color:#9DCBF5;} .tre-testo.f1{color:var(--oro2);} .tre-testo.f2{color:var(--verde);}
+  .tre-tempi{display:flex;gap:12px;align-items:baseline;font-size:11.5px;color:var(--ivory2);font-variant-numeric:tabular-nums;} .tre-tempi b{color:var(--ivory);font-weight:600;} .tre-tempi em{margin-left:auto;font-style:normal;font-weight:700;color:var(--ivory);}
+  .tre.fermo .tre-seg i{background:var(--fumo) !important;} .tre.fermo .tre-testo{color:var(--rosso);}
   .coda-esp{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;} .coda-esp-t{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--oro);font-weight:700;}
   .coda-esp .uscita .st{font:11px ui-monospace,Menlo,monospace;color:var(--fumo);white-space:nowrap;} .coda-esp .uscita.lavora .st{color:var(--oro);}
   /* L'ARCHIVIO SULLA NAS: la scheda nella Libreria e
@@ -9320,7 +9335,7 @@
         if (L.stato === "fatto" && era && era.stato !== "fatto") { avviso("ok", "“" + esc(L.titolo) + "” " + esc(L.formato) + " fatto sul computer in " + (L.secondi || 0) + " s" + (L.locale ? " · copia in Download/MAM Export" : "") + "."); if (SEQ) giroUscite(); }
       });
       if (SEQ && el("eUscite")) { var box = el("aiutCoda"); if (box) box.outerHTML = aiutHtml(); }
-      if (INVII.length) disegnaInvii();
+      if (INVII.length || AMBITO) disegnaInvii();
     }).catch(function(){}).then(function(){
       var attivi = AIUT_LAV.some(function(L){ return L.stato === "lavora" || L.stato === "in coda"; });
       GIRO_AIUT = setTimeout(giroAiut, attivi ? 1500 : 15000);
@@ -9357,30 +9372,115 @@
       GIRO_INV = setTimeout(giroInvii, attivi ? 1500 : (document.hidden ? 60000 : 20000));
     });
   }
+  // ── LA FINESTRA DEGLI INVII, PIU' CHIARA (01/10/2026) ───────────────────
+  //  Goffredo: "barra di avanzamento + tempo che resta + tempo impiegato,
+  //  colori diversi per editing / codifica e upload". Una barra in tre tratti:
+  //  Montaggio (i pezzi presi e tagliati), Codifica, e l'ultimo tratto: Upload
+  //  (sul MAM e in scaletta) per Como TV, Download per il Como 1907, che non ha
+  //  regia ("uguale per il MAM del Como 1907 ma solo il download").
+  //  q va da 0 a 1 sull'intero lavoro, con gli stessi pesi dell'aiutante
+  //  (pezzi fino a 0,25, codifica fino a 0,9, poi il file che viaggia).
+  var TRE_DA = [0, 0.25, 0.9], TRE_PESO = [0.25, 0.65, 0.1];
+  function passoDi(q){ return q < 0.25 ? 0 : q < 0.9 ? 1 : 2; }
+  function senzaPc(t){ return String(t || "").replace(/\s*\d+\s*%$/, ""); }
+  // o: { q, passo, testo, t0, fine (se finito), esito: "lavora"|"fatto"|"errore"|"annullato", fisso (avanzamento non misurabile) }
+  function barraTre(o){
+    var nomi = ["Montaggio", "Codifica", AMBITO ? "Download" : "Upload"];
+    var fatto = o.esito === "fatto", fermo = o.esito === "errore" || o.esito === "annullato";
+    var q = fatto ? 1 : Math.max(0, Math.min(1, o.q || 0)), passo = fatto ? 3 : (o.passo !== undefined ? o.passo : passoDi(q));
+    var seg = nomi.map(function(n, i){
+      var p = fatto || i < passo ? 1 : i > passo ? 0 : Math.max(0, Math.min(1, (q - TRE_DA[i]) / TRE_PESO[i]));
+      return '<span class="tre-seg f' + i + (i === passo && !fermo ? " ora" : "") + (o.fisso && i === passo ? " fisso" : "") + '"><i style="width:' + (p * 100).toFixed(1) + '%"></i></span>';
+    }).join("");
+    var fasi = nomi.map(function(n, i){ return '<span class="f' + i + (i < passo || fatto ? " fatta" : i === passo && !fermo ? " ora" : "") + '">' + (i < passo || fatto ? "✓ " : "") + n + '</span>'; }).join("");
+    var adesso = Date.now(), pass = o.t0 ? Math.max(0, ((o.fine || adesso) - o.t0) / 1000) : 0;
+    var resta = !fatto && !fermo && !o.fisso && q > 0.04 && pass > 5 ? pass * (1 - q) / q : null;
+    var tempi = fatto ? '<span>fatto in <b>' + mmss(pass) + '</b></span>'
+      : fermo ? (pass ? '<span>dopo ' + mmss(pass) + '</span>' : '')
+      : '<span>&#9201; <b>' + mmss(pass) + '</b> trascorsi</span>' + (resta !== null ? '<span>ne resta circa <b>' + mmss(resta) + '</b></span>' : '<span>stimo il tempo…</span>') + '<em>' + Math.round(q * 100) + '%</em>';
+    return '<div class="tre' + (fermo ? " fermo" : "") + '"><div class="tre-barra">' + seg + '</div><div class="tre-fasi">' + fasi + '</div>' +
+      (o.testo ? '<div class="tre-testo f' + Math.min(2, passo) + '">' + esc(o.testo) + '</div>' : '') + '<div class="tre-tempi">' + tempi + (o.az || '') + '</div></div>';
+  }
+  // un invio in regia (Como TV): dal computer di chi monta, o dal MAM
+  function infoInvio(x){
+    var loc = AIUT_LAV.filter(function(L){ return L.invio === x.id; })[0], prog = /^progetto/.test(x.dove || "");
+    var o = { t0: x.creato, esito: x.stato === "invio" ? "lavora" : x.stato, fine: x.stato === "lavora" || x.stato === "invio" ? 0 : x.finito };
+    if (x.stato === "fatto") o.testo = prog ? "nel progetto" : "in scaletta";
+    else if (x.stato === "errore") o.testo = "non riuscito: " + (x.errore || "");
+    else if (x.stato === "annullato") o.testo = "annullato";
+    else if (x.stato === "invio") { o.q = 0.97; o.testo = prog ? "lo metto nel progetto" : "lo mando in scaletta"; }
+    else if (loc) { o.q = loc.avanza || 0; o.testo = "sul computer · " + senzaPc(loc.fase); }
+    else if (x.export) { var p = avanzaExport(x.export); o.q = 0.9 * p; o.passo = /pezzi|inquadrare|taglio|preparo/i.test(x.export.fase || "") ? 0 : 1; o.testo = "sul MAM · " + senzaPc(x.export.fase || "esporto"); }
+    else if (x.tot) { var tg = /^taglio/.test(x.fase || ""); o.q = tg ? 0.25 * (x.fatti || 0) / x.tot : 0.6; o.passo = tg ? 0 : 1; o.fisso = !tg; o.testo = "sul MAM · " + (x.fase || ""); }
+    else { o.q = 0; o.passo = 0; o.fisso = true; o.testo = x.fase || "in preparazione"; }
+    return o;
+  }
+  // i download del Como 1907: gli export fatti dall'aiutante e quelli del MAM
+  var DL_VM = {}, DL_PC = {};
+  function righeDownload(){
+    var r = [];
+    AIUT_LAV.forEach(function(L){
+      if (L.invio) return;                       // gli invii in regia sono di Como TV
+      if (!(L.stato === "lavora" || L.stato === "in coda" || Date.now() - (L.finito || L.creato) < 1200000)) return;
+      // il file e' nei Download appena codificato: il resto e' la copia per il MAM
+      var nelPc = L.stato === "fatto" || (L.stato === "lavora" && L.locale && (L.avanza || 0) >= 0.9);
+      if (nelPc && !DL_PC[L.id]) DL_PC[L.id] = L.stato === "fatto" ? L.finito : Date.now();
+      var o = { t0: L.creato, esito: nelPc ? "fatto" : L.stato === "in coda" ? "lavora" : L.stato, fine: nelPc ? DL_PC[L.id] : L.finito };
+      if (nelPc) o.testo = "nei Download · MAM Export" + (L.stato === "lavora" ? " (copia sul MAM in corso)" : "");
+      else if (L.stato === "errore") o.testo = "non riuscito: " + (L.errore || "");
+      else if (L.stato === "annullato") o.testo = "annullato";
+      else if (L.stato === "in coda") { o.q = 0; o.fisso = true; o.testo = "in coda"; }
+      else { o.q = Math.min(0.89, L.avanza || 0); o.testo = "sul computer · " + senzaPc(L.fase); }
+      r.push({ id: L.id, titolo: L.titolo, dove: (L.formato || "") + " · sul mio computer", stato: o.esito, info: o, annulla: !nelPc && (L.stato === "lavora" || L.stato === "in coda") ? '<button type="button" class="b mini" data-annullaaiut="' + esc(L.id) + '">Annulla</button>' : "" });
+    });
+    Object.keys(DL_VM).forEach(function(k){
+      var d = DL_VM[k], e = d.export || {};
+      if (d.finito && Date.now() - d.finito > 1200000) { delete DL_VM[k]; return; }
+      var o = { t0: e.inizio || (e.giro && e.giro.inizio) || d.visto, esito: d.finito ? (d.file.length ? "fatto" : e.stato === "errore" ? "errore" : "annullato") : "lavora", fine: d.finito };
+      if (d.finito) o.testo = d.file.length ? "pronto: scaricalo" : e.stato === "errore" ? "non riuscito: " + (e.errore || "") : "fermato";
+      else if (e.stato === "in coda") { o.q = 0; o.fisso = true; o.testo = "in coda sul MAM" + (e.posto ? " (" + e.posto + "º)" : ""); }
+      else { var p = avanzaExport(e); o.q = 0.9 * p; o.passo = /pezzi|inquadrare|taglio|preparo/i.test(e.fase || "") ? 0 : 1; o.testo = "sul MAM · " + senzaPc(e.fase || "esporto"); }
+      r.push({ id: k, titolo: d.titolo, dove: (e.formati || []).join(" · ") + " · sul MAM", stato: o.esito, info: o,
+        annulla: d.file.map(function(f){ return '<a class="b mini oro" href="' + BASE + f.file + '?scarica=1">Scarica ' + esc(f.formato) + '</a>'; }).join("") });
+    });
+    return r;
+  }
+  // l'export sul MAM della sequenza aperta: nel Download finche' lavora, poi i file da scaricare
+  function dlDaSeq(q){
+    var e = q.export, lav = e && (e.stato === "lavora" || e.stato === "in coda"), d = DL_VM[q.id];
+    if (lav) { if (!d || d.finito) d = DL_VM[q.id] = { titolo: q.titolo || "sequenza", visto: Date.now(), prima: JSON.stringify(q.esportati || {}), file: [] }; d.export = e; d.titolo = q.titolo || d.titolo; }
+    else if (d && !d.finito) {
+      d.finito = Date.now(); d.export = e || d.export;
+      var ora = q.esportati || {}, prima = JSON.parse(d.prima || "{}");
+      d.file = Object.keys(ora).filter(function(k){ return !prima[k] || prima[k].file !== ora[k].file || prima[k].quando !== ora[k].quando; }).map(function(k){ return { formato: k, file: ora[k].file }; });
+      if (!d.file.length && e && e.stato === "pronto") d.file = Object.keys(ora).map(function(k){ return { formato: k, file: ora[k].file }; });
+    } else return;
+    disegnaInvii();
+  }
   function disegnaInvii(){
     var box = el("inviiRegia");
-    if (!box) { box = document.createElement("div"); box.id = "inviiRegia"; box.setAttribute("role", "region"); box.setAttribute("aria-label", "Invii in regia"); document.body.appendChild(box);
+    if (!box) { box = document.createElement("div"); box.id = "inviiRegia"; box.setAttribute("role", "region"); box.setAttribute("aria-label", AMBITO ? "Download" : "Invii in regia"); document.body.appendChild(box);
       box.addEventListener("click", function(e){
         var a = e.target.closest("[data-annullainv]");
-        if (a) { a.disabled = true; var locA = AIUT_LAV.filter(function(L){ return L.invio === a.dataset.annullainv && (L.stato === "lavora" || L.stato === "in coda"); })[0]; if (locA) aiutChiedi("/annulla", { id: locA.id }).catch(function(){}); post({ tipo:"clip-regia-annulla", id: a.dataset.annullainv }).then(function(d){ INVII = d.invii || INVII; disegnaInvii(); avviso("ok", "Invio annullato."); }).catch(function(er){ a.disabled = false; avviso("err", esc(er.message)); }); return; }
+        if (a) { a.disabled = true; var locA = AIUT_LAV.filter(function(L){ return L.invio === a.dataset.annullainv && (L.stato === "lavora" || L.stato === "in coda"); })[0]; if (locA) aiutChiedi("/annulla", { id: locA.id }).catch(function(){}); post({ tipo:"clip-regia-annulla", id: a.dataset.annullainv }).then(function(d){ INVII = d.invii || INVII; disegnaInvii(); avviso("ok", "Invio annullato."); }).catch(function(er){ a.disabled = false; avviso("err", esc(er.message)); }); }
         if (e.target.closest("[data-chiudiinv]")) { INVII_CHIUSO = true; disegnaInvii(); }
       });
     }
     // quelli in corso, e i finiti degli ultimi 20 minuti
-    var vis = INVII.filter(function(x){ return x.stato === "lavora" || x.stato === "invio" || Date.now() - (x.finito || x.creato) < 1200000; }).slice(0, 8);
-    var attivi = vis.filter(function(x){ return x.stato === "lavora" || x.stato === "invio"; }).length;
-    if (!vis.length || (INVII_CHIUSO && !attivi)) { box.hidden = true; return; }
+    var righe = AMBITO ? righeDownload() : INVII.filter(function(x){ return x.stato === "lavora" || x.stato === "invio" || Date.now() - (x.finito || x.creato) < 1200000; }).map(function(x){
+      return { id: x.id, titolo: x.titolo, dove: x.dove, stato: x.stato === "invio" ? "lavora" : x.stato, info: infoInvio(x), annulla: x.stato === "lavora" ? '<button type="button" class="b mini" data-annullainv="' + esc(x.id) + '">Annulla</button>' : "" };
+    });
+    righe = righe.slice(0, 8);
+    var attivi = righe.filter(function(x){ return x.stato === "lavora"; }).length;
+    if (!righe.length || (INVII_CHIUSO && !attivi)) { box.hidden = true; return; }
     box.hidden = false;
-    box.innerHTML = '<div class="ir-testa"><b>&#128225; Invii in regia</b><span>' + (attivi ? attivi + " in corso" : "finiti") + '</span><button type="button" class="ir-x" data-chiudiinv="1" title="nascondi (torna al prossimo invio)">&times;</button></div>' +
-      vis.map(function(x){
-        var loc = AIUT_LAV.filter(function(L){ return L.invio === x.id; })[0];
-        var q = loc && x.stato === "lavora" ? (loc.avanza || 0) : x.export ? avanzaExport(x.export) : (x.tot ? Math.min(0.95, (x.fatti || 0) / x.tot) : (x.stato === "invio" ? 0.97 : 0));
-        var st = x.stato === "fatto" ? (/^progetto/.test(x.dove || "") ? "nel progetto \u2713" : "in scaletta \u2713") : x.stato === "errore" ? "non riuscito: " + (x.errore || "") : x.stato === "annullato" ? "annullato" : (loc && x.stato === "lavora" ? "sul computer \u00b7 " + (loc.fase || "") : (x.fase || "in preparazione"));
-        return '<div class="ir-riga ' + esc(x.stato) + '"><div class="ir-t"><b>' + esc(x.titolo) + '</b><span>' + esc(x.dove) + '</span></div>' +
-          '<div class="ir-st">' + esc(st) + (x.stato === "lavora" && q > 0 ? " \u00b7 " + Math.round(q * 100) + "%" : "") + '</div>' +
-          (x.stato === "lavora" ? '<div class="ir-barra"><i style="width:' + Math.max(3, q * 100).toFixed(1) + '%"></i></div><button type="button" class="b mini" data-annullainv="' + esc(x.id) + '">Annulla</button>' : '') + '</div>';
+    box.innerHTML = '<div class="ir-testa"><b>' + (AMBITO ? "&#11015; Download" : "&#128225; Invii in regia") + '</b><span>' + (attivi ? attivi + " in corso" : "finiti") + '</span><button type="button" class="ir-x" data-chiudiinv="1" title="nascondi (torna al prossimo lavoro)">&times;</button></div>' +
+      righe.map(function(x){
+        return '<div class="ir-riga ' + esc(x.stato) + '"><div class="ir-t"><b>' + esc(x.titolo) + '</b><span>' + esc(x.dove) + '</span></div>' + barraTre(Object.assign({ az: x.annulla ? '<span class="ir-az">' + x.annulla + '</span>' : '' }, x.info)) + '</div>';
       }).join("");
   }
+  // i tempi scorrono anche fra un giro e l'altro
+  setInterval(function(){ var b = el("inviiRegia"); if (b && !b.hidden && b.querySelector(".ir-riga.lavora") && !b.matches(":hover")) disegnaInvii(); }, 1000);
   if (!AMBITO) setTimeout(function(){ giroInvii(false); }, 2500);
   function opzioniRegia(scelto){
     var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
@@ -9532,6 +9632,7 @@
     clearTimeout(GIRO_E);
     post({ tipo:"clip-hl-esporta-coda" }).then(function(c){ CODA_E = (c && c.coda) || []; }).catch(function(){}).then(function(){ return post({ tipo:"clip-hl-elenco", reg: SEQ.reg, tutte: true }); }).then(function(d){
       var q = (d.seq || []).filter(function(z){ return z.id === SEQ.id; })[0]; if (!q) return;
+      if (AMBITO) dlDaSeq(q);
       var h = aiutHtml().replace('<div id="aiutCoda"></div>', '<div id="aiutCoda"></div>') + codaHtml();
       var lav = q.export && q.export.stato === "lavora";
       if (lav) h += barraExport(q.export);
