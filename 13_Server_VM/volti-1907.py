@@ -49,7 +49,8 @@ PUNTI = (0.2, 0.45, 0.7)
 # camera offloads, Gionni Cam, Hudi Cam, Mat Cam. Il nome del file non dice chi c'e' e i giocatori
 # passano in fretta: otto fotogrammi invece di tre, e la precedenza a quelle della prima squadra
 CAMERE = re.compile(r"camera offload|scarichi|gionni|hudi|\bmat(teo)?'?s?[ _-]?cam|cam[ _-]?mat(teo)?\b|match footage matteo", re.I)
-PUNTI_CAMERE = (0.08, 0.2, 0.32, 0.45, 0.58, 0.7, 0.82, 0.93)
+# quattro punti, non otto (01/10/2026, Goffredo: "il piu' veloce"): 18.000 camere a 250 l'ora erano tre giorni
+PUNTI_CAMERE = (0.15, 0.4, 0.65, 0.88)
 IGNOTO_ALTEZZA = 0.15  # un volto sconosciuto si tiene solo se e' grande...
 IGNOTO_NITIDO = 0.9    # ...e se il rivelatore e' sicuro che sia un volto
 STESSO = 0.55          # due volti dello stesso file cosi' simili sono la stessa persona: se ne tiene uno
