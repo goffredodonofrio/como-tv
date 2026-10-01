@@ -4018,13 +4018,23 @@
   // del Como 1907 (camere 4K che il browser non legge) scorrono sul loro
   // provino: 6 fotogrammi lungo la clip, seguendo il mouse.
   var ANT = { card: null, timer: 0, video: null };
-  function viaDiReg(card){
+  // IL FILE GIUSTO PER QUEL SECONDO (01/10/2026). Una partita in due file
+  // (primo e secondo tempo) ha un pezzo per tempo: l'anteprima di un'azione
+  // del secondo tempo apriva sempre il primo file, oltre la sua fine, e non si
+  // vedeva niente. Si prende il pezzo che contiene t, e t dentro di lui.
+  function pezzoDiReg(r, t){
+    var pz = (r && r.pezziArch) || [];
+    for (var i = pz.length - 1; i >= 0; i--) if (pz[i].via && t >= (+pz[i].da || 0) - 0.01) return { via: pz[i].via, t: t - (+pz[i].da || 0) };
+    return r && r.via ? { via: r.via, t: t } : null;
+  }
+  function viaDiReg(card, t){
     return new Promise(function(ok, no){
       var r = card.dataset.reg && REGS[card.dataset.reg];
-      if (r && r.via) return ok(r.via);
+      var esci = function(rr){ var x = pezzoDiReg(rr, t || 0); if (x) ok(x); else no(); };
+      if (r && (r.via || r.pezziArch)) return esci(r);
       if (!card.dataset.rec) return no();
       post({ tipo:"clip-archivio-apri", rec: card.dataset.rec }).then(function(d){
-        if (d && d.reg && d.reg.via) { REGS[d.reg.id] = d.reg; card.dataset.reg = d.reg.id; ok(d.reg.via); } else no();
+        if (d && d.reg && (d.reg.via || d.reg.pezziArch)) { REGS[d.reg.id] = d.reg; card.dataset.reg = d.reg.id; esci(d.reg); } else no();
       }).catch(no);
     });
   }
@@ -4078,7 +4088,7 @@
     }
     var t = +card.dataset.t || 0;
     card.classList.add("ant-attesa");
-    viaDiReg(card).then(function(via){ if (ANT.card === card) videoAnteprima(card, mini, BASE + via, Math.max(0, t - 4), t + 6); })
+    viaDiReg(card, t).then(function(x){ if (ANT.card === card) videoAnteprima(card, mini, BASE + x.via, Math.max(0, x.t - 4), x.t + 6); })
       .catch(function(){ card.classList.remove("ant-attesa"); });
   }
   // il video dell'anteprima: parte da "da" con l'audio e torna a "da" arrivato ad "a";
