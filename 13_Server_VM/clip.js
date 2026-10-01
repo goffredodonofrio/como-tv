@@ -10894,7 +10894,7 @@ async function orologioDallaMappa(rec) {
     const r2 = buoni.find((g) => minC(g) >= H - 60 && minC(g) < H + 2400);
     if (!r2) return null;
     const inizio2 = Math.round(r2.o + H);
-    return { letti: punti.length * 2, quando: new Date().toISOString(), fonte: "cronometro", mappa: true, soloSecondo: true,
+    return { letti: punti.length * 2, quando: new Date().toISOString(), fonte: "cronometro", mappa: true, soloSecondo: true, fonti: { "1": "stima" },
              inizio2, inizio1: inizio2 - H - 900, punti: punti.length, verificato: r2.p.length >= 3,
              gruppi: buoni.map((g) => ({ o: Math.round(g.o), n: g.p.length, da: minC(g), a: maxC(g) })) };
   }
@@ -10910,7 +10910,7 @@ async function orologioDallaMappa(rec) {
     const r2 = buoni.find((g) => minC(g) >= H - 60 && minC(g) < H + 2400);
     if (!r2) return null;
     const inizio2 = Math.round(r2.o + H);
-    return { letti: punti.length * 2, quando: new Date().toISOString(), fonte: "cronometro", mappa: true, soloSecondo: true,
+    return { letti: punti.length * 2, quando: new Date().toISOString(), fonte: "cronometro", mappa: true, soloSecondo: true, fonti: { "1": "stima" },
              inizio2, inizio1: inizio2 - H - 900, punti: punti.length, verificato: r2.p.length >= 3,
              gruppi: buoni.map((g) => ({ o: Math.round(g.o), n: g.p.length, da: minC(g), a: maxC(g) })) };
   }
