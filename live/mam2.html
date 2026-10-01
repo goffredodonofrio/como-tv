@@ -9319,6 +9319,8 @@
     return post(Object.assign({ tipo:"clip-hl-ricetta", seq: seqId, formati: formati, origine: location.origin + BASE }, extra || {})).then(function(d){
       if (!d.supportata) { avviso("warn", "Questo export lo fa il MAM: " + esc(d.motivo || "") + "."); return null; }
       var giro = Promise.resolve(), lavori = [];
+      // Como 1907: solo il file nei Download, niente copia sul MAM (aiutante 0.3.2)
+      if (AMBITO) d.ricette.forEach(function(R){ R.soloLocale = true; });
       d.ricette.forEach(function(R){ giro = giro.then(function(){ return aiutChiedi("/esporta", { ricetta: R, invio: invio || "" }).then(function(j){ lavori.push(j.lavoro); }); }); });
       return giro.then(function(){ giroAiut(true); return lavori; });
     });
@@ -9416,7 +9418,7 @@
     return o;
   }
   // i download del Como 1907: gli export fatti dall'aiutante e quelli del MAM
-  var DL_VM = {}, DL_PC = {};
+  var DL_VM = {}, DL_PC = {}, STATO_INV = {};
   function righeDownload(){
     var r = [];
     AIUT_LAV.forEach(function(L){
@@ -9431,7 +9433,7 @@
       else if (L.stato === "annullato") o.testo = "annullato";
       else if (L.stato === "in coda") { o.q = 0; o.fisso = true; o.testo = "in coda"; }
       else { o.q = Math.min(0.89, L.avanza || 0); o.testo = "sul computer · " + senzaPc(L.fase); }
-      r.push({ id: L.id, titolo: L.titolo, dove: (L.formato || "") + " · sul mio computer", stato: o.esito, info: o, annulla: !nelPc && (L.stato === "lavora" || L.stato === "in coda") ? '<button type="button" class="b mini" data-annullaaiut="' + esc(L.id) + '">Annulla</button>' : "" });
+      r.push({ id: L.id, titolo: L.titolo, dove: (L.formato || "") + " · sul mio computer", stato: o.esito, info: o, zitto: true, annulla: !nelPc && (L.stato === "lavora" || L.stato === "in coda") ? '<button type="button" class="b mini" data-annullaaiut="' + esc(L.id) + '">Annulla</button>' : "" });
     });
     Object.keys(DL_VM).forEach(function(k){
       var d = DL_VM[k], e = d.export || {};
@@ -9470,8 +9472,16 @@
     var righe = AMBITO ? righeDownload() : INVII.filter(function(x){ return x.stato === "lavora" || x.stato === "invio" || Date.now() - (x.finito || x.creato) < 1200000; }).map(function(x){
       return { id: x.id, titolo: x.titolo, dove: x.dove, stato: x.stato === "invio" ? "lavora" : x.stato, info: infoInvio(x), annulla: x.stato === "lavora" ? '<button type="button" class="b mini" data-annullainv="' + esc(x.id) + '">Annulla</button>' : "" };
     });
-    righe = righe.slice(0, 8);
-    var attivi = righe.filter(function(x){ return x.stato === "lavora"; }).length;
+    // SOLO QUELLI CHE STANNO ANDANDO (Goffredo, 01/10/2026): finiti, annullati e
+    // non riusciti escono dalla finestra; quando uno finisce o non riesce lo dice un avviso
+    righe.forEach(function(x){
+      var era = STATO_INV[x.id]; STATO_INV[x.id] = x.stato;
+      if (era !== "lavora" || x.stato === "lavora") return;
+      if (x.stato === "fatto" && !x.zitto) avviso("ok", "\u201c" + esc(x.titolo) + "\u201d " + esc(x.info.testo || "fatto") + (x.dove ? " \u00b7 " + esc(x.dove) : "") + (x.annulla && !AMBITO ? "" : x.annulla ? " \u00b7 " + x.annulla : "") + ".");
+      if (x.stato === "errore") avviso("err", "\u201c" + esc(x.titolo) + "\u201d " + esc(x.info.testo || "non riuscito") + ".");
+    });
+    righe = righe.filter(function(x){ return x.stato === "lavora"; }).slice(0, 8);
+    var attivi = righe.length;
     if (!righe.length || (INVII_CHIUSO && !attivi)) { box.hidden = true; return; }
     box.hidden = false;
     box.innerHTML = '<div class="ir-testa"><b>' + (AMBITO ? "&#11015; Download" : "&#128225; Invii in regia") + '</b><span>' + (attivi ? attivi + " in corso" : "finiti") + '</span><button type="button" class="ir-x" data-chiudiinv="1" title="nascondi (torna al prossimo lavoro)">&times;</button></div>' +

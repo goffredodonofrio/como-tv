@@ -30,7 +30,7 @@
 const http = require("http"), https = require("https"), fs = require("fs"), path = require("path");
 const os = require("os"), cp = require("child_process");
 
-const VERSIONE = "0.3.1";
+const VERSIONE = "0.3.2";
 const WIN = process.platform === "win32", MAC = process.platform === "darwin";
 
 // Il ffmpeg del pacchetto Mac ha OpenSSL dentro e non sa dove stanno i certificati
@@ -373,10 +373,17 @@ async function lavora() {
           L.locale = path.join(CONF.cartella, nome);
           fs.copyFileSync(c.uscita, L.locale);
         } catch (e) { log("copia nei Download non riuscita: " + e.message); }
-        L.fase = "carico sul MAM"; L.avanza = 0.9;
-        if (!permesso(L.ricetta.carica)) throw new Error("indirizzo di caricamento non ammesso");
-        await carica(L.ricetta.carica, c.uscita, L);
-        L.stato = "fatto"; L.fase = "pronto"; L.avanza = 1;
+        // 0.3.2: il Como 1907 vuole solo il file sul computer, la copia sul MAM non
+        // serve ("al massimo la mettono su Editing o scaricano la clip"). Se la
+        // copia nei Download non e' riuscita, si carica comunque: il lavoro non si perde
+        if (L.ricetta.soloLocale && L.locale && fs.existsSync(L.locale)) {
+          L.stato = "fatto"; L.fase = "nei Download"; L.avanza = 1;
+        } else {
+          L.fase = "carico sul MAM"; L.avanza = 0.9;
+          if (!permesso(L.ricetta.carica)) throw new Error("indirizzo di caricamento non ammesso");
+          await carica(L.ricetta.carica, c.uscita, L);
+          L.stato = "fatto"; L.fase = "pronto"; L.avanza = 1;
+        }
       } catch (e) {
         L.stato = L.annullato ? "annullato" : "errore"; L.errore = L.annullato ? "" : e.message; L.fase = L.annullato ? "annullato" : "non riuscito";
         log("export \"" + L.titolo + "\": " + (L.annullato ? "annullato" : "errore: " + e.message));
