@@ -6197,7 +6197,13 @@ async function giraCodaEsp() {
       try {
         await ESPORTO.run(l, () => hlEsportaTutti(q, l.formati, l.p));
         if (l.annullato) throw new Error("annullato");
+        // gli invii in regia appesi a questo export: il 16:9 e' pronto
+        (l.dopo || []).forEach((id) => {
+          const f = q.esportati && q.esportati["16:9"];
+          if (f && f.file) invioPronto(id, f.file, f.durata); else invioFallito(id, new Error("il 16:9 non e' uscito"));
+        });
       } catch (e) {
+        (l.dopo || []).forEach((id) => invioFallito(id, l.annullato ? null : e));
         delete q.exportGiro;
         if (l.annullato) {
           // il file che si stava scrivendo e' a meta': via, e via dalle uscite
@@ -6229,6 +6235,8 @@ function annullaEsp(p) {
     const q = R.seq[l.seq]; if (q && q.export && q.export.stato === "lavora") q.export.fase = "annullo…";
   } else {
     CODA_ESP.splice(CODA_ESP.indexOf(l), 1);
+    // gli invii in regia che aspettavano questo export non partono piu'
+    (l.dopo || []).forEach((id) => invioFallito(id, null));
     const q = R.seq[l.seq];
     if (q && q.export && q.export.stato === "in coda" && !CODA_ESP.some((x) => x.seq === l.seq)) q.export = { stato: "annullato", formati: l.formati, quando: Date.now() };
     postiCodaEsp();
@@ -13158,6 +13166,7 @@ async function lavoroRegia(L, pezzi) {
   const cart = path.join(DIR, CARTELLA_CLIP), tmp = [];
   try {
     for (const [i, x] of pezzi.entries()) {
+      if (L.annullato) throw new Error("annullato");
       const f = path.join(cart, L.id + "-" + i + ".mp4");
       if (x.ricodifica) {
         const ing = ["-ss", String(Math.max(0, x.da)), "-t", String(x.dur), "-i", x.file].concat(x.muto ? ["-f", "lavfi", "-t", String(x.dur), "-i", "anullsrc=r=48000:cl=stereo"] : []);
@@ -13187,14 +13196,121 @@ async function lavoroRegia(L, pezzi) {
     const st = fs.statSync(fine);
     L.peso = st.size; L.durata = pezzi.reduce((n, x) => n + x.dur, 0);
     L.file = "/clip/" + CARTELLA_CLIP + "/" + L.id + ".mp4"; L.anteprima = "/clip/" + CARTELLA_CLIP + "/" + L.id + ".jpg";
+    if (L.annullato) throw new Error("annullato");
     L.stato = "pronto"; L.finito = Date.now();
     console.log("[clip] alla regia: \"" + L.titolo + "\" " + pezzi.length + " pezzi, " + Math.round((L.finito - L.creato) / 1000) + " s" + (uguali ? "" : " (ricodificato)"));
+    if (L.inv) invioPronto(L.inv, L.file, L.durata);
   } catch (e) {
-    L.stato = "errore"; L.errore = e.message; console.log("[clip] alla regia, errore: " + e.message);
+    if (L.annullato) { L.stato = "annullato"; console.log("[clip] alla regia: \"" + L.titolo + "\" annullato"); }
+    else { L.stato = "errore"; L.errore = e.message; console.log("[clip] alla regia, errore: " + e.message); }
+    if (L.inv) invioFallito(L.inv, L.annullato ? null : e);
   } finally {
     tmp.forEach((f) => { try { fs.unlinkSync(f); } catch (e) {} });
   }
 }
+// ── GLI INVII IN REGIA (01/10/2026) ───────────────────────────────────
+//  Goffredo: "anche l'invio in regia deve essere multiplo, con avanzamenti e
+//  annullamenti". Prima la pagina preparava il filmato e lo mandava lei, uno
+//  alla volta: un secondo invio aspettava il primo, chiudere la pagina lo
+//  perdeva, e non si fermava. Ora l'invio e' un lavoro del ponte: prepara il
+//  filmato (il taglio delle azioni, o l'export 16:9 della sequenza in coda
+//  con gli altri) e lo mette in scaletta da se', sul vMix o nel progetto scelto
+//  AL MOMENTO DEL CLIC. Quanti se ne vuole; ognuno con la sua fase e il suo Annulla.
+const INVII_REGIA = [];
+function nomeDest(d) { return !d ? "" : d.tipo === "progetto" ? "progetto \"" + (d.nome || d.id) + "\"" : (+d.c === 12 ? "VMIX REGIA" : +d.c === 13 ? "OBS" : "vMix " + d.c); }
+function nuovoInvio(p, tipo) {
+  const d = p.dest || {};
+  const dest = d.tipo === "progetto" && d.id ? { tipo: "progetto", id: String(d.id), nome: String(d.nome || "").slice(0, 80) }
+             : { tipo: "canale", c: Math.max(1, Math.min(13, parseInt(d.c, 10) || 1)) };
+  const inv = { id: nuovoId("ir"), tipo, titolo: String(p.titolo || "").toUpperCase().slice(0, 60) || "MONTATO", dest, dove: nomeDest(dest),
+                muto: !!p.muto, origine: String(p.origine || "").replace(/\/+$/, ""), stato: "lavora", fase: "in preparazione",
+                creato: Date.now(), chi: String(p.__chi || "").slice(0, 40) };
+  if (!/^https?:\/\/[^\s]+$/.test(inv.origine)) throw new Error("manca l'indirizzo della pagina");
+  INVII_REGIA.unshift(inv);
+  // si tengono gli ultimi due giorni
+  for (let i = INVII_REGIA.length - 1; i >= 0; i--) if (Date.now() - INVII_REGIA[i].creato > 2 * 86400000) INVII_REGIA.splice(i, 1);
+  return inv;
+}
+function invioDi(id) { return INVII_REGIA.find((x) => x.id === id) || null; }
+function corpoRegia(inv, file, durata) {
+  const base = { grafica: "video", titolo: inv.titolo, token: process.env.COMOTV_CHIAVE_CONTRIBUTO || process.env.COMOTV_TOKEN || "",
+                 dati: { k: "video", src: inv.origine + file, dur: durata || 0, fit: "contain", loop: false, mute: inv.muto, bg: "nero" } };
+  return inv.dest.tipo === "progetto" ? Object.assign({ tipo: "progetto-aggiungi", id: inv.dest.id }, base)
+                                      : Object.assign({ tipo: "regia-load", c: inv.dest.c }, base);
+}
+// il filmato c'e': in scaletta (lo stesso comando della pagina, al ponte stesso)
+async function invioPronto(id, file, durata) {
+  const inv = invioDi(id); if (!inv || inv.annullato) return;
+  inv.stato = "invio"; inv.fase = "mando in scaletta"; inv.file = file; inv.durata = durata || 0;
+  try {
+    const r = await fetch("http://127.0.0.1:" + (process.env.COMOTV_PORTA || "8080") + "/api", {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8", "X-Real-IP": "127.0.0.1" },
+      body: JSON.stringify(corpoRegia(inv, file, durata)), signal: AbortSignal.timeout(30000) });
+    const j = await r.json().catch(() => null);
+    if (!j || j.ok === false) throw new Error((j && j.errore) || "la regia non l'ha preso");
+    inv.stato = "fatto"; inv.fase = "in scaletta"; inv.finito = Date.now();
+    console.log("[clip] in regia: \"" + inv.titolo + "\" su " + inv.dove);
+  } catch (e) { invioFallito(id, e); }
+}
+function invioFallito(id, e) {
+  const inv = invioDi(id); if (!inv || inv.stato === "fatto") return;
+  if (!e || inv.annullato) { inv.stato = "annullato"; inv.fase = "annullato"; }
+  else { inv.stato = "errore"; inv.errore = String(e.message || e).slice(0, 200); inv.fase = "non riuscito"; }
+  inv.finito = Date.now();
+}
+// dalla sequenza: l'export 16:9 in coda con gli altri, poi la scaletta
+function invioDaSequenza(p) {
+  const q = seqDi(p);
+  if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
+  const inv = nuovoInvio(Object.assign({ titolo: q.titolo }, p), "sequenza");
+  inv.seq = q.id; inv.sequenza = q.titolo || "";
+  const firma = q.id + "|16:9";
+  let l = CODA_ESP.find((x) => x.firma === firma && !x.annullato);
+  if (!l) {
+    l = { id: nuovoId("e"), seq: q.id, titolo: q.titolo || "", formati: ["16:9"], firma, perRegia: true,
+          p: { formato: "16:9", esatto: !!p.esatto, sotto: "", sottoLingua: String(p.sottoLingua || "") },
+          chi: inv.chi, messo: Date.now(), stato: "in coda", procs: new Set() };
+    CODA_ESP.push(l);
+    postiCodaEsp();
+  }
+  (l.dopo = l.dopo || []).push(inv.id);
+  inv.esp = l.id;
+  giraCodaEsp();
+  return { ok: true, invio: vistaInvio(inv) };
+}
+function vistaInvio(inv) {
+  const v = Object.assign({}, inv);
+  if (inv.esp) {
+    const i = CODA_ESP.findIndex((x) => x.id === inv.esp), l = CODA_ESP[i], q = R.seq[inv.seq];
+    if (l && inv.stato === "lavora") {
+      if (l.stato === "lavora" && q && q.export && q.export.stato === "lavora") { v.export = q.export; v.fase = "export 16:9 \u00b7 " + (q.export.fase || ""); }
+      else { v.posto = i; v.fase = i ? "in coda (" + i + "\u00ba)" : "in coda"; }
+    }
+  }
+  if (inv.rr) { const L = REGIA_LAVORI[inv.rr]; if (L && inv.stato === "lavora") { v.fatti = L.fatti || 0; v.tot = L.tot || 0; v.fase = L.fase === "taglio" ? "taglio " + (L.fatti || 0) + " di " + (L.tot || 0) : L.fase === "unisco" ? "unisco" : L.fase === "ricodifico" ? "ricodifico" : (L.fase || ""); v.saltate = L.saltate; } }
+  return v;
+}
+function annullaInvio(p) {
+  const inv = invioDi(String(p.id || "")); if (!inv) throw new Error("invio sconosciuto");
+  if (inv.stato !== "lavora") throw new Error(inv.stato === "invio" ? "sta gia' andando in scaletta" : "e' gia' finito");
+  inv.annullato = true;
+  if (inv.esp) {
+    const l = CODA_ESP.find((x) => x.id === inv.esp);
+    if (l) {
+      l.dopo = (l.dopo || []).filter((x) => x !== inv.id);
+      // l'export nato per questo invio, e che non serve a nessun altro, si ferma
+      if (l.perRegia && !l.dopo.length) { try { annullaEsp({ lavoro: l.id }); } catch (e) {} }
+    }
+    invioFallito(inv.id, null);
+  }
+  if (inv.rr) {
+    const L = REGIA_LAVORI[inv.rr];
+    if (L) { L.annullato = true; for (const pr of (L.procs || [])) { try { pr.kill("SIGKILL"); } catch (e) {} } }
+    invioFallito(inv.id, null);
+  }
+  return { ok: true, invii: INVII_REGIA.map(vistaInvio) };
+}
+
 // il file di un'azione scelta: la copia in casa, se no la cartella del suo magazzino
 function fileDiAzione(x) {
   const c = String((x && x.chiave) || ""); if (!c) return null;
@@ -17202,16 +17318,24 @@ const AZIONI = {
     });
     if (!pezzi.length) throw new Error("non trovo il file di " + (saltate.length === 1 ? "questa azione" : "nessuna di queste azioni") + (saltate.length ? " (" + saltate.slice(0, 3).join(", ") + (saltate.length > 3 ? "…" : "") + ")" : ""));
     const L = { id: nuovoId("rr"), titolo: String(p.titolo || "Raccolta").slice(0, 80), stato: "lavora", fase: "taglio", fatti: 0, tot: pezzi.length, saltate, creato: Date.now() };
+    // con la destinazione l'invio lo porta in fondo il ponte (vedi GLI INVII IN REGIA)
+    let inv = null;
+    if (p.dest) { inv = nuovoInvio(Object.assign({ titolo: L.titolo }, p), "azioni"); inv.rr = L.id; L.inv = inv.id; inv.pezzi = pezzi.length; }
+    Object.defineProperty(L, "procs", { value: new Set(), enumerable: false });
     REGIA_LAVORI[L.id] = L;
     // un montato da solo e' gia' il filmato: niente da tagliare
     if (pezzi.length === 1 && pezzi[0].montato) {
       Object.assign(L, { stato: "pronto", fase: "unisco", fatti: 1, file: pezzi[0].montato, durata: pezzi[0].dur, finito: Date.now() });
-      return { ok: true, lavoro: L };
+      if (inv) invioPronto(inv.id, L.file, L.durata);
+      return { ok: true, lavoro: L, invio: inv ? vistaInvio(inv) : null };
     }
     Object.keys(REGIA_LAVORI).forEach((k) => { if (Date.now() - REGIA_LAVORI[k].creato > 86400000) delete REGIA_LAVORI[k]; });
-    SFONDO.run(true, () => lavoroRegia(L, pezzi));
-    return { ok: true, lavoro: L };
+    SFONDO.run(true, () => ESPORTO.run(L, () => lavoroRegia(L, pezzi)));
+    return { ok: true, lavoro: L, invio: inv ? vistaInvio(inv) : null };
   },
+  "clip-regia-invia": invioDaSequenza,
+  "clip-regia-invii": () => ({ ok: true, invii: INVII_REGIA.map(vistaInvio) }),
+  "clip-regia-annulla": annullaInvio,
   "clip-raccolta-regia-stato": (p) => { const L = REGIA_LAVORI[String(p.id || "")]; if (!L) throw new Error("lavoro sconosciuto"); return { ok: true, lavoro: L }; },
   // ══════════ MAM COMO 1907 (27/09/2026) ══════════
   //  Raccolte loro, file del FRAME aperti come materiale, "Monta questi".
