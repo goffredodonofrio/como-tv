@@ -7683,9 +7683,15 @@ const DIR_1907 = process.env.COMOTV_1907_PUB || "/var/lib/comotv-1907/pub";
 const PARTITE_1907 = /(men'?s? first team|men first team)\/(matchdays?|matchday_[^/]*)\/|\/match\/men'?s first team\/|first team interviews\//i;
 // IL TIPO DI UNA CLIP DEL CLUB, dalla cartella (Goffredo, 30/09/2026: "il tag CAMERA OFFLOADS,
 // il filtro interviste"): si mostra sulla tessera e si filtra nella ricerca
+// LE CAMERE (01/10/2026, Goffredo: "le camere offloads devono avere spazio nella ricerca, divise per partita e per
+// giocatore; stesso discorso per Mat Cam, Gionni Cam e Hudi Cam")
+const TIPI_CAMERE = ["Camera offloads", "Gionni Cam", "Hudi Cam", "Mat Cam"];
 function tipoClub1907(via) {
   const t = String(via).toLowerCase();
   if (/camera offload|scarichi/.test(t)) return "Camera offloads";
+  if (/gionni/.test(t)) return "Gionni Cam";
+  if (/hudi/.test(t)) return "Hudi Cam";
+  if (/\bmat(teo)?'?s?[ _-]?cam|cam[ _-]?mat(teo)?\b|match footage matteo/.test(t)) return "Mat Cam";
   if (/press ?conf|conferenza/.test(t)) return "Conferenza stampa";
   if (/interview|intervist|\bitw\b|flash ?interview/.test(t)) return "Intervista";
   if (/(^|\/)hl[ _]|highlight/.test(t)) return "Highlights";
@@ -7720,28 +7726,68 @@ function carica1907() {
       voci.push({ via, nome, cartella, peso: x[1] || 0, g: g ? "G" + ("0" + g).slice(-2) : "", data: dataC || String(x[3] || ""), partita, comp,
                   stagione, slow: /slow ?mo|rallent/i.test(nome), gol: /\/gol\b|\bgol\b|\bgoal\b/i.test(via), tipo: tipoClub1907(via),
                   t: senzaAccenti(via.replace(/[_./-]+/g, " ")).toLowerCase() });
+      const ul = voci[voci.length - 1]; ul.tk = [...new Set(ul.t.split(/[^a-z0-9]+/).filter(Boolean))];
     });
   });
   Object.assign(ARCH1907, { quando: Date.now(), mtime: st.mtimeMs, voci });
   console.log("[clip] archivio Como 1907: " + voci.length + " clip delle partite della prima squadra");
   return ARCH1907;
 }
+// I VOLTI E LE PERSONE DEL 1907: chi si vede in ogni file (pub/volti.json: la notte e volti-camere.sh) e le
+// persone del Como coi loro nomi (pub/indice.json). "Nico Paz" trova le camere dove si vede
+const VOLTI_1907 = { mtime: 0, chi: {}, pers: [] };
+function volti1907() {
+  const f = path.join(DIR_1907, "volti.json"), fi = path.join(DIR_1907, "indice.json");
+  let m = 0; try { m = fs.statSync(f).mtimeMs + fs.statSync(fi).mtimeMs; } catch (e) { return VOLTI_1907; }
+  if (m === VOLTI_1907.mtime) return VOLTI_1907;
+  try {
+    const chi = JSON.parse(fs.readFileSync(f, "utf8")), ind = JSON.parse(fs.readFileSync(fi, "utf8"));
+    const norm = (x) => senzaAccenti(String(x || "")).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+    const pers = (ind.persone || []).map((p) => ({ id: p.id, nome: p.nome, alias: [...new Set([norm(p.nome)].concat((p.alias || []).map(norm)))].filter((a) => a.length >= 4).sort((x, y) => y.length - x.length) }));
+    Object.assign(VOLTI_1907, { mtime: m, chi, pers });
+  } catch (e) { console.log("[clip] volti del 1907: " + e.message); }
+  return VOLTI_1907;
+}
 const VUOTE_1907 = new Set("di del della dei il lo la le i gli un una e tutti tutte tutto che con per in a da su".split(" "));
-function cerca1907(q, quante, tipo) {
-  const A = carica1907();
-  let parole = senzaAccenti(String(q || "")).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !VUOTE_1907.has(w));
-  if (!parole.length && !tipo) return { ok: true, n: 0, clip: [], tipi: {} };
+function cerca1907(q, quante, tipo, opz) {
+  opz = opz || {};
+  const A = carica1907(), V = volti1907();
+  let testo = " " + senzaAccenti(String(q || "")).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ") + " ";
+  // le persone dette nella domanda (o passate dalla pagina: il giocatore scelto), il nome piu' lungo prima
+  const chiQ = []; const trovaPersone = (t) => { V.pers.forEach((p) => p.alias.forEach((a) => { if (t.indexOf(" " + a + " ") >= 0 && chiQ.indexOf(p.id) < 0) { chiQ.push(p.id); t = t.split(" " + a + " ").join(" "); } })); return t; };
+  if (opz.chi) trovaPersone(" " + senzaAccenti(String(opz.chi)).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ") + " ");
+  testo = trovaPersone(testo);
+  // un giocatore senza volto riconosciuto ne' nome nel 1907 resta come parola (il cognome nel percorso)
+  if (opz.chi && !chiQ.length) testo += " " + senzaAccenti(String(opz.chi)).toLowerCase().split(/\s+/).pop() + " ";
+  const parole = testo.replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !VUOTE_1907.has(w));
+  const giorni = new Set(); (opz.giorni || []).forEach((g) => { g = String(g); if (!/^20\d{6}$/.test(g)) return; const n = giornoNumero(g); [-1, 0, 1].forEach((d) => { const x = new Date((n + d) * 86400000); giorni.add(x.toISOString().slice(0, 10).replace(/-/g, "")); }); });
+  if (!parole.length && !tipo && !chiQ.length && !giorni.size) return { ok: true, n: 0, clip: [], tipi: {} };
   // gol e goal sono la stessa cosa; slow motion si scrive in tanti modi
   const varianti = (w) => w === "gol" || w === "goal" || w === "gols" ? ["gol", "goal"] : /^slow|^rallent/.test(w) ? ["slowmo", "slow mo", "slow"] : [w];
-  const tutte = A.voci.filter((v) => parole.every((w) => varianti(w).some((x) => v.t.indexOf(x) >= 0)));
+  const camere = (v) => TIPI_CAMERE.indexOf(v.tipo) >= 0;
+  const delGruppo = (v) => tipo === "camere" ? camere(v) : tipo === "noncamere" ? !camere(v) : true;
+  // PAROLE INTERE: "inter" non e' "international" ne' "interviews"; "juve" e "juventus" si', un accorciamento vicino
+  const combacia = (tok, w) => tok === w || (Math.min(tok.length, w.length) >= 4 && Math.abs(tok.length - w.length) <= 4 && (tok.startsWith(w) || w.startsWith(tok)));
+  const testoOk = (v) => parole.every((w) => varianti(w).some((x) => x.indexOf(" ") > 0 ? v.t.indexOf(x) >= 0 : (v.tk || []).some((tok) => combacia(tok, x))));
+  const visto = (v) => chiQ.every((id) => (V.chi[v.via] || []).indexOf(id) >= 0 || (V.pers.find((p) => p.id === id) || { alias: [] }).alias.some((a) => v.t.indexOf(a) >= 0));
+  let tutte = A.voci.filter((v) => delGruppo(v) && testoOk(v) && (!chiQ.length || visto(v)));
+  // le camere delle partite del giocatore, finche' i volti non le hanno guardate: a parte, dopo
+  if (chiQ.length && giorni.size && tipo === "camere") {
+    const gia = new Set(tutte.map((v) => v.via));
+    tutte = tutte.concat(A.voci.filter((v) => camere(v) && !gia.has(v.via) && giorni.has(String(v.data)) && testoOk(v)).map((v) => Object.assign({}, v, { perPartita: 1 })));
+  }
   // quante per tipo (la fila di scelte della pagina), poi il tipo scelto
   const tipi = {}; tutte.forEach((v) => { if (v.gol) tipi.Gol = (tipi.Gol || 0) + 1; if (v.slow) tipi["Slow motion"] = (tipi["Slow motion"] || 0) + 1; if (v.tipo) tipi[v.tipo] = (tipi[v.tipo] || 0) + 1; });
-  const trovate = !tipo ? tutte : tutte.filter((v) => tipo === "Gol" ? v.gol : tipo === "Slow motion" ? v.slow : v.tipo === tipo);
-  const voto = (v) => (v.gol ? 4 : 0) + (v.slow ? 2 : 0) + (/materiale serie a|archivio/i.test(v.cartella) ? 1 : 0);
+  const sotto = opz.sotto ? String(opz.sotto) : "";
+  const trovate = !sotto && (tipo === "camere" || tipo === "noncamere" || !tipo) ? tutte : tutte.filter((v) => { const t = sotto || tipo; return t === "Gol" ? v.gol : t === "Slow motion" ? v.slow : v.tipo === t; });
+  const voto = (v) => (v.perPartita ? -10 : 0) + (v.gol ? 4 : 0) + (v.slow ? 2 : 0) + (/materiale serie a|archivio/i.test(v.cartella) ? 1 : 0);
   trovate.sort((a, b) => voto(b) - voto(a) || String(b.data).localeCompare(String(a.data)));
   const n = Math.min(Math.max(+quante || 60, 1), 300);
-  return { ok: true, n: trovate.length, tutte: tutte.length, tipi, clip: trovate.slice(0, n).map((v) => ({ via: v.via, nome: v.nome, cartella: v.cartella, peso: v.peso, g: v.g, data: v.data,
-    partita: v.partita, comp: v.comp, stagione: v.stagione, slow: v.slow, gol: v.gol, tipo: v.tipo, k: crypto.createHash("sha1").update(v.via).digest("hex").slice(0, 16) })) };
+  const nomeDi = (id) => (V.pers.find((p) => p.id === id) || {}).nome || id;
+  return { ok: true, n: trovate.length, tutte: tutte.length, tipi, chi: chiQ.map(nomeDi), visti: tutte.filter((v) => !v.perPartita).length,
+    clip: trovate.slice(0, n).map((v) => ({ via: v.via, nome: v.nome, cartella: v.cartella, peso: v.peso, g: v.g, data: v.data,
+    partita: v.partita, comp: v.comp, stagione: v.stagione, slow: v.slow, gol: v.gol, tipo: v.tipo, perPartita: v.perPartita || 0,
+    chi: (V.chi[v.via] || []).map(nomeDi), k: crypto.createHash("sha1").update(v.via).digest("hex").slice(0, 16) })) };
 }
 function scriviArchivio() {
   try {
@@ -14581,7 +14627,16 @@ function materialeClub() {
         x.gruppi.get(gruppo).push({ via: cartella + "/" + f[0], nome: f[0], peso: f[1] || 0 });
       });
     });
-    giornate.forEach((x) => { if (x.giorno && !x.donne && x.gruppi.size && !per.has(x.giorno)) per.set(x.giorno, x); });
+    // due cartelle della stessa partita (Napoli-Como 26-27: "Matchdays/G02_..." della NAS e "MATCHDAY/01. SERIE A/G02_..."
+    // portata da Drive) si uniscono, senza i file doppi (stesso nome e stesso peso)
+    giornate.forEach((x) => {
+      if (!x.giorno || x.donne || !x.gruppi.size) return;
+      const y = per.get(x.giorno);
+      if (!y) { per.set(x.giorno, x); return; }
+      if (!x.squadre.some((s) => !/^como$/i.test(String(s).trim()) && y.squadre.some((t) => stessaSquadra(s, t)))) return;
+      const visti = new Set(); y.gruppi.forEach((f) => f.forEach((z) => visti.add(z.nome + "|" + z.peso)));
+      x.gruppi.forEach((f, nome) => { const nuovi = f.filter((z) => !visti.has(z.nome + "|" + z.peso)); if (nuovi.length) y.gruppi.set(nome, (y.gruppi.get(nome) || []).concat(nuovi)); });
+    });
   } catch (e) { console.log("[clip] materiale del club: " + e.message); }
   CLUB = { mt, perGiorno: per, giornate: [...giornate.values()] };
   return per;
@@ -14608,6 +14663,8 @@ function giornataClubDi(a, g) {
 }
 function clubDi(recIta) {
   const a = ARCHIVIO[recIta]; if (!primaSquadraComo(a)) return null;
+  // le giovanili e le donne non prendono il materiale della prima squadra dello stesso giorno (Como-Torino U18)
+  if (/under|primavera|women|femminil|\bu\s?\d\d\b/i.test([a.competizione, a.compVista, a.partita].join(" "))) return null;
   const g = a.giorno || (Date.parse(a.quando) ? giornoRoma(Date.parse(a.quando)) : "");
   const x = giornataClubDi(a, g); if (!x) return null;
   const voto = (n) => { const i = CLUB_ORDINE.findIndex((re) => re.test(n)); return i < 0 ? 99 : i; };
@@ -16703,7 +16760,7 @@ const AZIONI = {
   },
   "clip-nas-aggiunte": () => importaAggiunteNas(),
   "clip-archivio-correggi": (p) => correggiArchivio(p.voci),
-  "clip-1907-cerca": (p) => cerca1907(p.q, p.quante, p.genere ? String(p.genere) : ""),
+  "clip-1907-cerca": (p) => cerca1907(p.q, p.quante, p.genere ? String(p.genere) : "", { chi: p.chi || "", giorni: Array.isArray(p.giorni) ? p.giorni.slice(0, 400) : [], sotto: p.sotto || "" }),
   // RILEGGERE DA CAPO (28/09/2026): cronometro, tabellone, boati e momenti di
   // queste partite via, e il giro della casa li rifa'. Le durate restano
   "clip-archivio-rileggi": (p) => {

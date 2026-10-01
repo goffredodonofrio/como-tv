@@ -45,6 +45,11 @@ SOGLIA = 0.45          # coseno SFace: OpenCV indica 0.363 per "stessa persona";
 STACCO = 0.08          # la seconda persona deve stare almeno cosi' sotto
 MIN_ALTEZZA = 0.10     # il volto deve occupare almeno un decimo dell'altezza del fotogramma
 PUNTI = (0.2, 0.45, 0.7)
+# LE CAMERE (Goffredo, 01/10/2026: "cerco Nico Paz e mi escono tutte le camere offloads di Nico Paz"):
+# camera offloads, Gionni Cam, Hudi Cam, Mat Cam. Il nome del file non dice chi c'e' e i giocatori
+# passano in fretta: otto fotogrammi invece di tre, e la precedenza a quelle della prima squadra
+CAMERE = re.compile(r"camera offload|scarichi|gionni|hudi|\bmat(teo)?'?s?[ _-]?cam|cam[ _-]?mat(teo)?\b|match footage matteo", re.I)
+PUNTI_CAMERE = (0.08, 0.2, 0.32, 0.45, 0.58, 0.7, 0.82, 0.93)
 IGNOTO_ALTEZZA = 0.15  # un volto sconosciuto si tiene solo se e' grande...
 IGNOTO_NITIDO = 0.9    # ...e se il rivelatore e' sicuro che sia un volto
 STESSO = 0.55          # due volti dello stesso file cosi' simili sono la stessa persona: se ne tiene uno
@@ -111,14 +116,14 @@ def battezzati():
     return fuori
 
 
-def fotogrammi(pieno):
+def fotogrammi(pieno, punti=None):
     try:
         d = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", pieno],
                                  capture_output=True, text=True, timeout=60).stdout.strip() or 0)
     except Exception:
         d = 0
     fuori = []
-    for f in (PUNTI if d > 3 else (0.5,)):
+    for f in ((punti or PUNTI) if d > 3 else (0.5,)):
         try:
             b = subprocess.run(["nice", "-n", "15", "ffmpeg", "-v", "error", "-nostdin", "-skip_frame", "nokey", "-ss", "%.2f" % (d * f), "-i", pieno,
                                 "-frames:v", "1", "-vf", "scale=%d:-2" % LATO, "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "4", "-"],
@@ -190,6 +195,7 @@ def main():
     a.add_argument("--prova", type=int, default=0)
     a.add_argument("--minuti", type=int, default=0)
     a.add_argument("--prima", default="", help="id di una persona: prima i file che la nominano (dopo un ritratto nuovo)")
+    a.add_argument("--camere", action="store_true", help="solo le camere (offloads, Gionni, Hudi, Mat)")
     x = a.parse_args()
     os.nice(15)
     ids, gal = galleria_como()
@@ -241,15 +247,17 @@ def main():
         g = set(m.get("g", []))
         if v in da_rifare: return (-2, 0, 0)
         if x.prima and (x.prima in m.get("p", []) or x.prima in m.get("pf", [])): return (-1, 0, -(r[1] if r else 0))
+        # le camere della prima squadra, dalle partite piu' recenti
+        if CAMERE.search(v) and re.search(r"first team", v, re.I): return (-0.5, 0, -(r[1] if r else 0))
         return (0 if not m.get("p") else 1, 0 if g & {"Intervista", "Nuovo acquisto", "Conferenza stampa", "Backstage", "Allenamento"} else 1, -(r[1] if r else 0))
-    coda = sorted((v for v in video if v not in fatti), key=priorita)
+    coda = sorted((v for v in video if v not in fatti and (not x.camere or CAMERE.search(v))), key=priorita)
     fine = time.time() + x.minuti * 60 if x.minuti else None
     print("in coda:", len(coda), "- impronte in galleria:", len(ids), flush=True)
     with open(OUT, "a", encoding="utf-8") as out, open(IGNOTI, "a", encoding="utf-8") as ign:
         for i, v in enumerate(coda):
             if fine and time.time() > fine: break
             while in_diretta(): time.sleep(300)
-            ims = fotogrammi(os.path.join(R, v))
+            ims = fotogrammi(os.path.join(R, v), PUNTI_CAMERE if CAMERE.search(v) else None)
             sconosciuti, ritagli = [], {}
             chi = chi_ce(ims, ids, gal, riv, trad, sconosciuti, ritagli)
             # il ritaglio di chi si vede: la faccina sulla tessera e sulla parete dei volti
