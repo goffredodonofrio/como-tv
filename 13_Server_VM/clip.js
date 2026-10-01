@@ -7779,15 +7779,25 @@ function cerca1907(q, quante, tipo, opz) {
   // quante per tipo (la fila di scelte della pagina), poi il tipo scelto
   const tipi = {}; tutte.forEach((v) => { if (v.gol) tipi.Gol = (tipi.Gol || 0) + 1; if (v.slow) tipi["Slow motion"] = (tipi["Slow motion"] || 0) + 1; if (v.tipo) tipi[v.tipo] = (tipi[v.tipo] || 0) + 1; });
   const sotto = opz.sotto ? String(opz.sotto) : "";
-  const trovate = !sotto && (tipo === "camere" || tipo === "noncamere" || !tipo) ? tutte : tutte.filter((v) => { const t = sotto || tipo; return t === "Gol" ? v.gol : t === "Slow motion" ? v.slow : v.tipo === t; });
+  const altro = (v) => !v.tipo && !v.gol && !v.slow;
+  const trovate = !sotto && (tipo === "camere" || tipo === "noncamere" || !tipo) ? tutte : tutte.filter((v) => { const t = sotto || tipo; return t === "Gol" ? v.gol : t === "Slow motion" ? v.slow : t === "Altro" ? altro(v) : v.tipo === t; });
   const voto = (v) => (v.perPartita ? -10 : 0) + (v.gol ? 4 : 0) + (v.slow ? 2 : 0) + (/materiale serie a|archivio/i.test(v.cartella) ? 1 : 0);
   trovate.sort((a, b) => voto(b) - voto(a) || String(b.data).localeCompare(String(a.data)));
   const n = Math.min(Math.max(+quante || 60, 1), 300);
   const nomeDi = (id) => (V.pers.find((p) => p.id === id) || {}).nome || id;
-  return { ok: true, n: trovate.length, tutte: tutte.length, tipi, chi: chiQ.map(nomeDi), visti: tutte.filter((v) => !v.perPartita).length,
-    clip: trovate.slice(0, n).map((v) => ({ via: v.via, nome: v.nome, cartella: v.cartella, peso: v.peso, g: v.g, data: v.data,
+  const fuori = (v) => ({ via: v.via, nome: v.nome, cartella: v.cartella, peso: v.peso, g: v.g, data: v.data,
     partita: v.partita, comp: v.comp, stagione: v.stagione, slow: v.slow, gol: v.gol, tipo: v.tipo, perPartita: v.perPartita || 0,
-    chi: (V.chi[v.via] || []).map(nomeDi), k: crypto.createHash("sha1").update(v.via).digest("hex").slice(0, 16) })) };
+    chi: (V.chi[v.via] || []).map(nomeDi), k: crypto.createHash("sha1").update(v.via).digest("hex").slice(0, 16) });
+  // LE COLONNE (Goffredo, 01/10/2026): i primi quattro di ogni categoria, per la pagina a colonne
+  let perTipo;
+  if (!sotto) {
+    perTipo = {}; const metti = (k, v) => { const l = perTipo[k] || (perTipo[k] = []); if (l.length < 4) l.push(fuori(v)); };
+    trovate.forEach((v) => { if (tipo === "camere") { if (v.tipo) metti(v.tipo, v); return; }
+      if (v.gol) metti("Gol", v); if (v.slow) metti("Slow motion", v); if (v.tipo) metti(v.tipo, v); if (altro(v)) metti("Altro", v); });
+    tipi.Altro = tutte.filter(altro).length;
+  }
+  return { ok: true, n: trovate.length, tutte: tutte.length, tipi, chi: chiQ.map(nomeDi), visti: tutte.filter((v) => !v.perPartita).length, perTipo,
+    clip: trovate.slice(0, n).map(fuori) };
 }
 function scriviArchivio() {
   try {
