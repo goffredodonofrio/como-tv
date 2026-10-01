@@ -6244,6 +6244,172 @@ function annullaEsp(p) {
   return { ok: true, coda: vociCoda() };
 }
 
+// ══════════ L'AIUTANTE SUL COMPUTER DI CHI MONTA (01/10/2026) ══════════
+//  Goffredo: "velocizzare export e invii in regia... usare le risorse del
+//  computer locale", per Mac e Windows. La VM ha due core e nessuna scheda
+//  video (un 1080p50 a 0,66x il tempo reale) e legge la NAS del club da
+//  lontano (2-7 MB/s). Il computer in ufficio sta sulla stessa rete della NAS
+//  e ha un codificatore hardware. Allora: il ponte scrive la RICETTA del
+//  montato (i file sulla NAS con entrata e uscita, il formato, gli stacchi,
+//  le grafiche) e l'aiutante (13_Server_VM/aiutante) la esegue in un solo
+//  passaggio di ffmpeg, poi carica il file qui: finisce nelle uscite come un
+//  export della VM e da li' va in regia. Quello che la ricetta non sa ancora
+//  fare (mix di piu' tracce, sottotitoli impressi, riquadro V2) resta alla VM.
+//  L'aiutante non ha la sessione di Google: legge e carica da /aiutante/, con
+//  indirizzi firmati che scadono (come il magazzino).
+const RADICI_AIUTANTE = { vod: "/mnt/qnap100", frame: "/mnt/qnap100-frame" };
+function firmaAiutante(cosa, fino) {
+  return crypto.createHmac("sha256", CHIAVE_PONTE).update("aiutante|" + cosa + "|" + fino).digest("hex").slice(0, 32);
+}
+function radiceAiutante(via) {
+  const v = path.resolve(String(via || ""));
+  for (const [k, r] of Object.entries(RADICI_AIUTANTE)) if (v.startsWith(r + "/")) return { root: k, rel: v.slice(r.length + 1) };
+  if (DIR && v.startsWith(path.resolve(DIR) + "/")) return { root: "casa", rel: v.slice(path.resolve(DIR).length + 1) };
+  const vid = path.resolve(cartellaMedia());
+  if (v.startsWith(vid + "/")) return { root: "video", rel: v.slice(vid.length + 1) };
+  return null;
+}
+function urlFileAiutante(origine, sorg, fino) {
+  return origine + "/aiutante/file?r=" + sorg.root + "&p=" + encodeURIComponent(sorg.rel) + "&fino=" + fino + "&f=" + firmaAiutante("file|" + sorg.root + "|" + sorg.rel, fino);
+}
+// perche' questa sequenza non si puo' fare sul computer (o "" se si puo')
+function nonDaAiutante(q, p2) {
+  const trV = tracceDi(q);
+  if (trV.V1.muto) return "la traccia V1 e' nascosta";
+  if ((q.pezzi || []).some((x) => (x.traccia || "V1") === "V2") && !trV.V2.muto) return "c'e' un pezzo sopra (V2)";
+  const au = audioPerAiutante(q);
+  if (au) return au;
+  const sv = vuoleSotto(p2 || {});
+  if (sv.video) return "i sottotitoli impressi si fanno ancora sulla VM";
+  return "";
+}
+// L'AUDIO CHE L'AIUTANTE SA FARE: per ogni pezzo di V1 una voce sola accesa,
+// legata e in sincrono (la sua coppia di canali, anche un canale solo); niente
+// volumi, dissolvenze audio, lingue, audio staccati o su altre tracce. Il resto
+// e' un montaggio sonoro e lo fa la VM (costruisciMix).
+function audioPerAiutante(q) {
+  normalizzaSeq(q);
+  const t = tracceDi(q);
+  if (t.A1.muto || t.A1.gain || TRACCE_A.some((n) => t[n].solo)) return "c'e' un montaggio audio (tracce spente, solo o volumi)";
+  const accesi = (q.audio || []).filter((a) => !a.muto && !(t[a.traccia] || {}).muto);
+  for (const a of accesi) {
+    if (!a.legato || a.traccia !== "A1" || a.sfaso || a.lingua || a.gain || a.entra || a.esce || (a.volumi || []).length || +a.sorg)
+      return "c'e' un montaggio audio (volumi, dissolvenze, lingue o audio staccati)";
+  }
+  const v1 = (q.pezzi || []).filter((x) => (x.traccia || "V1") === "V1");
+  for (const x of v1) if (accesi.filter((a) => a.legato === x.id).length !== 1) return "c'e' un montaggio audio (un pezzo con piu' voci o senza la sua)";
+  return "";
+}
+async function ricettaAiutante(q, formato, origine, p2) {
+  const fino = Math.floor(Date.now() / 1000) + 6 * 3600;
+  const tela = TELA_FORMATO[formato] || TELA_FORMATO["16:9"];
+  const base = (q.pezzi || []).filter((x) => (x.traccia || "V1") !== "V2");
+  const buchi = buchiDi(q);
+  const pezzi = [];
+  let orologio = 0;
+  for (const x of base) {
+    if ((x.t0 || 0) > orologio + 0.04) pezzi.push({ nero: Math.round(((x.t0 || 0) - orologio) * 1000) / 1000 });
+    orologio = Math.max(orologio, (x.t0 || 0) + (x.fuori - x.dentro));
+    let sorg = null, da = 0, canali = 2;
+    const mio = mediaVia(x);
+    if (mio) { sorg = radiceAiutante(mio); da = x.dentro || 0; }
+    else {
+      const r = regDi(q, x);
+      if (!r || !r.arch) throw new Error("\"" + (x.titolo || "un pezzo") + "\" non viene dall'archivio: questo export si fa sulla VM");
+      const f = fonteAl(r, x.dentro);
+      sorg = radiceAiutante(f.via); da = f.dentro; canali = quantiCanali(r);
+    }
+    if (!sorg) throw new Error("il file di \"" + (x.titolo || "un pezzo") + "\" non sta sulla NAS: questo export si fa sulla VM");
+    const voce = (q.audio || []).find((a) => a.legato === x.id && !a.muto) || {};
+    pezzi.push({ titolo: x.titolo || "", sorg: { root: sorg.root, rel: sorg.rel, url: urlFileAiutante(origine, sorg, fino) },
+                 coppia: +voce.coppia || 0, canale: voce.canale || "",
+                 da: Math.round(da * 1000) / 1000, dur: Math.round((x.fuori - x.dentro) * 1000) / 1000,
+                 vel: +x.velocita || 1, colore: x.colore || null, canali,
+                 vf: ritaglioDelPezzo(formato, x.inquadra && x.inquadra[formato]) || "",
+                 transizione: x.transizione && +x.transizione.durata > 0.06 ? { tipo: x.transizione.tipo === "nero" ? "nero" : "fade", durata: +x.transizione.durata } : null });
+  }
+  if (!pezzi.some((z) => z.sorg)) throw new Error("nessun pezzo da esportare");
+  const grafiche = [];
+  const trV = tracceDi(q);
+  for (const g of (trV.G.muto ? [] : (q.grafiche || []))) {
+    let st; try { st = await stratoPerFormato(g, formato); } catch (e) { continue; }
+    if (!st || !st.file || !fs.existsSync(st.file)) continue;
+    const sg = radiceAiutante(st.file); if (!sg) continue;
+    grafiche.push({ url: urlFileAiutante(origine, sg, fino), nome: path.basename(st.file), w: st.w || tela[0], h: st.h || tela[1],
+                    dentro: g.dentro, fuori: g.fuori, animata: !!st.animata });
+  }
+  const fineV = (q.pezzi || []).reduce((m, x) => Math.max(m, (x.t0 || 0) + Math.max(0, x.fuori - x.dentro)), 0);
+  const oltre = Math.max(0, fineSequenza(q) - fineV);
+  const cosaCarica = "carica|" + q.id + "|" + formato;
+  return { versione: 1, seq: q.id, titolo: q.titolo || "", formato, tela, conStacchi: !buchi.length,
+           nome: nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4"), pezzi, grafiche, oltre: Math.round(oltre * 1000) / 1000,
+           carica: origine + "/aiutante/carica?seq=" + encodeURIComponent(q.id) + "&formato=" + encodeURIComponent(formato) + "&fino=" + fino + "&f=" + firmaAiutante(cosaCarica, fino) };
+}
+async function hlRicetta(p) {
+  const q = seqDi(p);
+  if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
+  const origine = String(p.origine || "").replace(/\/+$/, "");
+  if (!/^https?:\/\/[^\s]+$/.test(origine)) throw new Error("manca l'indirizzo della pagina");
+  const motivo = nonDaAiutante(q, p);
+  if (motivo) return { ok: true, supportata: false, motivo };
+  const elenco = Array.isArray(p.formati) ? p.formati.filter((f) => FORMATI[f]) : [];
+  const formati = elenco.length ? elenco : [FORMATI[p.formato] ? String(p.formato) : "16:9"];
+  try {
+    const ricette = [];
+    for (const f of formati) ricette.push(await ricettaAiutante(q, f, origine, p));
+    return { ok: true, supportata: true, ricette };
+  } catch (e) {
+    console.log("[clip] ricetta per l'aiutante non fatta: " + e.message + "\n" + String(e.stack || "").split("\n").slice(1, 4).join("\n"));
+    return { ok: true, supportata: false, motivo: e.message };
+  }
+}
+// /aiutante/file: un file della NAS (o di casa) per chi ha la firma
+function serviFileAiutante(req, res, u) {
+  const r = u.searchParams.get("r") || "", rel = u.searchParams.get("p") || "", fino = parseInt(u.searchParams.get("fino") || "0", 10);
+  if (!fino || fino < Date.now() / 1000 || u.searchParams.get("f") !== firmaAiutante("file|" + r + "|" + rel, fino)) { res.writeHead(403).end("indirizzo scaduto"); return; }
+  const radice = r === "casa" ? path.resolve(DIR) : r === "video" ? path.resolve(cartellaMedia()) : RADICI_AIUTANTE[r];
+  if (!radice) { res.writeHead(404).end("non trovato"); return; }
+  const f = path.resolve(radice, rel);
+  if (!f.startsWith(radice + "/")) { res.writeHead(403).end("no"); return; }
+  return serviFileLocale(req, res, f);
+}
+// /aiutante/carica: il montato fatto sul computer, che diventa un'uscita
+function caricaAiutante(req, res, u) {
+  const seq = u.searchParams.get("seq") || "", formato = u.searchParams.get("formato") || "", fino = parseInt(u.searchParams.get("fino") || "0", 10);
+  const fine = (code, j) => { if (!res.headersSent) res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(j)); };
+  if (req.method !== "PUT" && req.method !== "POST") return fine(405, { ok: false, errore: "si carica con PUT" });
+  if (!fino || fino < Date.now() / 1000 || u.searchParams.get("f") !== firmaAiutante("carica|" + seq + "|" + formato, fino)) return fine(403, { ok: false, errore: "indirizzo scaduto" });
+  const q = R.seq[seq];
+  if (!q || !FORMATI[formato]) return fine(404, { ok: false, errore: "sequenza sconosciuta" });
+  const suffisso = "_" + String(formato).replace(":", "x");
+  const finale = path.join(DIR, CARTELLA_HL, q.id + suffisso + ".mp4"), tmp = finale + ".arriva";
+  const out = fs.createWriteStream(tmp);
+  let peso = 0, rotto = false;
+  req.on("data", (d) => { peso += d.length; if (peso > 8e9) { rotto = true; req.destroy(); } });
+  req.pipe(out);
+  req.on("aborted", () => { rotto = true; });
+  out.on("error", (e) => { rotto = true; fine(500, { ok: false, errore: e.message }); });
+  out.on("finish", async () => {
+    if (rotto || peso < 1000) { try { fs.unlinkSync(tmp); } catch (e) {} return fine(400, { ok: false, errore: "file incompleto" }); }
+    try {
+      const d = await probe(tmp);
+      if (!d || !d.durata) throw new Error("il file arrivato non si legge");
+      fs.renameSync(tmp, finale);
+      if (!q.mini) { const mini = await miniatura(finale, path.join(DIR, CARTELLA_HL, q.id + ".jpg"), (d.durata || 6) / 3); q.mini = mini ? "/clip/" + CARTELLA_HL + "/" + q.id + ".jpg" : ""; }
+      q.esportati = q.esportati || {};
+      q.esportati[formato] = { adattate: [], file: "/clip/" + CARTELLA_HL + "/" + q.id + suffisso + ".mp4", durata: Math.round(d.durata * 10) / 10,
+                               peso: d.peso || peso, quando: Date.now(), aiutante: true, chi: String(req.headers["x-aiutante"] || "").slice(0, 60) };
+      q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4");
+      if (!(q.export && q.export.stato === "lavora")) q.export = { stato: "pronto", formato, file: q.esportati[formato].file, durata: q.esportati[formato].durata, peso: q.esportati[formato].peso, aiutante: true };
+      scrivi(); annuncia(0, "clip");
+      console.log("[clip] dall'aiutante: \"" + (q.titolo || q.id) + "\" " + formato + ", " + Math.round(peso / 1e6) + " MB");
+      // gli invii in regia che aspettavano questo file
+      if (formato === "16:9") INVII_REGIA.filter((v) => v.attesaAiutante === q.id && v.stato === "lavora" && !v.annullato).forEach((v) => invioPronto(v.id, q.esportati["16:9"].file, q.esportati["16:9"].durata));
+      fine(200, { ok: true, file: q.esportati[formato].file, durata: q.esportati[formato].durata });
+    } catch (e) { try { fs.unlinkSync(tmp); } catch (z) {} fine(500, { ok: false, errore: e.message }); }
+  });
+}
+
 
 // ── LO STING ──────────────────────────────────────────────────────────
 //
@@ -13264,6 +13430,8 @@ function invioDaSequenza(p) {
   if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
   const inv = nuovoInvio(Object.assign({ titolo: q.titolo }, p), "sequenza");
   inv.seq = q.id; inv.sequenza = q.titolo || "";
+  // il 16:9 lo fa l'aiutante sul computer di chi monta: si aspetta che lo carichi
+  if (p.aiutante) { inv.attesaAiutante = q.id; inv.fase = "sul computer di chi monta"; return { ok: true, invio: vistaInvio(inv) }; }
   const firma = q.id + "|16:9";
   let l = CODA_ESP.find((x) => x.firma === firma && !x.annullato);
   if (!l) {
@@ -13279,6 +13447,8 @@ function invioDaSequenza(p) {
   return { ok: true, invio: vistaInvio(inv) };
 }
 function vistaInvio(inv) {
+  // aspettava il computer di chi monta e da tre ore non e' arrivato niente
+  if (inv.attesaAiutante && inv.stato === "lavora" && Date.now() - inv.creato > 3 * 3600000) invioFallito(inv.id, new Error("dal computer non e' arrivato niente"));
   const v = Object.assign({}, inv);
   if (inv.esp) {
     const i = CODA_ESP.findIndex((x) => x.id === inv.esp), l = CODA_ESP[i], q = R.seq[inv.seq];
@@ -13294,6 +13464,7 @@ function annullaInvio(p) {
   const inv = invioDi(String(p.id || "")); if (!inv) throw new Error("invio sconosciuto");
   if (inv.stato !== "lavora") throw new Error(inv.stato === "invio" ? "sta gia' andando in scaletta" : "e' gia' finito");
   inv.annullato = true;
+  if (inv.attesaAiutante) invioFallito(inv.id, null);
   if (inv.esp) {
     const l = CODA_ESP.find((x) => x.id === inv.esp);
     if (l) {
@@ -14353,6 +14524,13 @@ async function serviMagazzino(req, res, u) {
 
 function serviHttp(req, res, u) {
   if (ATTIVO && u.pathname.startsWith("/magazzino/")) { serviMagazzino(req, res, u); return true; }
+  if (ATTIVO && u.pathname === "/aiutante/file") { serviFileAiutante(req, res, u); return true; }
+  if (ATTIVO && u.pathname === "/aiutante/carica") { caricaAiutante(req, res, u); return true; }
+  // il pacchetto da installare (codice, nessun segreto): DIR/_aiutante
+  if (ATTIVO && /^\/aiutante\/pacchetto\/[A-Za-z0-9._-]+$/.test(u.pathname)) {
+    const f = path.join(DIR, "_aiutante", path.basename(u.pathname));
+    return serviFileLocale(req, res, f, { "Content-Disposition": "attachment; filename=\"" + path.basename(f) + "\"" }), true;
+  }
   if (ATTIVO && u.pathname.startsWith("/qnap/")) { serviQnap(req, res, u); return true; }
   if (!ATTIVO || !u.pathname.startsWith("/clip/")) return false;
   const pezzi = decodeURIComponent(u.pathname.slice(6)).split("/").filter(Boolean);
@@ -17334,6 +17512,9 @@ const AZIONI = {
     return { ok: true, lavoro: L, invio: inv ? vistaInvio(inv) : null };
   },
   "clip-regia-invia": invioDaSequenza,
+  "clip-hl-ricetta": hlRicetta,
+  // l'aiutante non ce l'ha fatta: l'invio che lo aspettava si chiude
+  "clip-regia-fallito": (p) => { const inv = invioDi(String(p.id || "")); if (inv && inv.stato === "lavora") invioFallito(inv.id, new Error(String(p.errore || "non riuscito sul computer").slice(0, 160))); return { ok: true }; },
   "clip-regia-invii": () => ({ ok: true, invii: INVII_REGIA.map(vistaInvio) }),
   "clip-regia-annulla": annullaInvio,
   "clip-raccolta-regia-stato": (p) => { const L = REGIA_LAVORI[String(p.id || "")]; if (!L) throw new Error("lavoro sconosciuto"); return { ok: true, lavoro: L }; },
