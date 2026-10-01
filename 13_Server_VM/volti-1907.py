@@ -196,6 +196,7 @@ def main():
     a.add_argument("--minuti", type=int, default=0)
     a.add_argument("--prima", default="", help="id di una persona: prima i file che la nominano (dopo un ritratto nuovo)")
     a.add_argument("--camere", action="store_true", help="solo le camere (offloads, Gionni, Hudi, Mat)")
+    a.add_argument("--parte", default="", help="k/n: questo processo fa solo la parte k di n (due processi, due core)")
     x = a.parse_args()
     os.nice(15)
     ids, gal = galleria_como()
@@ -251,6 +252,9 @@ def main():
         if CAMERE.search(v) and re.search(r"first team", v, re.I): return (-0.5, 0, -(r[1] if r else 0))
         return (0 if not m.get("p") else 1, 0 if g & {"Intervista", "Nuovo acquisto", "Conferenza stampa", "Backstage", "Allenamento"} else 1, -(r[1] if r else 0))
     coda = sorted((v for v in video if v not in fatti and (not x.camere or CAMERE.search(v))), key=priorita)
+    if x.parte:
+        k, n = (int(z) for z in x.parte.split("/"))
+        coda = [v for v in coda if int(hashlib.sha1(v.encode()).hexdigest(), 16) % n == k]
     fine = time.time() + x.minuti * 60 if x.minuti else None
     print("in coda:", len(coda), "- impronte in galleria:", len(ids), flush=True)
     with open(OUT, "a", encoding="utf-8") as out, open(IGNOTI, "a", encoding="utf-8") as ign:
