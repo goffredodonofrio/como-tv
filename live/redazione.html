@@ -569,24 +569,25 @@
            '<span class="n">' + (i + 1) + '</span>' +
            '<span class="t">' + esc(v.titolo || v.tipo) + '<small>' + sotto + '</small></span>' +
            (onair[v.id] ? '<span class="onairtag">IN ONDA · L' + onair[v.id] + '</span>' :
-            v.tipo === "video" ? '<button type="button" class="via" data-via="' + esc(v.id) + '" title="togli il contributo dalla scaletta (il file non si cancella)" aria-label="Togli ' + esc(v.titolo || "il contributo") + '">&#128465;</button>' : "") +
+            '<button type="button" class="via" data-via="' + esc(v.id) + '" title="' + (v.tipo === "video" ? "togli il contributo dalla scaletta (il file non si cancella)" : "togli la grafica dalla scaletta") + '" aria-label="Togli ' + esc(v.titolo || v.tipo) + '">&#128465;</button>') +
            '</div>';
     });
     el("voci").innerHTML = h;
   }
-  // TOGLIERE UN CONTRIBUTO (01/10/2026): dalla scaletta del progetto o del vMix.
-  // Si toglie la voce, non il file: il video resta sul MAM. In onda non si tocca.
+  // TOGLIERE UN CONTRIBUTO O UNA GRAFICA (01/10/2026): dalla scaletta del progetto
+  // o del vMix. Si toglie la voce, non il file: il video resta sul MAM. In onda non si tocca.
   function togli(id) {
     var v = null; voci.forEach(function (x) { if (x.id === id) v = x; });
     if (!v) return;
     var dove = fonte.tipo === "canale" ? nomeCanale(fonte.c) : "progetto " + (fonte.nome || "");
-    if (!window.confirm("Togliere \u201c" + (v.titolo || "il contributo") + "\u201d dalla scaletta di " + dove + "?\nIl file video resta sul MAM.")) return;
+    var video = v.tipo === "video";
+    if (!window.confirm("Togliere \u201c" + (v.titolo || v.tipo) + "\u201d dalla scaletta di " + dove + "?" + (video ? "\nIl file video resta sul MAM." : "\nPer rimetterla va rifatta e rimandata dalla sua pagina."))) return;
     var corpo = fonte.tipo === "canale" ? { tipo: "regia-del", c: fonte.c, id: id, chi: chiSono() } : { tipo: "progetto-togli", id: fonte.id, pid: id };
     post(corpo).then(function (j) {
       if (!j || j.ok === false) throw new Error((j && j.errore) || "non tolto");
       if (sel && sel.id === id) { fermaVideo(); sel = null; disegnaDettaglio(); }
       voci = voci.filter(function (x) { return x.id !== id; }); disegnaVoci();
-      dimmi("\u201c" + (v.titolo || "Contributo") + "\u201d tolto dalla scaletta.", "ok");
+      dimmi("\u201c" + (v.titolo || v.tipo) + "\u201d " + (video ? "tolto" : "tolta") + " dalla scaletta.", "ok");
       ultimoNonce = null; caricaProgetti().then(caricaScaletta);
     }).catch(function (er) { dimmi("Non l\u2019ho tolto: " + er.message, "err"); });
   }
