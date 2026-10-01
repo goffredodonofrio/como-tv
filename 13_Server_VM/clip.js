@@ -7412,6 +7412,61 @@ function oraNelNome(file) {
   const p = tutte[tutte.length - 1].split("-");
   return { h: +p[0], m: +p[1], s: +p[2] };
 }
+// L'OROLOGIO A DODICI ORE PASSA DA MEZZOGIORNO (01/10/2026). "11-55-43" e poi
+// "01-03-46" sono il primo e il secondo tempo di Como-Brescia: ordinati per
+// ora (h % 12) il secondo tempo finiva davanti e il primo undici ore dopo, e
+// il cronometro metteva il fischio a 39.576 secondi in un file da 53 minuti
+// (22 partite cosi', quasi tutte giovanili e sudamericane). Le ore si leggono
+// in cerchio: si comincia dopo il buco piu' grande, quando cosi' la
+// registrazione sta in poche ore invece che in mezza giornata.
+function secondiNelNome(f) { const o = oraNelNome(f); return o ? (o.h % 12) * 3600 + o.m * 60 + o.s : null; }
+function ordinaPerOra(lista, fileDi) {
+  const dritta = lista.map((x) => ({ x, s: secondiNelNome(fileDi(x)) }))
+    .sort((u, v) => (u.s === null ? 0 : u.s) - (v.s === null ? 0 : v.s));
+  const n = dritta.length, G = 12 * 3600;
+  if (n < 2 || dritta.some((y) => y.s === null)) return dritta.map((y) => y.x);
+  let buco = -1, dopo = 0;
+  for (let i = 0; i < n; i++) {
+    const b = ((dritta[(i + 1) % n].s - dritta[i].s) % G + G) % G;
+    if (b > buco) { buco = b; dopo = (i + 1) % n; }
+  }
+  if (dopo === 0 || dritta[n - 1].s - dritta[0].s < 8 * 3600 || G - buco > 4 * 3600) return dritta.map((y) => y.x);
+  return dritta.slice(dopo).concat(dritta.slice(0, dopo)).map((y) => y.x);
+}
+// l'asse dei pezzi dall'ora nel nome, contata dal primo (che e' gia' in ordine)
+function assePerOra(pezzi, fileDi) {
+  const primo = secondiNelNome(fileDi(pezzi[0]));
+  let scorso = 0;
+  pezzi.forEach((x, n) => {
+    if (n === 0) { x.da = 0; return; }
+    const s2 = secondiNelNome(fileDi(x));
+    if (primo === null || s2 === null) { x.da = null; return; }
+    let d = s2 - primo; while (d < scorso) d += 12 * 3600; x.da = d; scorso = d;
+  });
+}
+// e le partite gia' in indice con l'ordine sbagliato si rimettono a posto:
+// l'asse nuovo, e via le letture fatte su quello vecchio (cronometro,
+// tabellone, boati), che il giro della casa rifa'. Le registrazioni gia'
+// aperte restano: hanno il primo file vecchio, e la prossima apertura ne fa una nuova
+function riordinaDodiciOre() {
+  const fileDi = (x) => x.file || path.basename(x.chiave || "");
+  const via = [];
+  Object.keys(ARCHIVIO).forEach((k) => {
+    const a = ARCHIVIO[k], pz = a && a.pezzi;
+    if (!pz || pz.length < 2 || pz.some((x) => !oraNelNome(fileDi(x)))) return;
+    // l'ordine giusto lo da' il calcio d'inizio di Airtable quando c'e' (daKickoffPezzo): qui solo le altre
+    if (a.kickoff !== null && a.kickoff !== undefined && a.kickoff !== 0) return;
+    const ord = ordinaPerOra(pz, fileDi);
+    if (ord.every((x, n) => x === pz[n])) return;
+    const nuovi = ord.map((x) => Object.assign({}, x));
+    assePerOra(nuovi, fileDi);
+    a.pezzi = nuovi; a.chiave = nuovi[0].chiave; a.peso = nuovi[0].peso;
+    LETTURE_DEL_FILE.forEach((c) => { delete a[c]; });
+    via.push(a.partita || k);
+  });
+  if (via.length) { scriviArchivio(); console.log("[clip] dodici ore: " + via.length + " partite coi file rimessi in ordine (" + via.slice(0, 6).join(", ") + (via.length > 6 ? "..." : "") + ")"); }
+  return via;
+}
 // il giorno com'e' in Italia, AAAAMMGG: l'ISO di Airtable e' in UTC, e a
 // mezzanotte e mezza di Roma e' ancora il giorno prima
 function giornoRoma(ms) {
@@ -8001,15 +8056,9 @@ function voceNas(v, secchio) {
     const g = String(v.giorno || "");
     const pezzi = file.map((k) => ({ chiave: k, peso: NAS_FILE.get(k), file: path.basename(k), dentro: path.dirname(k).split("/").slice(3).join("/") }));
     // l'ordine e l'asse dall'ora scritta nel nome, come per le orfane di S3
-    const secondi = (f) => { const o = oraNelNome(f); return o ? (o.h % 12) * 3600 + o.m * 60 + o.s : null; };
-    pezzi.sort((x, y) => (secondi(x.file) || 0) - (secondi(y.file) || 0));
-    const primo = secondi(pezzi[0].file);
-    let scorso = 0;
-    pezzi.forEach((x, n) => {
-      if (n === 0) { x.da = 0; return; }
-      const s2 = secondi(x.file); if (primo === null || s2 === null) { x.da = null; return; }
-      let d = s2 - primo; while (d < scorso) d += 12 * 3600; x.da = d; scorso = d;
-    });
+    const ord = ordinaPerOra(pezzi, (x) => x.file);
+    pezzi.splice(0, pezzi.length, ...ord);
+    assePerOra(pezzi, (x) => x.file);
     return { id, voce: { bucket: secchio, chiave: pezzi[0].chiave, peso: pezzi[0].peso, partita: v.partita, competizione: v.competizione || "",
       variante: "", giorno: g, dove, fonte: pezzi.length > 1 ? "pezzi" : "intero", pezzi,
       kickoff: null, sicuro: false, soloNas: true, gemella: v.fratello || undefined,
@@ -8602,10 +8651,7 @@ async function archivioScandaglia(p) {
     if (!scelta || scelta.fonte === "unico") return;      // non e' una partita intera: si lascia stare
     const g = gr.giorno;
     const quando = new Date(Date.UTC(+g.slice(0, 4), +g.slice(4, 6) - 1, +g.slice(6, 8), 18, 0)).toISOString();
-    const pezzi = scelta.pezzi.slice().sort((x, y) => {
-      const ox = oraNelNome(x.file), oy = oraNelNome(y.file);
-      return ((ox ? (ox.h % 12) * 3600 + ox.m * 60 + ox.s : 0) - (oy ? (oy.h % 12) * 3600 + oy.m * 60 + oy.s : 0));
-    });
+    const pezzi = ordinaPerOra(scelta.pezzi.slice(), (x) => x.file);
     // la competizione e' il pezzo di percorso subito sopra la stagione o la partita
     const via = gr.dove.split("/");
     const comp = via.slice(1, -1).filter((x) => !/^(stagione|partite|\d{4}|\d{2}-\d{2}|turno|round|giornata|andata|ritorno|fase)/i.test(x)).pop() || "";
@@ -18916,6 +18962,7 @@ function avvio(opz) {
   leggi();
   leggiArchivioAppunti();
   leggiArchivio();
+  try { riordinaDodiciOre(); } catch (e) { console.log("[clip] dodici ore: " + e.message); }
   leggiRiconosciute();
   leggiStorici();
   leggiEspn();
