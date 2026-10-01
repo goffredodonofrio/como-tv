@@ -3477,7 +3477,7 @@
       pr.innerHTML = '<div class="pr-testa"><b>&#128225; Invia alla regia</b><span>' + n + (n === 1 ? " azione" : " azioni") + (partiteR > 1 ? ' <em>da ' + partiteR + ' partite</em>' : '') + ' · un filmato grezzo, 8 s prima e 10 dopo ogni azione</span></div>' +
         '<div class="form-r">' +
         '<div class="campo-r"><label for="regiaTitolo">Nome in scaletta</label><input id="regiaTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(titoloR.toUpperCase()) + '"></div>' +
-        '<div class="campo-r"><label for="regiaDove">Seleziona vMix o progetto</label><select id="regiaDove">' + opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (dest && o.value === dest.value ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") + '</select></div>' +
+        '<div class="campo-r"><label for="regiaDove">Seleziona vMix o progetto</label><select id="regiaDove">' + opzioniRegia(dest ? dest.value : "") + '</select></div>' +
         '<label class="spunta" title="le clip hanno la telecronaca incisa: di solito in regia vanno senza"><input type="checkbox" id="regiaAudio"> Con telecronaca</label>' +
         '<button type="button" class="regia" data-fa="inviaRegia">&#128225; Invia alla regia</button><button type="button" class="svuota" data-fa="annullaRegia">Annulla</button></div>';
       setTimeout(function(){ var t = el("regiaTitolo"); if (t) t.focus({ preventScroll: true }); box.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 0);
@@ -6641,6 +6641,17 @@
     if (gf) { var g = GRAF.filter(function(z){ return z.id === gf.dataset.g; })[0]; if (!g) return; SELG = g.id; SELA = null; TRASC = { tipo: bordo ? bordo.dataset.lato : "g-muovi", g_id: g.id, anim: !!g.animata, x0: e.clientX, a: g.dentro, b: g.fuori, d0: g.dentro, f0: g.fuori, mosso: false }; e.preventDefault(); disegnaTl(); return; }
     if (ad) {
       var au = AUD.filter(function(z){ return z.id === ad.dataset.a; })[0]; if (!au) return;
+      // PIU' AUDIO INSIEME (01/10/2026, Caria: "non riesco a selezionare e
+      // cancellare piu' tracce audio, solo video"): Shift/Cmd + clic aggiunge
+      // o toglie l'audio dalla scelta, come sui video; Canc li toglie tutti
+      if ((e.shiftKey || e.metaKey || e.ctrlKey) && !e.altKey) {
+        if (SELA && SELAS.indexOf(SELA) < 0) SELAS.push(SELA);
+        var kA = SELAS.indexOf(au.id); if (kA >= 0) SELAS.splice(kA, 1); else SELAS.push(au.id);
+        SELA = null; SELG = null; e.preventDefault(); disegnaTl();
+        var nSA = SELS.length + SELGS.length + SELAS.length;
+        if (nSA > 1) avviso("ok", nSA + " elementi selezionati: Canc li toglie tutti.");
+        return;
+      }
       SELA = au.id; SELG = null;
       if (traccaBloccata(au.traccia)) { avviso("err", "La traccia " + (au.traccia || "A1") + " e' bloccata."); disegnaTl(); return; }
       // anche l'audio legato si prende: non per spostarlo nel tempo (quello
@@ -6702,8 +6713,11 @@
         SELS = RETE.agg ? RETE.preso.slice() : []; SELGS = RETE.agg ? RETE.presoG.slice() : []; SELAS = RETE.agg ? RETE.presoA.slice() : [];
         Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-pezzo[data-i]"), function(n){ var z = PZ[+n.dataset.i]; if (z && tocca(n) && SELS.indexOf(z.id) < 0) SELS.push(z.id); });
         Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-graf[data-g]"), function(n){ if (tocca(n) && SELGS.indexOf(n.dataset.g) < 0) SELGS.push(n.dataset.g); });
-        // l'audio legato segue il suo pezzo: col riquadro si prende quello staccato
-        Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-audio.staccato[data-a]"), function(n){ if (tocca(n) && SELAS.indexOf(n.dataset.a) < 0) SELAS.push(n.dataset.a); });
+        // tutti gli audio che tocca, anche quelli legati (01/10/2026): prima solo
+        // gli staccati, e sulle tracce A2-A6 (ENG, ambiente, commento, tutte
+        // legate) il riquadro non prendeva niente. Spostando il gruppo il ponte
+        // lascia i legati col loro video; Canc toglie solo l'audio scelto
+        Array.prototype.forEach.call(el("pista").querySelectorAll(".ed-audio[data-a]"), function(n){ if (tocca(n) && SELAS.indexOf(n.dataset.a) < 0) SELAS.push(n.dataset.a); });
         SEL = SELS.length ? SELS[SELS.length - 1] : null; SELG = null; SELA = null;
         var box = el("reteBox"); if (!box) { box = document.createElement("div"); box.id = "reteBox"; box.className = "ed-rete"; el("pista").appendChild(box); }
         box.hidden = false; box.style.left = (q.l - r0.left) + "px"; box.style.top = (q.t - r0.top) + "px"; box.style.width = (q.r - q.l) + "px"; box.style.height = (q.b - q.t) + "px";
@@ -9124,6 +9138,25 @@
     return dest ? dest.value : "";
   }
   function ricordaDoveRegia(v){ try { if (v) localStorage.setItem("mam2-regia-dove", v); } catch (e) {} }
+  // IL MENU' DEI PANNELLI "INVIA ALLA REGIA" (01/10/2026): i vMix e i progetti
+  // del menu' delle grafiche, piu' "Nuovo progetto…" come nelle altre grafiche
+  // (prima si scartava: un progetto si poteva solo scegliere, non creare).
+  function opzioniRegia(scelto){
+    var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
+    return opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (o.value === scelto ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") +
+      (window.Destinazione && Destinazione.nuovo ? '<option value="__nuovo">➕ Nuovo progetto…</option>' : "");
+  }
+  document.addEventListener("focusin", function(e){ var s = e.target; if (s && (s.id === "regiaDove" || s.id === "regiaEspDove") && s.value !== "__nuovo") s.dataset.prima = s.value; });
+  document.addEventListener("change", function(e){
+    var s = e.target; if (!s || (s.id !== "regiaDove" && s.id !== "regiaEspDove")) return;
+    if (s.value !== "__nuovo") { s.dataset.prima = s.value; return; }
+    var prima = s.dataset.prima || "";
+    Destinazione.nuovo().then(function(v){
+      // il nuovo progetto sta gia' nel menu' delle grafiche: lo si rilegge da li'
+      s.innerHTML = opzioniRegia(v || prima);
+      if (v) { s.value = v; s.dataset.prima = v; ricordaDoveRegia(v); avviso("ok", "Progetto creato: ci va questo invio."); }
+    });
+  });
   function apriRegiaEsp(b){
     if (AMBITO) return avviso("err", "Il Como 1907 non ha la regia: il montato si scarica o va in Premiere.");
     var p = pannelloRegiaEsp(); p.dataset.modo = "uscita";
@@ -9132,7 +9165,7 @@
     p.dataset.file = b.dataset.file; p.dataset.dur = b.dataset.dur; p.dataset.formato = b.dataset.regiaesp;
     p.innerHTML = '<div class="pr-testa"><b>&#128225; Invia alla regia</b><span>' + esc((SEQ && SEQ.titolo) || "sequenza") + ' · ' + esc(b.dataset.regiaesp) + ' · ' + tc(+b.dataset.dur || 0) + '</span></div>' +
       '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String((SEQ && SEQ.titolo) || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
-      '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (o.value === sceltoDove ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") + '</select></div>' +
+      '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opzioniRegia(sceltoDove) + '</select></div>' +
       '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
       '<button type="button" class="manda" data-fa="manda">&#128225; Invia alla regia</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
     p.hidden = false;
@@ -9169,7 +9202,7 @@
     var nota = q.grafiche ? "ci sono grafiche: serve un export 16:9, qualche minuto" : "solo tagli: esce in pochi secondi se i pezzi sono in casa";
     p.innerHTML = '<div class="pr-testa"><b>&#128225; In regia</b><span>' + esc(q.titolo || "sequenza") + ' · 16:9 · ' + tc(q.dur || 0) + ' · ' + esc(nota) + '</span></div>' +
       '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String(q.titolo || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
-      '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (o.value === sceltoDove ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") + '</select></div>' +
+      '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opzioniRegia(sceltoDove) + '</select></div>' +
       '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
       '<button type="button" class="manda" data-fa="mandaEd">&#128225; Prepara e invia</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
     p.hidden = false;

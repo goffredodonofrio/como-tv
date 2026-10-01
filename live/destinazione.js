@@ -98,25 +98,30 @@ window.Destinazione = (function () {
       }
       return;
     }
-    if (sel.value === "__nuovo") {
-      var nome = window.prompt("Nome del nuovo progetto (es. Football Show 01/09):");
-      if (!nome || !nome.trim()) { ricostruisci(); return; }
-      fetch(ponte, {
-        method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ token: token, tipo: "progetto-crea", nome: nome.trim() })
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          if (!j.ok) { window.alert("Non sono riuscito a creare il progetto: " + (j.errore || "")); ricostruisci(); return; }
-          progetti.unshift({ id: j.id, nome: j.nome, quante: 0 });
-          ricostruisci();
-          sel.value = "p:" + j.id;
-          try { localStorage.setItem(LS, sel.value); } catch (e) {}
-        })
-        .catch(function () { window.alert("Ponte non raggiungibile."); ricostruisci(); });
-      return;
-    }
+    if (sel.value === "__nuovo") { nuovo(); return; }
     try { localStorage.setItem(LS, sel.value); } catch (e) {}
+  }
+
+  // NUOVO PROGETTO: chiede il nome, lo crea e lo sceglie. Restituisce la voce
+  // del menu' ("p:<id>") o null se non si e' fatto. La usano anche i pannelli
+  // che hanno un menu' loro (Invia in regia dell'Editing, 01/10/2026).
+  function nuovo() {
+    var nome = window.prompt("Nome del nuovo progetto (es. Football Show 01/09):");
+    if (!nome || !nome.trim()) { ricostruisci(); return Promise.resolve(null); }
+    return fetch(ponte, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: token, tipo: "progetto-crea", nome: nome.trim() })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) { window.alert("Non sono riuscito a creare il progetto: " + (j.errore || "")); ricostruisci(); return null; }
+        progetti.unshift({ id: j.id, nome: j.nome, quante: 0 });
+        ricostruisci();
+        sel.value = "p:" + j.id;
+        try { localStorage.setItem(LS, sel.value); } catch (e) {}
+        return sel.value;
+      })
+      .catch(function () { window.alert("Ponte non raggiungibile."); ricostruisci(); return null; });
   }
 
   function adotta(s, po, tk) {
@@ -166,5 +171,5 @@ window.Destinazione = (function () {
     return d.tipo === "progetto" ? 'progetto "' + d.nome + '"' : nomeCanale(d.c);
   }
 
-  return { adotta: adotta, corrente: corrente, corpo: corpo, dove: dove, ricarica: carica };
+  return { adotta: adotta, corrente: corrente, corpo: corpo, dove: dove, ricarica: carica, nuovo: nuovo };
 })();
