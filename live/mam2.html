@@ -4017,7 +4017,7 @@
   // da 4 s prima a 6 s dopo, muta, e ricomincia. Senza aprire niente. Le clip
   // del Como 1907 (camere 4K che il browser non legge) scorrono sul loro
   // provino: 6 fotogrammi lungo la clip, seguendo il mouse.
-  var ANT = { card: null, timer: 0, video: null };
+  var ANT = { card: null, timer: 0, video: null, audio: null };
   // IL FILE GIUSTO PER QUEL SECONDO (01/10/2026). Una partita in due file
   // (primo e secondo tempo) ha un pezzo per tempo: l'anteprima di un'azione
   // del secondo tempo apriva sempre il primo file, oltre la sua fine, e non si
@@ -4041,6 +4041,7 @@
   function fermaAnteprima(){
     clearTimeout(ANT.timer);
     if (ANT.video) { try { ANT.video.pause(); ANT.video.removeAttribute("src"); ANT.video.load(); } catch (e) {} ANT.video.remove(); ANT.video = null; }
+    if (ANT.audio) { try { ANT.audio.pause(); ANT.audio.removeAttribute("src"); ANT.audio.load(); } catch (e) {} ANT.audio = null; }
     if (ANT.card) {
       ANT.card.classList.remove("ant-su", "ant-attesa", "grande"); if (ANT.card.classList.contains("minil")) ANT.card.style.transform = "";
       [].forEach.call(ANT.card.querySelectorAll(".ant-barra,.ant-prov"), function(n){ n.remove(); });
@@ -4073,6 +4074,7 @@
         img.onload = function(){
           if (ANT.card !== card) return;
           card.classList.remove("ant-attesa"); card.classList.add("ant-su");
+          if (!ANT.audio) suonoAnteprima(card, x, da);
           var pv = document.createElement("div"); pv.className = "ant-prov"; pv.style.backgroundImage = 'url("' + u + '")';
           mini.insertBefore(pv, mini.querySelector(".sopra")); barraAnt(mini).style.width = "16.66%";
           if (ANT.ultimo) scorriProvino(card, ANT.ultimo);
@@ -4081,9 +4083,18 @@
         img.src = u;
       };
       var orig = "/como-tv/mam-1907/file/" + x.via1907.split("/").map(encodeURIComponent).join("/");
+      var da = Math.floor(+x.t || 0);
+      // LA COPIA LEGGERA ha l'audio in AAC: suona da se'. L'ORIGINALE spesso ha l'audio in PCM
+      // (camere, MXF), che il browser non suona, o non si vede affatto: il video va muto e il
+      // suono lo da' /suono, 12 s ricavati dall'originale (01/10/2026: "che si vedano e si sentano")
       fetch("/como-tv/mam-1907/copia?v=" + encodeURIComponent(x.via1907), { cache: "no-store" })
         .then(function(r){ return r.ok ? r.json() : {}; }).catch(function(){ return {}; })
-        .then(function(st){ if (ANT.card === card) videoAnteprima(card, mini, st && st.stato === "pronta" && st.via ? st.via : orig, +x.t || 0, (+x.t || 0) + 10, provino); });
+        .then(function(st){
+          if (ANT.card !== card) return;
+          var copia = st && st.stato === "pronta" && st.via;
+          if (!copia) suonoAnteprima(card, x, da);
+          videoAnteprima(card, mini, copia || orig, da, da + 10, provino, !copia);
+        });
       return;
     }
     var t = +card.dataset.t || 0;
@@ -4093,8 +4104,16 @@
   }
   // il video dell'anteprima: parte da "da" con l'audio e torna a "da" arrivato ad "a";
   // seNo() se il browser non lo sa leggere
-  function videoAnteprima(card, mini, src, da, a, seNo){
-    var v = document.createElement("video"); v.className = "ant-video"; v.muted = false; v.volume = 0.8; v.playsInline = true; v.preload = "auto";
+  // il suono a parte dell'anteprima del 1907: segue il video (o il provino) in giro
+  function suonoAnteprima(card, x, da){
+    if (ANT.audio || ANT.card !== card) return;
+    var au = new Audio(); au.preload = "auto"; au.volume = 0.8; au.loop = true;
+    au.addEventListener("canplay", function una(){ au.removeEventListener("canplay", una); if (ANT.audio === au && ANT.card === card) au.play().catch(function(){}); });
+    au.src = "/como-tv/mam-1907/suono/" + x.k1907 + ".m4a?v=" + encodeURIComponent(x.via1907) + "&t=" + Math.floor(da || 0);
+    ANT.audio = au;
+  }
+  function videoAnteprima(card, mini, src, da, a, seNo, muto){
+    var v = document.createElement("video"); v.className = "ant-video"; v.muted = !!muto; v.volume = 0.8; v.playsInline = true; v.preload = "auto";
     var bi = barraAnt(mini), fallito = false;
     var male = function(){ if (fallito) return; fallito = true; v.remove(); if (ANT.video === v) ANT.video = null; if (seNo && ANT.card === card) seNo(); else card.classList.remove("ant-attesa"); };
     // con l'audio (Goffredo, 28/09/2026); se il browser non lo lascia partire, muto
@@ -4102,7 +4121,9 @@
     v.addEventListener("loadeddata", function(){ if (!v.videoWidth) male(); });
     v.addEventListener("playing", function(){ if (ANT.card === card) { card.classList.remove("ant-attesa"); card.classList.add("ant-su"); } });
     v.addEventListener("timeupdate", function(){
-      if (v.currentTime >= a || v.currentTime < da - 1) { try { v.currentTime = da; } catch (e) {} }
+      if (v.currentTime >= a || v.currentTime < da - 1) { try { v.currentTime = da; } catch (e) {} if (muto && ANT.audio) { try { ANT.audio.currentTime = 0; } catch (e) {} } }
+      // il suono a parte non deve scivolare via dall'immagine
+      else if (muto && ANT.audio && !ANT.audio.paused && Math.abs(ANT.audio.currentTime - (v.currentTime - da)) > 0.35) { try { ANT.audio.currentTime = Math.max(0, v.currentTime - da); } catch (e) {} }
       bi.style.width = Math.max(0, Math.min(100, (v.currentTime - da) / Math.max(0.1, a - da) * 100)).toFixed(1) + "%";
     });
     v.addEventListener("ended", function(){ try { v.currentTime = da; } catch (e) {} v.play().catch(function(){}); });
