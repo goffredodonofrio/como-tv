@@ -30,8 +30,13 @@
 const http = require("http"), https = require("https"), fs = require("fs"), path = require("path");
 const os = require("os"), cp = require("child_process");
 
-const VERSIONE = "0.3.0";
+const VERSIONE = "0.3.1";
 const WIN = process.platform === "win32", MAC = process.platform === "darwin";
+
+// Il ffmpeg del pacchetto Mac ha OpenSSL dentro e non sa dove stanno i certificati
+// del sistema: senza questo ogni lettura dal MAM finisce in "Input/output error"
+// (certificate verify failed). ffmpeg e ffprobe lo ereditano dall'ambiente.
+if (MAC && !process.env.SSL_CERT_FILE && fs.existsSync("/etc/ssl/cert.pem")) process.env.SSL_CERT_FILE = "/etc/ssl/cert.pem";
 
 // ── la configurazione: un file accanto all'utente, scritto la prima volta ──
 const CONF_FILE = process.env.COMOTV_AIUTANTE_CONF ||
