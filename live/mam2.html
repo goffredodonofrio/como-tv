@@ -2130,10 +2130,10 @@
     var testa = '<div class="an-top">' + (t.comp ? esc(t.comp) + (t.data ? ' \u00b7 ' : '') : '') + '<span class="an-data">' + esc(t.data) + '</span></div>';
     var marchio = '<img class="an-marchio" src="/loghi/como-tv-logo-2025.png?v=2" alt="Como TV">';
     var v = x.voce || {};
-    var fondo = function(){ return '<div class="an-fondo"><span class="an-tele"><i>' + (v.lingua === "AUDIO" ? "Suono" : "Telecronaca") + '</i><b>' +
-      esc(v.lingua === "AUDIO" ? "Internazionale" : (v.tele || "—")) + '</b></span>' + (v.lingua && v.lingua !== "AUDIO" ? '<span class="an-lingua">' + (v.lingua === "ENG" ? BANDIERA_UK : '') + esc(v.lingua) + '</span>' : '') + marchio + '</div>' +
+    var fondo = function(){ return '<div class="an-fondo"><span class="an-tele"><i>' + (v.lingua === "AUDIO" ? "Radiocronaca" : "Telecronaca") + '</i><b>' +
+      esc(v.lingua === "AUDIO" ? (v.tele || "Como") : (v.tele || "—")) + '</b></span>' + (v.lingua && v.lingua !== "AUDIO" ? '<span class="an-lingua">' + (v.lingua === "ENG" ? BANDIERA_UK : '') + esc(v.lingua) + '</span>' : '') + marchio + '</div>' +
       (v.lingua === "ENG" ? '<span class="an-bandiera" title="English commentary">' + BANDIERA_UK + '</span>' : '') +
-      (v.lingua === "AUDIO" ? '<span class="an-bandiera cuffie" title="Audio internazionale">\ud83c\udf99\ufe0f</span>' : ''); };
+      (v.lingua === "AUDIO" ? '<span class="an-bandiera cuffie" title="Radiocronaca italiana (AUDIO ONLY)">\ud83d\udcfb</span>' : ''); };
     // 1. LO STUDIO
     if (x.studio) {
       var st = x.studio, ora = ok && !x.senzaNome ? ("0" + dt.getHours()).slice(-2) + ":" + ("0" + dt.getMinutes()).slice(-2) : "";
@@ -2522,7 +2522,8 @@
   var ORDINE_MI = ["1-15", "16-30", "31-45", "45+", "46-60", "61-75", "76-90", "90+", "sup", "rig"];
   var ETI_SP = { pari: "In parità", vantaggio: "In vantaggio", svantaggio: "In svantaggio" }, ORDINE_SP = ["pari", "vantaggio", "svantaggio"];
   var ETI_CT = { casa: "In casa", trasferta: "In trasferta" };
-  var ETI_L = { ITA: "Commento ITA", ENG: "Commento ENG", INT: "Suono internazionale" };
+  // AUDIO ONLY e' la radiocronaca ITA del Como, non il suono internazionale (01/10/2026)
+  var ETI_L = { ITA: "Commento ITA", ENG: "Commento ENG", INT: "Suono internazionale", RADIO: "Radiocronaca ITA" };
   // la squadra di riferimento per punteggio e casa/trasferta: quella dei gettoni, se no il Como
   function squadraRif(){ var s = gettone("s")[0]; return s ? s.v : "Como"; }
   function latoDi(nomi, sq){
@@ -2546,7 +2547,7 @@
     return m <= 15 ? "1-15" : m <= 30 ? "16-30" : m <= 45 ? "31-45" : m <= 60 ? "46-60" : m <= 75 ? "61-75" : m <= 90 ? "76-90" : "90+";
   }
   function audioDi(ev, titolo){
-    var t = titolo || (ev && ev.partita) || "", l = linguaDi(t), fuori = [l === "AUDIO" ? "INT" : l];
+    var t = titolo || (ev && ev.partita) || "", l = linguaDi(t), fuori = [l === "AUDIO" ? "RADIO" : l];
     ((ev && ev.lingue) || []).forEach(function(k){ var K = String(k).toUpperCase(); if (fuori.indexOf(K) < 0) fuori.push(K); });
     return fuori;
   }
@@ -2566,6 +2567,7 @@
     ["sp", "pari", ["in parita", "pareggio"]], ["sp", "vantaggio", ["in vantaggio"]], ["sp", "svantaggio", ["in svantaggio"]],
     ["ct", "casa", ["in casa"]], ["ct", "trasferta", ["in trasferta", "fuori casa"]],
     ["l", "ENG", ["commento inglese", "inglese", "english"]], ["l", "INT", ["suono internazionale", "senza commento", "audio ambiente", "ambientale"]],
+    ["l", "RADIO", ["radiocronaca", "radiocronache", "radio", "audio only"]],
     ["cl", "si", ["materiale del club", "club"]]
   ];
   var TA_R = { "Gol": "gol", "Tiro in porta": "tiro parato", "Tiro fuori": "tiro", "Tiro respinto": "tiro", "Palo": "palo", "Rigore": "rigore sbagliato", "Giallo": "giallo", "Rosso": "rosso" };
@@ -2978,10 +2980,10 @@
   // (30/09/2026) i bollini sono <span>, non <a>: dentro la scheda, che e' gia' un link, un <a>
   // spezzava la scheda in due e meta' restava senza grafica
   function lingueRis(x, link, t){
-    var ls = x.lingue || (x.rec && LINGUE_INFO[x.rec] ? ["eng", "int"].filter(function(k){ return LINGUE_INFO[x.rec][k]; }) : []);
+    var ls = x.lingue || (x.rec && LINGUE_INFO[x.rec] ? ["eng", "int", "radio"].filter(function(k){ return LINGUE_INFO[x.rec][k]; }) : []);
     var club = +x.club || 0;
     if ((!ls || !ls.length) && !club) return "";
-    return '<span class="lingue-ris">' + (ls && ls.length ? ["ita"].concat(ls) : []).map(function(k){ return '<span role="link" tabindex="0" data-apri-lingua="' + esc(link(x, t, k === "ita" ? "" : k)) + '" title="' + ({ ita: "con il commento ITA di Como TV", eng: "con il commento inglese del club", int: "con il suono internazionale" })[k] + '">' + k.toUpperCase() + '</span>'; }).join("") +
+    return '<span class="lingue-ris">' + (ls && ls.length ? ["ita"].concat(ls) : []).map(function(k){ return '<span role="link" tabindex="0" data-apri-lingua="' + esc(link(x, t, k === "ita" ? "" : k)) + '" title="' + ({ ita: "con il commento ITA di Como TV", eng: "con il commento inglese del club", int: "con il suono internazionale (ambiente, senza commento)", radio: "con la radiocronaca italiana" })[k] + '">' + k.toUpperCase() + '</span>'; }).join("") +
       (club ? '<span role="link" tabindex="0" data-apri-lingua="' + esc(link(x, t) + "&club=1") + '" title="il materiale del club di questa giornata: HL, interviste, conferenza, camere">CLUB ' + club + '</span>' : '') + '</span>';
   }
   document.addEventListener("click", function(e){
@@ -3065,7 +3067,7 @@
   PANNELLO_APERTO = false;
   function etiValore(t, v){
     if (t === "r") return (RUOLI[v] || {}).eti || v;
-    if (t === "l") return ETI_L[v === "AUDIO" ? "INT" : v] || v;
+    if (t === "l") return ETI_L[v === "AUDIO" ? "RADIO" : v] || v;
     if (t === "te") return ETI_TE[v] || v;
     if (t === "mi") return ETI_MI[v] || v;
     if (t === "sp") return ETI_SP[v] || v;
@@ -3092,7 +3094,7 @@
       azX = x || null;
       if (cmps.length && (!ev || cmps.indexOf(compNome(ev)) < 0)) return false;
       if (sts.length && (!ev || sts.indexOf(stagioneDi(ev.quando)) < 0)) return false;
-      if (lgs.length && !audioDi(ev, titolo).some(function(v){ return lgs.indexOf(v) >= 0 || (v === "INT" && lgs.indexOf("AUDIO") >= 0); })) return false;
+      if (lgs.length && !audioDi(ev, titolo).some(function(v){ return lgs.indexOf(v) >= 0 || (v === "RADIO" && lgs.indexOf("AUDIO") >= 0); })) return false;
       if (cts.length && cts.indexOf(ctDi(ev, azX)) < 0) return false;
       if (sds.length && sds.indexOf((ev && ev.stadio) || (azX && azX.sd) || "") < 0) return false;
       if (ars.length && ars.indexOf((ev && ev.arbitro) || (azX && azX.ar) || "") < 0) return false;
@@ -4322,7 +4324,7 @@
       if (v.paused) { if (!o.au.paused) o.au.pause(); } else if (o.au.paused) o.au.play().catch(function(){});
     };
     o.metti = function(l){
-      var v = o.video(); o.l = (l === "eng" || l === "int") && o.info && o.info[l] ? l : "ita";
+      var v = o.video(); o.l = (l === "eng" || l === "int" || l === "radio") && o.info && o.info[l] ? l : "ita";
       if (o.l === "ita") { if (o.au) o.au.pause(); if (v) v.muted = false; }
       else {
         if (!o.au) { o.au = document.createElement("audio"); o.au.preload = "auto"; o.au.style.display = "none"; document.body.appendChild(o.au); }
@@ -4339,11 +4341,11 @@
     function disegna(){
       var b = el(boxId); if (!b) return;
       if (!o.info) { b.hidden = true; b.innerHTML = ""; return; }
-      var ls = ["ita"].concat(["eng", "int"].filter(function(k){ return o.info[k]; }));
+      var ls = ["ita"].concat(["eng", "int", "radio"].filter(function(k){ return o.info[k]; }));
       b.hidden = false;
-      b.innerHTML = ls.map(function(k){ return '<button type="button" data-lin="' + k + '" class="' + (o.l === k ? "on" : "") + '" title="' + ({ ita: "commento ITA di Como TV", eng: "commento inglese del club", int: "suono internazionale (senza commento)" })[k] + '">' + k.toUpperCase() + '</button>'; }).join("");
+      b.innerHTML = ls.map(function(k){ return '<button type="button" data-lin="' + k + '" class="' + (o.l === k ? "on" : "") + '" title="' + ({ ita: "commento ITA di Como TV", eng: "commento inglese del club", int: "suono internazionale (senza commento)", radio: "radiocronaca italiana" })[k] + '">' + k.toUpperCase() + '</button>'; }).join("");
     }
-    setTimeout(function(){ var b = el(boxId); if (b) b.addEventListener("click", function(e){ var x = e.target.closest("button[data-lin]"); if (!x) return; e.preventDefault(); e.stopPropagation(); o.metti(x.dataset.lin); avviso("ok", x.dataset.lin === "ita" ? "Commento ITA." : x.dataset.lin === "eng" ? "Commento ENG del club: inserendo, la clip nasce con questo audio." : "Suono internazionale: inserendo, la clip nasce con questo audio."); }); }, 0);
+    setTimeout(function(){ var b = el(boxId); if (b) b.addEventListener("click", function(e){ var x = e.target.closest("button[data-lin]"); if (!x) return; e.preventDefault(); e.stopPropagation(); o.metti(x.dataset.lin); avviso("ok", x.dataset.lin === "ita" ? "Commento ITA." : x.dataset.lin === "eng" ? "Commento ENG del club: inserendo, la clip nasce con questo audio." : x.dataset.lin === "radio" ? "Radiocronaca ITA: inserendo, la clip nasce con questo audio." : "Suono internazionale: inserendo, la clip nasce con questo audio."); }); }, 0);
     setInterval(o.giro, 250);
     return o;
   }
@@ -5203,7 +5205,9 @@
       }
       if (suSopra) hv2 += pezzoHtml; else hv += pezzoHtml;
       // l'audio legato sta sotto il suo video; se e' stato tolto, sotto c'e' silenzio
-      var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
+      // la voce principale: quella del file stesso (la ITA), poi le altre
+      var auL = AUD.filter(function(z){ return z.legato === x.id; });
+      var au = auL.filter(function(z){ return !z.lingua; })[0] || auL[0];
       var sfV = au ? (+au.sfaso || 0) : 0;
       if (au) {
         // l'audio legato sta sotto il suo video PIU' lo sfasamento; mentre si
@@ -5215,6 +5219,12 @@
         }
         var xaA = Math.max(0, X(aA)), wwA = Math.max(6, Math.min(w, X(aA + d)) - xaA);
         haT[au.traccia || "A1"] = (haT[au.traccia || "A1"] || "") + audioHtml(au, xaA, wwA, false, sfV);
+        // LE ALTRE VOCI LEGATE (01/10/2026): ENG, suono internazionale e
+        // radiocronaca della stessa partita, sulle tracce sotto, col video
+        AUD.filter(function(z){ return z.legato === x.id && z !== au; }).forEach(function(z){
+          var a2 = a + (+z.sfaso || 0), xa2 = Math.max(0, X(a2)), ww2 = Math.max(6, Math.min(w, X(a2 + d)) - xa2);
+          haT[z.traccia || "A1"] = (haT[z.traccia || "A1"] || "") + audioHtml(z, xa2, ww2, false, +z.sfaso || 0);
+        });
       }
       if (au && Math.round(sfV * ((SEQ && +SEQ.fps) || 25))) {
         // il pezzo e' gia' nella sua traccia (e' l'ultimo aggiunto): il segno va dentro di lui
@@ -5358,7 +5368,8 @@
                  '<span class="diss dx" data-diss="esce" data-ad="' + esc(au.id) + '" style="right:' + Math.max(0, esce - 4).toFixed(0) + 'px" title="dissolvenza in uscita: trascina"></span>' : "") +
       (ww > 60 && (au.gain || au.muto) ? '<span class="db">' + (au.muto ? "muto" : (au.gain > 0 ? "+" : "") + au.gain + " dB") + '</span>' : "") +
       (au.legato ? segnoSync(sfVivo !== undefined ? sfVivo : au.sfaso, au.id) : "") +
-      (au.lingua ? '<span class="ed-lingua" title="' + (au.lingua === "eng" ? "commento inglese" : "suono internazionale") + ' del club, allineato">' + au.lingua.toUpperCase() + '</span>' : "") +
+      (au.lingua ? '<span class="ed-lingua" title="' + ({ eng: "commento inglese", int: "suono internazionale", radio: "radiocronaca italiana" }[au.lingua] || au.lingua) + ' del club, allineato">' + au.lingua.toUpperCase() + '</span>'
+        : (au.lingue || []).length ? '<span class="ed-lingua" title="il nostro commento: le altre voci della partita sono sulle tracce sotto">ITA</span>' : "") +
       '</div>';
   }
   function chiediOnde(){
@@ -5564,6 +5575,7 @@
       vc("Commento ITA (Como TV)", "", function(){ linguaScelti("ita"); }),
       vc("Commento ENG", "", function(){ linguaScelti("eng"); }),
       vc("Suono internazionale (INT)", "", function(){ linguaScelti("int"); }),
+      vc("Radiocronaca ITA (RADIO)", "", function(){ linguaScelti("radio"); }),
       bt("Elimina la traccia audio", "", "eAudioTogli"),
       vc("Guadagno audio…", "G", chiediGain),
       vc("Applica dissolvenza in entrata…", "", function(){ chiediDissolvenza("entra"); }),
@@ -5886,8 +5898,7 @@
       if (traccaBloccata(tr) || !prende(a0, b0)) return;
       if (sola && sola !== tr) {
         // Shift su una traccia audio: il video il cui audio legato sta li'
-        var au = AUD.filter(function(z){ return z.legato === x.id; })[0];
-        if (!(au && (au.traccia || "A1") === sola)) return;
+        if (!AUD.some(function(z){ return z.legato === x.id && (z.traccia || "A1") === sola; })) return;
       }
       pz.push(x.id);
     });
@@ -6276,7 +6287,7 @@
     // nell'export. E mute, solo, guadagno, punti e dissolvenze valevano solo
     // li'. Ora: il video suona se il suo audio e' al suo posto; ogni altro
     // audio che cade sotto la testina lo suona un secondo lettore.
-    var auOra = AUD.filter(function(z){ return z.legato === x.id; })[0];
+    var auOra = AUD.filter(function(z){ return z.legato === x.id && !z.lin; })[0] || AUD.filter(function(z){ return z.legato === x.id; })[0];
     var alSuoPosto = !VUOTO && auOra && !auOra.lin && Math.abs((auOra.t0 || 0) - (x.t0 || 0)) < 0.05 && Math.abs(auOra.dentro - x.dentro) < 0.05;
     var daVE = alSuoPosto && !auOra.muto && tracciaSuona(auOra.traccia) ? auOra : null;
     VE.muted = !daVE;
@@ -7137,7 +7148,7 @@
     passo.then(function(){
       if (ultima) ricaricaSeq(ultima);
       ONDE_CHIESTE = 0; chiediOnde();
-      var nome = { ita: "commento ITA", eng: "commento ENG", int: "suono internazionale" }[l];
+      var nome = { ita: "commento ITA", eng: "commento ENG", int: "suono internazionale", radio: "radiocronaca ITA" }[l];
       if (!fatti && errori.length) return avviso("err", esc(errori[0]));
       avviso("ok", fatti + (fatti === 1 ? " clip" : " clip") + " col " + nome + (errori.length ? " (non riuscite " + errori.length + ": " + esc(errori[0]) + ")" : "") + ".");
     });
