@@ -5904,6 +5904,7 @@
   }
   function statoAiut(){
     cercaAiutante().then(function(){
+      if (!AIUT && AIUT_PERM === "denied") return dialogoAiut("Aiutante: bloccato dal browser", permessoNegatoHtml());
       if (!AIUT) return dialogoAiut("Aiutante: non trovato", '<p>Su questo computer l\u2019aiutante non risponde. Installalo da <b>Aiutante \u203a Installa per Mac</b> o <b>per Windows</b>: gli export e gli invii in regia diventano molto pi\u00f9 veloci.</p>');
       dialogoAiut("Aiutante: acceso", '<p><b>' + esc(AIUT.computer || "") + '</b> \u00b7 ' + esc(AIUT.sistema || "") + ' \u00b7 versione ' + esc(AIUT.versione || "") + '</p>' +
         '<p>Codifica: <b>' + esc(AIUT.codificatore || "") + '</b>' + (/libx264/.test(AIUT.codificatore || "") ? " (senza scheda video: pi\u00f9 lento, ma pi\u00f9 veloce del MAM)" : " (scheda video)") + '</p>' +
@@ -5919,7 +5920,7 @@
     { capo: "Export e regia sul tuo computer" },
     { e: "Stato\u2026", t: "", per: ovunque(statoAiut) },
     { e: "Usa l\u2019aiutante (acceso / spento)", t: "", per: ovunque(function(){ var ora = !aiutVuole(); try { localStorage.setItem("mam2-aiutante-usa", ora ? "1" : "0"); } catch (e) {} disegnaAiut(); avviso("ok", ora ? "Export e invii in regia: li fa questo computer (se l\u2019aiutante \u00e8 acceso)." : "Export e invii in regia: li fa il MAM."); }) },
-    { e: "Controlla di nuovo", t: "", per: ovunque(function(){ cercaAiutante().then(function(){ avviso(AIUT ? "ok" : "warn", AIUT ? "Aiutante acceso su " + esc(AIUT.computer || "") + "." : "Aiutante non trovato su questo computer."); if (AIUT) giroAiut(true); }); }) },
+    { e: "Controlla di nuovo", t: "", per: ovunque(function(){ cercaAiutante().then(function(){ avviso(AIUT ? "ok" : "warn", AIUT ? "Aiutante acceso su " + esc(AIUT.computer || "") + "." : AIUT_PERM === "denied" ? "Il browser blocca l\u2019aiutante: Aiutante \u203a Stato\u2026 dice come sbloccarlo." : "Aiutante non trovato su questo computer."); if (AIUT) giroAiut(true); }); }) },
     { riga: 1 },
     { capo: "Installa" },
     { e: "Installa per Mac\u2026", t: "", per: ovunque(function(){ installaAiut("mac"); }) },
@@ -9249,13 +9250,41 @@
   var AIUT_PORTA = (function(){ try { return +localStorage.getItem("mam2-aiutante-porta") || 47800; } catch (e) { return 47800; } })();
   function aiutUrl(p){ return "http://127.0.0.1:" + AIUT_PORTA + p; }
   function aiutVuole(){ try { return localStorage.getItem("mam2-aiutante-usa") !== "0"; } catch (e) { return true; } }
-  function aiutChiedi(p, corpo){
-    var ctl = window.AbortController ? new AbortController() : null, t = ctl ? setTimeout(function(){ ctl.abort(); }, corpo ? 8000 : 1500) : 0;
+  function aiutChiedi(p, corpo, attesa){
+    var ctl = window.AbortController ? new AbortController() : null, t = ctl ? setTimeout(function(){ ctl.abort(); }, attesa || (corpo ? 8000 : 1500)) : 0;
     return fetch(aiutUrl(p), corpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), signal: ctl && ctl.signal } : { signal: ctl && ctl.signal })
       .then(function(r){ clearTimeout(t); return r.json(); }).then(function(j){ if (!j || j.ok === false) throw new Error((j && j.errore) || "l’aiutante non risponde"); return j; });
   }
+  // Firefox (157+) e Chrome chiedono il permesso prima che una pagina del sito
+  // parli con un programma sul computer ("accesso ai dispositivi locali"): finche'
+  // la domanda e' aperta la richiesta resta sospesa. Prima la pagina si arrendeva
+  // dopo 1,5 s e riprovava dopo un minuto: l'aiutante sembrava non partire. Ora
+  // la prima ricerca aspetta la risposta (fino a 5 minuti) e appena si consente
+  // l'aiutante si accende; con il permesso negato la pagina spiega come ridarlo.
+  var AIUT_CERCA = null, AIUT_PERM = "", AIUT_PRIMA = true;
+  function permessoLocale(){
+    if (!navigator.permissions || !navigator.permissions.query) return Promise.resolve("");
+    var nomi = ["loopback-network", "local-network-access"], i = 0;
+    function prova(){ if (i >= nomi.length) return Promise.resolve(""); var n = nomi[i++];
+      return navigator.permissions.query({ name: n }).then(function(st){ return st.state; }, prova); }
+    return prova();
+  }
   function cercaAiutante(){
-    return aiutChiedi("/salute").then(function(j){ AIUT = j; }).catch(function(){ AIUT = null; }).then(function(){ disegnaAiut(); return AIUT; });
+    if (AIUT_CERCA) return AIUT_CERCA;
+    var lunga = AIUT_PRIMA; AIUT_PRIMA = false;
+    AIUT_CERCA = permessoLocale().then(function(st){
+      AIUT_PERM = st;
+      if (st === "denied") throw new Error("permesso negato");
+      var chiede = st === "prompt" ? setTimeout(function(){ if (!AIUT) avviso("warn", "Il browser chiede se questa pagina pu\u00f2 usare <b>l\u2019aiutante su questo computer</b>: rispondi <b>Consenti</b> (e spunta <i>ricorda</i>), cos\u00ec export e invii in regia li fa lui."); }, 2500) : 0;
+      return aiutChiedi("/salute", null, lunga || st === "prompt" ? 300000 : 1500).then(function(j){ clearTimeout(chiede); return j; }, function(e){ clearTimeout(chiede); throw e; });
+    }).then(function(j){ AIUT = j; }).catch(function(){ AIUT = null; }).then(function(){ AIUT_CERCA = null; disegnaAiut(); return AIUT; });
+    return AIUT_CERCA;
+  }
+  function permessoNegatoHtml(){
+    var ff = /Firefox\//.test(navigator.userAgent);
+    return '<p><b>Il browser blocca l\u2019aiutante</b>: per questo sito \u00e8 negato l\u2019accesso ad app e servizi su questo dispositivo.</p>' +
+      '<p>Per ridarlo: clicca il ' + (ff ? 'simbolo a sinistra dell\u2019indirizzo (lucchetto o permessi)' : 'simbolo a sinistra dell\u2019indirizzo \u203a <b>Impostazioni sito</b>') +
+      ', alla voce <b>' + (ff ? 'Accedere ad app e servizi su questo dispositivo' : 'Accesso alla rete locale / app su questo dispositivo') + '</b> scegli <b>Consenti</b>, poi ricarica la pagina.</p>';
   }
   function disegnaAiut(){
     Array.prototype.forEach.call(document.querySelectorAll(".aiut-inst"), function(a){ a.hidden = !!AIUT; a.href = BASE + "/aiutante/pacchetto/ComoTV-Aiutante.zip"; });
@@ -9309,7 +9338,10 @@
     b.disabled = true;
     aiutChiedi("/annulla", { id: b.dataset.annullaaiut }).then(function(){ avviso("ok", "Export sul computer annullato."); giroAiut(true); }).catch(function(er){ b.disabled = false; avviso("err", esc(er.message)); });
   });
-  { cercaAiutante().then(function(){ if (AIUT) giroAiut(true); }); setInterval(function(){ var c = !!AIUT; cercaAiutante().then(function(){ if (AIUT && !c) giroAiut(true); }); }, 60000); }
+  { cercaAiutante().then(function(){ if (AIUT) giroAiut(true); });
+    var riCerca = function(){ var c = !!AIUT; cercaAiutante().then(function(){ if (AIUT && !c) giroAiut(true); }); };
+    setInterval(riCerca, 60000);
+    window.addEventListener("focus", function(){ if (!AIUT && AIUT_PERM !== "denied") riCerca(); }); }
 
   // ── INVII IN REGIA (01/10/2026): tutti quelli in corso e quelli appena
   // fatti, in basso a sinistra in ogni schermata, con la fase e l'Annulla
