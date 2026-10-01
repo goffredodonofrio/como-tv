@@ -34,7 +34,7 @@ VIAddVersionKey "LegalCopyright" "Como TV"
 !insertmacro MUI_LANGUAGE "Italian"
 
 Function .onInit
-  MessageBox MB_YESNO|MB_ICONQUESTION "Installare l$\'Aiutante MAM Como TV su questo computer?" IDYES +2
+  MessageBox MB_YESNO|MB_ICONQUESTION "Installare l$\'Aiutante MAM Como TV su questo computer?" /SD IDYES IDYES +2
   Abort
 FunctionEnd
 
