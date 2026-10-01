@@ -2411,7 +2411,12 @@ function panMono(canali, coppia) {
   const k = Math.max(0, Math.min(Math.floor((n - 1) / 2), parseInt(coppia || 0, 10) || 0));
   return "pan=mono|c0=c" + Math.min(n - 1, 2 * k);
 }
-function quantiCanali(r) { return Math.max(1, +((r && r.canali) || 2)); }
+function quantiCanali(r) {
+  if (r && r.canali) return Math.max(1, +r.canali);
+  // non ancora chiesto a ffprobe: lo dice il censimento delle piste (01/10/2026)
+  try { const pz = r && r.arch ? pezziArch(r)[0] : null, t = pz && tracceAudioDi(pz.chiave); if (t && t.a[0] && t.a[0][0]) return t.a[0][0]; } catch (e) {}
+  return 2;
+}
 // si chiede una volta sola, e resta scritto sulla registrazione
 async function assicuraCanali(r) {
   if (!r || r.canali) return quantiCanali(r);
@@ -3484,7 +3489,9 @@ function toccataAMano(q) {
 // "G" e' la traccia delle grafiche e dei titoli, cioe' la V3 di Premiere;
 // "C" quella dei sottotitoli. Hanno l'occhio e il lucchetto come le altre.
 const TRACCE_V = ["V1", "V2", "G", "C"];
-const TRACCE_A = ["A1", "A2", "A3", "A4"];
+// sei, come una partita a sei canali con le sue voci accanto (01/10/2026): programma,
+// ENG, suono internazionale, radiocronaca, ambiente e commento del file
+const TRACCE_A = ["A1", "A2", "A3", "A4", "A5", "A6"];
 
 function tracceDi(q) {
   q.tracce = q.tracce || {};
@@ -3519,12 +3526,46 @@ function altreVoci(q, x) {
   if (!x || x.media || x.animata) return [];
   const prova = audioDaPezzo(x);
   const rec = recItaDi(q, prova);
-  if (!rec) return [];
-  return lingueDi(rec).filter((l) => tempoInLingua(rec, l, x.dentro) !== null).map((l) => {
-    const a = audioDaPezzo(x, { eng: "A2", int: "A3", radio: "A4" }[l]);
-    a.id = nuovoId("a"); a.lingua = l; a.muto = true;
-    return a;
-  });
+  const fuori = [];
+  const libere = TRACCE_A.slice(1);
+  const metti = (o, nome) => {
+    const n = libere.shift(); if (!n) return;
+    fuori.push(Object.assign(audioDaPezzo(x, n), { id: nuovoId("a"), muto: true }, o, nome ? { titolo: (x.titolo || "") + " · " + nome } : {}));
+  };
+  // le versioni allineate: ENG, suono internazionale, radiocronaca
+  if (rec) lingueDi(rec).filter((l) => tempoInLingua(rec, l, x.dentro) !== null).forEach((l) => metti({ lingua: l }));
+  // LE PISTE E I CANALI DENTRO LO STESSO FILE (censimento del 01/10/2026,
+  // audio-tracce.json). Le partite registrate a sei canali (282 file) hanno
+  // tre coppie diverse: 1-2 il programma, 3-4 l'ambiente senza commento, 5-6
+  // il commento da solo (o niente). Goffredo: "quando le apro in editing
+  // separale". Entrano le coppie che hanno suono (liv, misurato), spente; una
+  // coppia con un lato solo pieno si sente da tutti e due (canale L o R).
+  // Poi le rare con piu' piste (una registrazione SRT a due piste stereo).
+  try {
+    const r = regDi(q, x), pz = r && r.arch ? pezzoAl(r, x.dentro) : null;
+    const tr = pz && pz.pezzo ? tracceAudioDi(pz.pezzo.chiave) : null;
+    if (tr && tr.a.length > 1) tr.a.slice(1).forEach((z, i) => metti({ sorg: i + 1 }, "pista " + (i + 2)));
+    else if (tr && tr.a[0] && tr.a[0][0] >= 4 && Array.isArray(tr.liv)) {
+      const n = tr.a[0][0], PIENO = -55;
+      const nomi = n === 6 ? { 1: "ambiente (canali 3-4)", 2: "commento (canali 5-6)" } : { 1: "canali 3-4" };
+      for (let k = 1; k * 2 < n; k++) {
+        const L = tr.liv[2 * k], R = tr.liv[2 * k + 1];
+        if (!(L > PIENO || R > PIENO)) continue;
+        const o = { coppia: k };
+        if (L > PIENO && !(R > PIENO)) o.canale = "L"; else if (R > PIENO && !(L > PIENO)) o.canale = "R";
+        metti(o, nomi[k] || ("canali " + (2 * k + 1) + "-" + (2 * k + 2)));
+      }
+    }
+  } catch (e) {}
+  return fuori;
+}
+// il censimento delle piste audio dei file dell'archivio, riletto se cambia
+let TRACCE_AUDIO = { mt: -1, d: {} };
+function tracceAudioDi(chiave) {
+  const f = path.join(DIR, "audio-tracce.json");
+  try { const mt = fs.statSync(f).mtimeMs; if (mt !== TRACCE_AUDIO.mt) TRACCE_AUDIO = { mt, d: JSON.parse(fs.readFileSync(f, "utf8")) || {} }; } catch (e) { return null; }
+  const v = TRACCE_AUDIO.d[chiave];
+  return v && Array.isArray(v.a) ? v : null;
 }
 
 // Una sequenza vecchia non ha ne' posizioni ne' audio: gliele si da' qui,
@@ -6055,7 +6096,8 @@ async function hlEsportaPremiere(q, percorso, volume) {
                '<trackindex>' + iTraccia(z.traccia) + '</trackindex><clipindex>' + posti["a:" + z.id] + '</clipindex></link>').join("");
     }
     // il canale diviso: L e' il primo, R il secondo
-    const sorg = a.canale === "R" ? 2 : 1;
+    // una seconda pista dello stesso file (registrazioni SRT a due piste) e' la traccia sorgente dopo
+    const sorg = (+a.sorg || 0) > 0 ? (+a.sorg) + 1 : a.canale === "R" ? 2 : 1;
     audioTr[k] += '<clipitem id="' + a.id + '"><name>' + xmlEsc(a.titolo || "audio") + '</name>' +
       '<duration>' + durF + '</duration>' + rate +
       '<start>' + start + '</start><end>' + end + '</end><in>' + inF + '</in><out>' + outF + '</out>' +

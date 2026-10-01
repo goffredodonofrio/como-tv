@@ -15,6 +15,11 @@ Fuori dal ponte, dietro nginx su 127.0.0.1:8097:
   GET /provino/<k>.jpg?v=<percorso> il provino: 6 fotogrammi lungo la clip in una striscia,
                                    per l'anteprima che scorre col mouse sulla tessera
   GET /copia?v=<percorso>          stato della copia leggera; se non c'e', la mette in coda
+  GET /suono/<k>.m4a?v=<percorso>&t=<s> il suono dell'anteprima: 12 s di audio (AAC stereo) da t.
+                                   Molti originali hanno l'audio in PCM, che il browser non suona,
+                                   e i 10 bit/ProRes non si vedono: l'immagine la da' la copia o il
+                                   provino, il suono questo. Solo audio: si legge, non si decodifica
+                                   l'immagine, quindi costa pochi secondi anche su un 4K
   GET /code                        cosa c'e' in coda
   POST /premiere {nome, vie, radice} l'XML per Premiere (xmeml 4, come il MAM di Como TV): una
                                    sequenza con i file uno dopo l'altro, collegati agli
@@ -42,6 +47,9 @@ COPIE = os.path.join(CASA, "proxy")
 VIDEO = (".mp4", ".mov", ".mxf", ".m4v", ".avi", ".mkv", ".mts", ".m2ts", ".webm")
 FOTO = (".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff")
 MINI_INSIEME = threading.BoundedSemaphore(2)
+SUONI = os.path.join(CASA, "suoni")
+SUONO_INSIEME = threading.BoundedSemaphore(3)
+SUONO_DURA = 12
 CODA, STATO, LOCK = [], {}, threading.Lock()
 
 
@@ -116,6 +124,23 @@ def fai_provino(pieno, dest):
     finally:
         for f in os.listdir(tmp): os.remove(os.path.join(tmp, f))
         os.rmdir(tmp)
+
+
+def fai_suono(pieno, t, dest):
+    """SUONO_DURA secondi di audio da t, AAC stereo. La prima pista audio: sulle camere sono
+    piste mono (MXF: una per microfono), e la prima e' quella della camera"""
+    tmp = dest + ".tmp.m4a"
+    r = subprocess.run(["nice", "-n", "10", "ffmpeg", "-v", "error", "-nostdin", "-y", "-ss", "%.2f" % t, "-t", str(SUONO_DURA), "-i", pieno,
+                        "-map", "0:a:0", "-vn", "-ac", "2", "-ar", "48000", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", tmp],
+                       capture_output=True, timeout=120)
+    if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 1000:
+        os.replace(tmp, dest); return True
+    try: os.remove(tmp)
+    except OSError: pass
+    # muta per davvero solo se il file non ha audio: un intoppo della NAS si riprova
+    if b"matches no streams" in (r.stderr or b"") or b"does not contain any stream" in (r.stderr or b""):
+        open(dest + ".muto", "w").close()
+    return False
 
 
 def lavora():
@@ -1612,6 +1637,22 @@ class H(BaseHTTPRequestHandler):
                         return self.rispondi(404, {"ok": False, "errore": "provino non riuscito"})
             with open(dest, "rb") as f:
                 return self.rispondi(200, f.read(), "image/jpeg", {"Cache-Control": "public, max-age=2592000"})
+        if u.path.startswith("/suono/"):
+            k = u.path[7:].replace(".m4a", "")
+            v, pieno = dentro((q.get("v") or [""])[0])
+            if not v or chiave(v) != k or not v.lower().endswith(VIDEO): return self.rispondi(404, {"ok": False})
+            try: t = max(0.0, min(86400.0, float((q.get("t") or ["0"])[0])))
+            except ValueError: t = 0.0
+            os.makedirs(SUONI, exist_ok=True)
+            dest = os.path.join(SUONI, "%s-%d.m4a" % (k, int(t)))
+            muto = dest + ".muto"
+            if os.path.exists(muto): return self.rispondi(404, {"ok": False, "errore": "senza audio"})
+            if not os.path.exists(dest):
+                with SUONO_INSIEME:
+                    if not os.path.exists(dest) and not fai_suono(pieno, int(t), dest):
+                        return self.rispondi(404, {"ok": False, "errore": "senza audio"})
+            with open(dest, "rb") as f:
+                return self.rispondi(200, f.read(), "audio/mp4", {"Cache-Control": "public, max-age=2592000"})
         if u.path == "/copia":
             v, pieno = dentro((q.get("v") or [""])[0])
             if not v or not v.lower().endswith(VIDEO): return self.rispondi(400, {"ok": False, "errore": "non e' un video"})
