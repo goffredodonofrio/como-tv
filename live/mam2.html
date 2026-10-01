@@ -727,6 +727,7 @@
   .pan-regia .rac-testa{border:0;background:none;padding:0;margin:0;}
   .pan-regia #ptRac:empty,.pan-regia #ptRegia:empty{display:none;}
   .pan-regia #ptRegia{display:flex;flex-direction:column;gap:12px;}
+  .aiut-nota{font-size:12.5px;color:var(--fumo);margin-top:8px;} .aiut-nota.on{color:#7fd6a0;} .aiut-nota a{color:#E3C271;text-decoration:underline;}
   .pan-regia.con-rac #ptRegia:not(:empty){border-top:1px solid rgba(201,162,75,.28);padding-top:12px;}
   .pan-regia .svuota{background:transparent;border:1px solid var(--riga2);color:var(--ivory2);} .pan-regia .svuota:hover{color:var(--oro2);border-color:var(--oro);}
   .pan-regia .regia{background:#4FA3E8;border:1px solid #4FA3E8;color:#0A0F24;} .pan-regia .regia:hover{background:#74B9F0;border-color:#74B9F0;}
@@ -3495,13 +3496,13 @@
       if (pr.querySelector(".form-r")) return;       // gia' aperto: non si cancella quello che si sta scrivendo
       var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
       var titoloR = (RACCOLTA ? RACCOLTA.nome : [gettone("g")[0] ? gettone("g")[0].eti : "", Q].filter(Boolean).join(" · ")) || "Azioni";
-      var partiteR = new Set(Array.from(SCELTE_RIC.values()).map(function(x){ return x.rec; })).size;
-      pr.innerHTML = '<div class="pr-testa"><b>&#128225; Invia alla regia</b><span>' + n + (n === 1 ? " azione" : " azioni") + (partiteR > 1 ? ' <em>da ' + partiteR + ' partite</em>' : '') + ' · un filmato grezzo, 8 s prima e 10 dopo ogni azione</span></div>' +
+      var partiteR = new Set(Array.from(SCELTE_RIC.values()).map(function(x){ return x.rec; })).size, sceltoR = doveRegia(opz, dest);
+      pr.innerHTML = '<div class="pr-testa"><b>&#128225; Regia o progetto</b><span>' + n + (n === 1 ? " azione" : " azioni") + (partiteR > 1 ? ' <em>da ' + partiteR + ' partite</em>' : '') + ' · un filmato grezzo, 8 s prima e 10 dopo ogni azione</span></div>' +
         '<div class="form-r">' +
         '<div class="campo-r"><label for="regiaTitolo">Nome in scaletta</label><input id="regiaTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(titoloR.toUpperCase()) + '"></div>' +
-        '<div class="campo-r"><label for="regiaDove">Seleziona vMix o progetto</label><select id="regiaDove">' + opzioniRegia(dest ? dest.value : "") + '</select></div>' +
+        '<div class="campo-r"><label for="regiaDove">Seleziona vMix o progetto</label><select id="regiaDove">' + opzioniRegia(sceltoR) + '</select></div>' +
         '<label class="spunta" title="le clip hanno la telecronaca incisa: di solito in regia vanno senza"><input type="checkbox" id="regiaAudio"> Con telecronaca</label>' +
-        '<button type="button" class="regia" data-fa="inviaRegia">&#128225; Invia alla regia</button><button type="button" class="svuota" data-fa="annullaRegia">Annulla</button></div>';
+        '<button type="button" class="regia" data-fa="inviaRegia">' + etiInvio(sceltoR) + '</button><button type="button" class="svuota" data-fa="annullaRegia">Annulla</button></div>' + notaAiut();
       setTimeout(function(){ var t = el("regiaTitolo"); if (t) t.focus({ preventScroll: true }); box.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 0);
       return;
     }
@@ -3512,7 +3513,7 @@
       return;
     }
     b.innerHTML = conta + '<button type="button" class="monta" data-fa="monta">Monta questi</button>' +
-      (window.Destinazione ? '<button type="button" class="regia" data-fa="regia" title="un filmato grezzo con queste azioni, in scaletta su un vMix come le grafiche">&#128225; Invia alla regia</button>' : '') +
+      (window.Destinazione ? '<button type="button" class="regia" data-fa="regia" title="un filmato grezzo con queste azioni: in scaletta su un vMix, o dentro un progetto (anche nuovo)">&#128225; Regia o progetto</button>' : '') +
       '<button type="button" class="salva" data-fa="salva" title="mettile da parte con un nome: le ritrovi nella Libreria">Salva in raccolta</button>' +
       (RACCOLTA ? '<button type="button" class="svuota" data-fa="togli">Togli dalla raccolta</button>' : '') +
       '<button type="button" class="svuota" data-fa="svuota">Svuota</button>';
@@ -3571,7 +3572,7 @@
         '<div class="rc-corpo"><b data-rcf="apri">' + esc(r.nome) + '</b>' +
         '<div class="rc-num"><span><i>' + r.partite + '</i> ' + (r.partite === 1 ? "partita" : "partite") + '</span>' + (r.gol ? '<span><i>' + r.gol + '</i> gol</span>' : '') + '</div>' +
         '<small>aggiornata ' + quando(r.aggiornata) + (r.chi ? ' · ' + esc(r.chi) : '') + '</small>' +
-        '<div class="rc-azioni">' + (window.Destinazione ? '<button type="button" class="regia" data-rcf="regia">&#128225; Invia alla regia</button>' : '') +
+        '<div class="rc-azioni">' + (window.Destinazione ? '<button type="button" class="regia" data-rcf="regia" title="tutta la raccolta: su un vMix o dentro un progetto">&#128225; Regia o progetto</button>' : '') +
         '<button type="button" data-rcf="rinomina">Rinomina</button><button type="button" data-rcf="cancella">Cancella</button></div></div></article>';
     }).join("");
     // le copertine: il fotogramma della prima azione
@@ -3608,7 +3609,7 @@
   function testaRaccolta(inRegia){
     var r = RACCOLTA, part = new Set(r.azioni.map(function(x){ return x.rec || x.partita; })).size;
     return '<div class="rac-testa"><span class="rc-eti">Raccolta</span><h2>' + esc(r.nome) + '</h2><small>' + r.azioni.length + (r.azioni.length === 1 ? " azione" : " azioni") + ' · ' + part + (part === 1 ? " partita" : " partite") + ' · aggiornata ' + quando(r.aggiornata) + '</small>' +
-      '<span class="rc-az">' + (window.Destinazione && !inRegia ? '<button type="button" class="b mini regia" data-rc="regia" title="tutta la raccolta come un filmato grezzo, in scaletta su un vMix">&#128225; Invia alla regia</button>' : '') + '<button type="button" class="b mini" data-rc="rinomina">Rinomina</button><button type="button" class="b mini" data-rc="cancella">Cancella</button><button type="button" class="b mini" data-rc="esci">Chiudi</button></span></div>';
+      '<span class="rc-az">' + (window.Destinazione && !inRegia ? '<button type="button" class="b mini regia" data-rc="regia" title="tutta la raccolta come un filmato grezzo: su un vMix o dentro un progetto">&#128225; Regia o progetto</button>' : '') + '<button type="button" class="b mini" data-rc="rinomina">Rinomina</button><button type="button" class="b mini" data-rc="cancella">Cancella</button><button type="button" class="b mini" data-rc="esci">Chiudi</button></span></div>';
   }
   function azioneRaccolta(cosa){
     (function(){
@@ -3655,6 +3656,7 @@
     var dove = el("regiaDove").value, conAudio = el("regiaAudio").checked;
     if (el("lCanale") && dove) { el("lCanale").value = dove; try { el("lCanale").dispatchEvent(new Event("change")); } catch (e) {} }
     if (dove === "__nuovo") return avviso("err", "Scegli dove mandarlo.");
+    ricordaDoveRegia(dove);
     REGIA_APERTO = false; REGIA_LAVORO = null; disegnaBarraScelte();
     var fallito = function(er){ REGIA_LAVORO = null; disegnaBarraScelte(); avviso("err", "Alla regia non è andato: " + esc(er.message)); };
     var corpoR = { titolo: titolo, dest: Destinazione.corrente(), muto: !conAudio, origine: location.origin + BASE,
@@ -9373,7 +9375,7 @@
       vis.map(function(x){
         var loc = AIUT_LAV.filter(function(L){ return L.invio === x.id; })[0];
         var q = loc && x.stato === "lavora" ? (loc.avanza || 0) : x.export ? avanzaExport(x.export) : (x.tot ? Math.min(0.95, (x.fatti || 0) / x.tot) : (x.stato === "invio" ? 0.97 : 0));
-        var st = x.stato === "fatto" ? "in scaletta \u2713" : x.stato === "errore" ? "non riuscito: " + (x.errore || "") : x.stato === "annullato" ? "annullato" : (loc && x.stato === "lavora" ? "sul computer \u00b7 " + (loc.fase || "") : (x.fase || "in preparazione"));
+        var st = x.stato === "fatto" ? (/^progetto/.test(x.dove || "") ? "nel progetto \u2713" : "in scaletta \u2713") : x.stato === "errore" ? "non riuscito: " + (x.errore || "") : x.stato === "annullato" ? "annullato" : (loc && x.stato === "lavora" ? "sul computer \u00b7 " + (loc.fase || "") : (x.fase || "in preparazione"));
         return '<div class="ir-riga ' + esc(x.stato) + '"><div class="ir-t"><b>' + esc(x.titolo) + '</b><span>' + esc(x.dove) + '</span></div>' +
           '<div class="ir-st">' + esc(st) + (x.stato === "lavora" && q > 0 ? " \u00b7 " + Math.round(q * 100) + "%" : "") + '</div>' +
           (x.stato === "lavora" ? '<div class="ir-barra"><i style="width:' + Math.max(3, q * 100).toFixed(1) + '%"></i></div><button type="button" class="b mini" data-annullainv="' + esc(x.id) + '">Annulla</button>' : '') + '</div>';
@@ -9382,18 +9384,32 @@
   if (!AMBITO) setTimeout(function(){ giroInvii(false); }, 2500);
   function opzioniRegia(scelto){
     var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
-    return opz.map(function(o){ return '<option value="' + esc(o.value) + '"' + (o.value === scelto ? " selected" : "") + '>' + esc(o.textContent) + '</option>'; }).join("") +
-      (window.Destinazione && Destinazione.nuovo ? '<option value="__nuovo">➕ Nuovo progetto…</option>' : "");
+    // "Nuovo progetto…" in testa ai progetti, subito sotto i vMix: in fondo a
+    // trenta progetti non lo trovava nessuno (01/10/2026)
+    var nuovo = window.Destinazione && Destinazione.nuovo ? '<option value="__nuovo">➕ Nuovo progetto…</option>' : "", messo = false;
+    return opz.map(function(o){ var h = '<option value="' + esc(o.value) + '"' + (o.value === scelto ? " selected" : "") + '>' + esc(o.textContent) + '</option>';
+      if (!messo && /^p:/.test(o.value)) { messo = true; h = nuovo + h; } return h; }).join("") + (messo ? "" : nuovo);
   }
+  // il tasto dice dove va: in scaletta su un vMix, o dentro un progetto
+  function etiInvio(v, prepara){ return /^p:/.test(v || "") ? "&#128193; " + (prepara ? "Prepara e metti nel progetto" : "Metti nel progetto") : "&#128225; " + (prepara ? "Prepara e invia" : "Invia alla regia"); }
+  function tastoInvio(s){ var b = s.closest("#pannelloRegia, #regiaEsp"); b = b && b.querySelector("[data-fa=inviaRegia], [data-fa=manda], [data-fa=mandaEd]"); if (b) b.innerHTML = etiInvio(s.value, b.dataset.fa === "mandaEd"); }
+  // chi lo prepara: l'aiutante di questo computer, se c'e' e si usa; se no il MAM
+  function notaAiut(){
+    if (aiutUsabile()) return '<div class="aiut-nota on">&#9889; Lo prepara questo computer: l\u2019aiutante \u00e8 acceso' + (AIUT.computer ? ' su <b>' + esc(AIUT.computer) + '</b>' : '') + '.</div>';
+    if (AIUT) return '<div class="aiut-nota">Lo prepara il MAM: l\u2019aiutante c\u2019\u00e8 ma \u00e8 spento (Aiutante \u203a Usa l\u2019aiutante).</div>';
+    return '<div class="aiut-nota">Lo prepara il MAM. Con l\u2019<b>aiutante</b> lo fa questo computer, molto pi\u00f9 in fretta: <a href="#" data-aiutstato="1">come averlo</a>.</div>';
+  }
+  document.addEventListener("click", function(e){ var a = e.target.closest && e.target.closest("[data-aiutstato]"); if (!a) return; e.preventDefault(); statoAiut(); });
   document.addEventListener("focusin", function(e){ var s = e.target; if (s && (s.id === "regiaDove" || s.id === "regiaEspDove") && s.value !== "__nuovo") s.dataset.prima = s.value; });
   document.addEventListener("change", function(e){
     var s = e.target; if (!s || (s.id !== "regiaDove" && s.id !== "regiaEspDove")) return;
-    if (s.value !== "__nuovo") { s.dataset.prima = s.value; return; }
+    if (s.value !== "__nuovo") { s.dataset.prima = s.value; tastoInvio(s); return; }
     var prima = s.dataset.prima || "";
     Destinazione.nuovo().then(function(v){
       // il nuovo progetto sta gia' nel menu' delle grafiche: lo si rilegge da li'
       s.innerHTML = opzioniRegia(v || prima);
       if (v) { s.value = v; s.dataset.prima = v; ricordaDoveRegia(v); avviso("ok", "Progetto creato: ci va questo invio."); }
+      tastoInvio(s);
     });
   });
   function apriRegiaEsp(b){
@@ -9406,7 +9422,7 @@
       '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String((SEQ && SEQ.titolo) || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
       '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opzioniRegia(sceltoDove) + '</select></div>' +
       '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
-      '<button type="button" class="manda" data-fa="manda">&#128225; Invia alla regia</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
+      '<button type="button" class="manda" data-fa="manda">' + etiInvio(sceltoDove) + '</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
     p.hidden = false;
     setTimeout(function(){ var t = el("regiaEspTitolo"); if (t) { t.focus(); t.select(); } }, 0);
   }
@@ -9442,7 +9458,7 @@
       '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String(q.titolo || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
       '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opzioniRegia(sceltoDove) + '</select></div>' +
       '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
-      '<button type="button" class="manda" data-fa="mandaEd">&#128225; Prepara e invia</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>';
+      '<button type="button" class="manda" data-fa="mandaEd">' + etiInvio(sceltoDove, true) + '</button><button type="button" class="annulla" data-fa="annulla">Annulla</button></div>' + notaAiut();
     p.hidden = false;
     setTimeout(function(){ var t = el("regiaEspTitolo"); if (t) { t.focus(); t.select(); } }, 0);
   }
