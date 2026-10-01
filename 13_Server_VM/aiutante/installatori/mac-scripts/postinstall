@@ -1,0 +1,33 @@
+#!/bin/bash
+# AIUTANTE MAM COMO TV — dopo l'installazione del .pkg (gira come root): lo accende
+# per chi e' collegato al Mac e lo fa ripartire a ogni accensione (LaunchAgent).
+DEST="/Library/Application Support/ComoTV Aiutante"
+chown -R root:wheel "$DEST" 2>/dev/null
+chmod 755 "$DEST/node" "$DEST/ffmpeg" "$DEST/ffprobe" 2>/dev/null
+xattr -dr com.apple.quarantine "$DEST" 2>/dev/null
+U=$(stat -f%Su /dev/console)
+[ -z "$U" ] || [ "$U" = "root" ] && exit 0
+UID_=$(id -u "$U")
+H=$(dscl . -read "/Users/$U" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+[ -z "$H" ] && H="/Users/$U"
+PL="$H/Library/LaunchAgents/tv.comotv.aiutante.plist"
+mkdir -p "$H/Library/LaunchAgents" "$H/Library/Logs"
+cat > "$PL" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>tv.comotv.aiutante</string>
+  <key>ProgramArguments</key><array><string>$DEST/node</string><string>$DEST/aiutante.js</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardOutPath</key><string>$H/Library/Logs/ComoTV-Aiutante.log</string>
+  <key>StandardErrorPath</key><string>$H/Library/Logs/ComoTV-Aiutante.log</string>
+</dict></plist>
+PLIST
+chown "$U" "$PL" "$H/Library/LaunchAgents" "$H/Library/Logs" 2>/dev/null
+# la cartella e' di chi usa il Mac: cosi' l'aiutante si aggiorna da solo
+chown -R "$U" "$DEST" 2>/dev/null
+launchctl bootout "gui/$UID_" "$PL" 2>/dev/null
+launchctl bootstrap "gui/$UID_" "$PL"
+exit 0

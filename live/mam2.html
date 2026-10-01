@@ -1228,6 +1228,15 @@
   .esp-av small{font-size:11px;color:var(--fumo);}
   #espUscite .uscita{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border:1px solid var(--riga);border-radius:7px;}
   #espUscite .uscita b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
+  #aiutDialogo{position:fixed;inset:0;z-index:90;background:rgba(5,9,20,.6);display:flex;align-items:center;justify-content:center;padding:16px;}
+  #aiutDialogo[hidden]{display:none;}
+  #aiutDialogo .aiut-box{background:var(--navy2);border:1px solid var(--oro);border-radius:12px;max-width:560px;width:100%;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.5);font-size:13.5px;line-height:1.5;}
+  #aiutDialogo h3{margin:0 0 10px;color:var(--oro);font-size:16px;} #aiutDialogo ol{padding-left:20px;margin:8px 0;} #aiutDialogo li{margin:4px 0;}
+  #aiutDialogo kbd{font:11px ui-monospace,Menlo,monospace;border:1px solid var(--riga2);border-radius:4px;padding:1px 5px;}
+  #aiutDialogo .aiut-cmd{display:flex;gap:8px;align-items:center;background:rgba(0,0,0,.35);border:1px solid var(--riga);border-radius:8px;padding:8px 10px;margin:10px 0;}
+  #aiutDialogo .aiut-cmd code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font:12px ui-monospace,Menlo,monospace;color:#E3C271;}
+  #aiutDialogo details{margin-top:8px;} #aiutDialogo summary{cursor:pointer;}
+  #aiutDialogo .nota{color:var(--fumo);font-size:12px;} #aiutDialogo .aiut-fondo{display:flex;justify-content:flex-end;margin-top:12px;}
   .aiut-inst{font-size:11.5px;color:var(--fumo);text-decoration:underline;white-space:nowrap;} .aiut-inst:hover{color:var(--oro);}
   .aiut-sw{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--oro);cursor:pointer;white-space:nowrap;} .aiut-sw .aiut-eti small{color:var(--fumo);font-weight:400;}
   #inviiRegia{position:fixed;left:14px;bottom:14px;z-index:60;width:340px;max-width:calc(100vw - 28px);background:var(--navy2);border:1px solid var(--oro);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:8px 10px 10px;display:flex;flex-direction:column;gap:7px;font-size:12px;}
@@ -1561,7 +1570,7 @@
        Sotto, nelle viste di lavoro, i menu alla Premiere. -->
   <script src="nav-mam.js"></script>
   <div class="menubar" id="menubar">
-    <button data-menu="app" class="app-menu">Como TV</button><button data-menu="file">File</button><button data-menu="modifica">Modifica</button><button data-menu="clip">Clip</button><button data-menu="sequenza">Sequenza</button><button data-menu="vista">Visualizza</button><button data-menu="finestra">Finestra</button><button data-menu="aiuto">Aiuto</button>
+    <button data-menu="app" class="app-menu">Como TV</button><button data-menu="file">File</button><button data-menu="modifica">Modifica</button><button data-menu="clip">Clip</button><button data-menu="sequenza">Sequenza</button><button data-menu="vista">Visualizza</button><button data-menu="finestra">Finestra</button><button data-menu="aiutante">Aiutante</button><button data-menu="aiuto">Aiuto</button>
     <div class="briciole" id="briciole"><a href="mam2.html">Libreria</a></div>
     <div class="cerca"><span class="lu">&#128269;</span><input id="cercaTesta" type="search" placeholder="Cerca: partita, giocatore, frase, “tutti i gol di…”" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
     <a id="copiaMini" hidden title="l&#8217;archivio sulla NAS: clic per i dettagli">&#8675; Archivio</a>
@@ -3648,15 +3657,27 @@
     if (dove === "__nuovo") return avviso("err", "Scegli dove mandarlo.");
     REGIA_APERTO = false; REGIA_LAVORO = null; disegnaBarraScelte();
     var fallito = function(er){ REGIA_LAVORO = null; disegnaBarraScelte(); avviso("err", "Alla regia non è andato: " + esc(er.message)); };
-    post({ tipo:"clip-raccolta-regia", titolo: titolo, dest: Destinazione.corrente(), muto: !conAudio, origine: location.origin + BASE,
+    var corpoR = { titolo: titolo, dest: Destinazione.corrente(), muto: !conAudio, origine: location.origin + BASE,
       pezzi: lista.map(function(x){ if (x.voce === "1907") return pezzo1907(x); return x.voce === "montato" ? { montato: true, file: x.file, durata: x.durata || 0, titolo: x.titolo || "" } : { chiave: x.chiave || "", rec: x.rec || "", reg: x.reg || "", partita: x.partita || "", titolo: x.titolo || "",
-        secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)) }; }) })
-    .then(function(d){
+        secFile: (x.dentroFile !== undefined ? x.dentroFile : x.dentro || 0) + ((x.t || 0) - (x.dentro || 0)) }; }) };
+    var sulMam = function(){ return post(Object.assign({ tipo:"clip-raccolta-regia" }, corpoR)); };
+    var fatto = function(d){
       REGIA_LAVORO = null; disegnaBarraScelte();
-      var salt = d.lavoro && d.lavoro.saltate && d.lavoro.saltate.length;
-      avviso("ok", "“" + esc(titolo) + "” in preparazione per " + esc(d.invio ? d.invio.dove : Destinazione.dove()) + (salt ? " · " + salt + " saltate (non ancora sulla NAS)" : "") + ": lo segui in Invii in regia, qui in basso.");
+      var salt = (d.lavoro && d.lavoro.saltate && d.lavoro.saltate.length) || (d.saltate && d.saltate.length);
+      avviso("ok", "“" + esc(titolo) + "” in preparazione per " + esc(d.invio ? d.invio.dove : Destinazione.dove()) + (d.sulComputer ? " sul tuo computer" : "") + (salt ? " · " + salt + " saltate (non ancora sulla NAS)" : "") + ": lo segui in Invii in regia, qui in basso.");
       giroInvii(true);
-    }).catch(fallito);
+    };
+    // L'INVIO DIRETTO SUL COMPUTER (01/10/2026): se c'e' l'aiutante, i pezzi li
+    // monta lui e li carica; il ponte poi li mette in scaletta. Se no, la VM.
+    if (aiutUsabile()) {
+      post(Object.assign({ tipo:"clip-raccolta-ricetta" }, corpoR)).then(function(d){
+        if (!d.supportata) { avviso("warn", "Lo prepara il MAM: " + esc(d.motivo || "") + "."); return sulMam().then(fatto); }
+        return aiutChiedi("/esporta", { ricetta: d.ricetta, invio: d.invio.id }).then(function(){ giroAiut(true); d.sulComputer = true; fatto(d); })
+          .catch(function(er){ post({ tipo:"clip-regia-fallito", id: d.invio.id, errore: er.message }).catch(function(){}); avviso("warn", "Sul computer non \u00e8 partito: lo prepara il MAM."); return sulMam().then(fatto); });
+      }).catch(fallito);
+      return;
+    }
+    sulMam().then(fatto).catch(fallito);
   }
   function togliDallaRaccolta(bottone){
     if (!RACCOLTA) return;
@@ -5836,6 +5857,77 @@
     { e: "Esporta (Diretta)", t: "", no1907: 1, per: { live: function(){ WSL.mostra("esporta"); } } },
     { riga: 1 });
   perVista("aiuto", "Scelte rapide da tastiera", OVUNQUE);
+  // ── IL MENU' AIUTANTE (01/10/2026) ──────────────────────────────────
+  //  Goffredo: "nel menu' una voce Aiutante con installa per Windows e per Mac,
+  //  che parte in automatico". Un browser non puo' lanciare programmi sul
+  //  computer: il clic copia il comando giusto e dice i due passi (apri il
+  //  Terminale / PowerShell, incolla, Invio). Da li' l'installazione fa da se'.
+  function ovunque(f){ return { editor: f, libreria: f, asset: f, live: f }; }
+  function comandoAiut(sis){
+    var base = location.origin + BASE + "/aiutante/pacchetto", prod = BASE === "/como-tv";
+    return sis === "mac" ? "curl -fsSL " + base + "/installa-mac.sh | " + (prod ? "" : "COMOTV_AIUTANTE_BASE=" + base + " ") + "bash"
+                         : (prod ? "" : "$env:COMOTV_AIUTANTE_BASE='" + base + "'; ") + "irm " + base + "/installa-windows.ps1 | iex";
+  }
+  function dialogoAiut(titolo, html){
+    var d = el("aiutDialogo");
+    if (!d) { d = document.createElement("div"); d.id = "aiutDialogo"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true"); document.body.appendChild(d);
+      d.addEventListener("click", function(e){
+        if (e.target === d || e.target.closest("[data-chiudi]")) { d.hidden = true; return; }
+        var c = e.target.closest("[data-copia]"); if (c) { var t = c.dataset.copia; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function(){ c.textContent = "Copiato \u2713"; }).catch(function(){ c.textContent = "Selezionalo e copialo a mano"; }); }
+      });
+      document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !d.hidden) d.hidden = true; });
+    }
+    d.innerHTML = '<div class="aiut-box"><h3>' + esc(titolo) + '</h3>' + html + '<div class="aiut-fondo"><button type="button" class="b" data-chiudi="1">Chiudi</button></div></div>';
+    d.hidden = false;
+  }
+  // UN CLIC, POI IL COMPUTER CHIEDE IL PERMESSO (01/10/2026): si scarica il
+  // programma di installazione (.pkg sul Mac, .exe su Windows, con Node e ffmpeg
+  // dentro); aperto, chiede "vuoi installare?" e fa tutto da se'. Non e' firmato:
+  // la prima volta il sistema mostra un avviso in piu', e qui si dice come passarlo.
+  function installaAiut(sis){
+    var mac = sis === "mac", file = mac ? "ComoTV-Aiutante-Mac.pkg" : "ComoTV-Aiutante-Windows.exe";
+    var a = document.createElement("a"); a.href = BASE + "/aiutante/pacchetto/" + file; a.download = file; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 1500);
+    var cmd = comandoAiut(sis);
+    dialogoAiut("Installa l\u2019aiutante " + (mac ? "sul Mac" : "su Windows"),
+      '<p>Sta scaricando <b>' + file + '</b>. Quando ha finito:</p><ol>' + (mac
+        ? '<li><b>Aprilo</b> (doppio clic nella cartella Download).</li>' +
+          '<li>Se il Mac dice che <i>non pu\u00f2 verificarlo</i>: <b>Impostazioni di Sistema \u203a Privacy e sicurezza</b>, in fondo <b>\u201cApri comunque\u201d</b>, poi riaprilo. Succede solo la prima volta (il pacchetto non \u00e8 firmato da Apple).</li>' +
+          '<li>Premi <b>Continua</b> e <b>Installa</b>, metti la password del Mac: fa tutto da s\u00e9.</li>'
+        : '<li><b>Aprilo</b> (dalla barra dei download o dalla cartella Download).</li>' +
+          '<li>Se compare <i>\u201cWindows ha protetto il PC\u201d</i>: <b>Ulteriori informazioni</b> \u203a <b>Esegui comunque</b>. Succede solo la prima volta (il programma non \u00e8 firmato).</li>' +
+          '<li>Alla domanda <b>\u201cInstallare l\u2019Aiutante?\u201d</b> rispondi <b>S\u00ec</b>: fa tutto da s\u00e9.</li>') + '</ol>' +
+      '<p class="nota">Dentro ci sono gi\u00e0 Node.js e ffmpeg: non serve installare altro, e la NAS non serve. Finito, l\u2019aiutante parte da solo a ogni accensione e questa pagina lo trova da sola.</p>' +
+      '<details><summary class="nota">In alternativa, con una riga di ' + (mac ? "Terminale" : "PowerShell") + '</summary><div class="aiut-cmd"><code>' + esc(cmd) + '</code><button type="button" class="b mini" data-copia="' + esc(cmd) + '">Copia</button></div>' +
+      '<p class="nota">' + (mac ? "Serve gi\u00e0 avere Node.js e ffmpeg (brew install node ffmpeg)." : "Serve gi\u00e0 avere Node.js e ffmpeg (winget install OpenJS.NodeJS.LTS Gyan.FFmpeg).") + '</p></details>');
+    // la pagina lo cerca piu' spesso per qualche minuto, finche' non compare
+    var giri = 0, t = setInterval(function(){ cercaAiutante().then(function(){ if (AIUT || ++giri > 45) { clearInterval(t); if (AIUT) { avviso("ok", "Aiutante trovato su " + esc(AIUT.computer || "questo computer") + " (" + esc(AIUT.codificatore || "") + "): da ora export e invii in regia li fa lui."); giroAiut(true); var d = el("aiutDialogo"); if (d) d.hidden = true; } } }); }, 8000);
+  }
+  function statoAiut(){
+    cercaAiutante().then(function(){
+      if (!AIUT) return dialogoAiut("Aiutante: non trovato", '<p>Su questo computer l\u2019aiutante non risponde. Installalo da <b>Aiutante \u203a Installa per Mac</b> o <b>per Windows</b>: gli export e gli invii in regia diventano molto pi\u00f9 veloci.</p>');
+      dialogoAiut("Aiutante: acceso", '<p><b>' + esc(AIUT.computer || "") + '</b> \u00b7 ' + esc(AIUT.sistema || "") + ' \u00b7 versione ' + esc(AIUT.versione || "") + '</p>' +
+        '<p>Codifica: <b>' + esc(AIUT.codificatore || "") + '</b>' + (/libx264/.test(AIUT.codificatore || "") ? " (senza scheda video: pi\u00f9 lento, ma pi\u00f9 veloce del MAM)" : " (scheda video)") + '</p>' +
+        '<p>NAS: ' + (AIUT.nas && AIUT.nas.vod ? "montata, la usa" : "non montata: i pezzi li manda il MAM (va bene cos\u00ec)") + '</p>' +
+        '<p>Export e invii in regia: <b>' + (aiutVuole() ? "li fa questo computer" : "spento, li fa il MAM") + '</b> (Aiutante \u203a Usa l\u2019aiutante).</p>' +
+        '<p class="nota">Lavori in corso: ' + (AIUT.lavori || 0) + '. Per aggiornarlo basta rifare Installa.</p>');
+    });
+  }
+  function disinstallaAiut(){
+    dialogoAiut("Togliere l\u2019aiutante", '<p>Gli export e gli invii in regia tornano al MAM.</p><ul><li><b>Windows</b>: Impostazioni \u203a App \u203a <i>Aiutante MAM Como TV</i> \u203a Disinstalla.</li><li><b>Mac</b>: nel pacchetto zip (Aiutante \u203a Scarica il pacchetto) c\u2019\u00e8 <b>Disinstalla (Mac).command</b>.</li></ul><p class="nota">Per tenerlo installato ma non usarlo: togli la spunta da <b>Aiutante \u203a Usa l\u2019aiutante</b>.</p>');
+  }
+  MENU.aiutante = [
+    { capo: "Export e regia sul tuo computer" },
+    { e: "Stato\u2026", t: "", per: ovunque(statoAiut) },
+    { e: "Usa l\u2019aiutante (acceso / spento)", t: "", per: ovunque(function(){ var ora = !aiutVuole(); try { localStorage.setItem("mam2-aiutante-usa", ora ? "1" : "0"); } catch (e) {} disegnaAiut(); avviso("ok", ora ? "Export e invii in regia: li fa questo computer (se l\u2019aiutante \u00e8 acceso)." : "Export e invii in regia: li fa il MAM."); }) },
+    { e: "Controlla di nuovo", t: "", per: ovunque(function(){ cercaAiutante().then(function(){ avviso(AIUT ? "ok" : "warn", AIUT ? "Aiutante acceso su " + esc(AIUT.computer || "") + "." : "Aiutante non trovato su questo computer."); if (AIUT) giroAiut(true); }); }) },
+    { riga: 1 },
+    { capo: "Installa" },
+    { e: "Installa per Mac\u2026", t: "", per: ovunque(function(){ installaAiut("mac"); }) },
+    { e: "Installa per Windows\u2026", t: "", per: ovunque(function(){ installaAiut("win"); }) },
+    { e: "Scarica il pacchetto (zip, per chi installa a mano)", t: "", per: ovunque(function(){ location.href = BASE + "/aiutante/pacchetto/ComoTV-Aiutante.zip"; }) },
+    { riga: 1 },
+    { e: "Togliere l\u2019aiutante\u2026", t: "", per: ovunque(disinstallaAiut) }
+  ];
   function scegliFormatoMenu(f){
     var c = el("eFormati").querySelector('.fchip[data-f="' + f + '"]');
     if (c) c.click();
@@ -9163,20 +9255,19 @@
       .then(function(r){ clearTimeout(t); return r.json(); }).then(function(j){ if (!j || j.ok === false) throw new Error((j && j.errore) || "l’aiutante non risponde"); return j; });
   }
   function cercaAiutante(){
-    if (AMBITO) return Promise.resolve(null);
     return aiutChiedi("/salute").then(function(j){ AIUT = j; }).catch(function(){ AIUT = null; }).then(function(){ disegnaAiut(); return AIUT; });
   }
   function disegnaAiut(){
-    Array.prototype.forEach.call(document.querySelectorAll(".aiut-inst"), function(a){ a.hidden = !!AIUT || !!AMBITO; a.href = BASE + "/aiutante/pacchetto/ComoTV-Aiutante.zip"; });
+    Array.prototype.forEach.call(document.querySelectorAll(".aiut-inst"), function(a){ a.hidden = !!AIUT; a.href = BASE + "/aiutante/pacchetto/ComoTV-Aiutante.zip"; });
     Array.prototype.forEach.call(document.querySelectorAll(".aiut-sw"), function(l){
       l.hidden = !AIUT;
       var c = l.querySelector(".aiut-chk"); if (c) c.checked = !!AIUT && aiutVuole();
       var e = l.querySelector(".aiut-eti");
-      if (e && AIUT) e.innerHTML = "Sul mio computer <small>" + esc((AIUT.codificatore || "").replace(/^h264_/, "")) + (AIUT.nas && AIUT.nas.vod ? " · NAS" : " · senza NAS, più lento") + "</small>";
+      if (e && AIUT) e.innerHTML = "Sul mio computer <small>" + esc((AIUT.codificatore || "").replace(/^h264_/, "")) + (AIUT.nas && AIUT.nas.vod ? " · NAS" : "") + "</small>";
     });
   }
   document.addEventListener("change", function(e){ if (e.target && e.target.classList && e.target.classList.contains("aiut-chk")) { try { localStorage.setItem("mam2-aiutante-usa", e.target.checked ? "1" : "0"); } catch (z) {} disegnaAiut(); } });
-  function aiutUsabile(){ return !!AIUT && aiutVuole() && !AMBITO; }
+  function aiutUsabile(){ return !!AIUT && aiutVuole(); }
   // la ricetta dal ponte, i lavori all'aiutante. Risolve con i lavori, o null se va fatto sul MAM
   function esportaSulComputer(seqId, formati, extra, invio){
     return post(Object.assign({ tipo:"clip-hl-ricetta", seq: seqId, formati: formati, origine: location.origin + BASE }, extra || {})).then(function(d){
@@ -9218,7 +9309,7 @@
     b.disabled = true;
     aiutChiedi("/annulla", { id: b.dataset.annullaaiut }).then(function(){ avviso("ok", "Export sul computer annullato."); giroAiut(true); }).catch(function(er){ b.disabled = false; avviso("err", esc(er.message)); });
   });
-  if (!AMBITO) { cercaAiutante().then(function(){ if (AIUT) giroAiut(true); }); setInterval(function(){ var c = !!AIUT; cercaAiutante().then(function(){ if (AIUT && !c) giroAiut(true); }); }, 60000); }
+  { cercaAiutante().then(function(){ if (AIUT) giroAiut(true); }); setInterval(function(){ var c = !!AIUT; cercaAiutante().then(function(){ if (AIUT && !c) giroAiut(true); }); }, 60000); }
 
   // ── INVII IN REGIA (01/10/2026): tutti quelli in corso e quelli appena
   // fatti, in basso a sinistra in ogni schermata, con la fase e l'Annulla

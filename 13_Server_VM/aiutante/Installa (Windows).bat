@@ -37,6 +37,5 @@ if errorlevel 1 (
 ) else (
   echo FATTO: l'aiutante e' acceso. Riapri l'Editing del MAM: gli export partono da questo computer.
 )
-echo La NAS deve essere raggiungibile: se la vedi con un altro percorso ^(es. una lettera Z:^),
-echo cambia le "radici" in %APPDATA%\ComoTV-Aiutante.json e riavvia.
+echo La NAS non serve: i pezzi li manda il MAM.
 pause

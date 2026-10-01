@@ -30,7 +30,7 @@
 const http = require("http"), https = require("https"), fs = require("fs"), path = require("path");
 const os = require("os"), cp = require("child_process");
 
-const VERSIONE = "0.1.0";
+const VERSIONE = "0.3.0";
 const WIN = process.platform === "win32", MAC = process.platform === "darwin";
 
 // ── la configurazione: un file accanto all'utente, scritto la prima volta ──
@@ -71,9 +71,10 @@ function trova(nome) {
   const voluto = CONF[nome];
   if (voluto && fs.existsSync(voluto)) return voluto;
   const exe = WIN ? nome + ".exe" : nome;
+  // prima quello che l'installatore ha messo accanto all'aiutante, poi quelli del sistema
   const posti = WIN
-    ? [path.join(process.env.LOCALAPPDATA || "", "Microsoft", "WinGet", "Links", exe), "C:\\ffmpeg\\bin\\" + exe, path.join(__dirname, exe)]
-    : ["/opt/homebrew/bin/" + exe, "/usr/local/bin/" + exe, "/usr/bin/" + exe, path.join(__dirname, exe)];
+    ? [path.join(__dirname, exe), path.join(process.env.LOCALAPPDATA || "", "Microsoft", "WinGet", "Links", exe), "C:\\ffmpeg\\bin\\" + exe]
+    : [path.join(__dirname, exe), "/opt/homebrew/bin/" + exe, "/usr/local/bin/" + exe, "/usr/bin/" + exe];
   for (const p of posti) if (p && fs.existsSync(p)) return p;
   try {
     const out = cp.execFileSync(WIN ? "where" : "which", [exe], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
@@ -131,12 +132,12 @@ function scarica(url, dove) {
   return new Promise((ok, no) => {
     const mod = url.startsWith("https:") ? https : http;
     const req = mod.get(url, { headers: { "User-Agent": "ComoTV-Aiutante/" + VERSIONE } }, (res) => {
-      if (res.statusCode !== 200) { res.resume(); return no(new Error("scaricando una grafica: " + res.statusCode)); }
+      if (res.statusCode !== 200) { res.resume(); return no(new Error("scaricando dal MAM: " + res.statusCode)); }
       const f = fs.createWriteStream(dove);
       res.pipe(f); f.on("finish", () => f.close(() => ok(dove))); f.on("error", no);
     });
     req.on("error", no);
-    req.setTimeout(120000, () => req.destroy(new Error("scaricando una grafica: tempo scaduto")));
+    req.setTimeout(120000, () => req.destroy(new Error("scaricando dal MAM: tempo scaduto")));
   });
 }
 function carica(url, file, L) {
@@ -162,14 +163,17 @@ function carica(url, file, L) {
 function sonda(input) {
   return new Promise((ok) => {
     if (!FFPROBE) return ok({ fps: 25, audio: true, canali: 2 });
-    cp.execFile(FFPROBE, ["-v", "error", "-show_entries", "stream=codec_type,r_frame_rate,channels", "-of", "json", input],
+    cp.execFile(FFPROBE, ["-v", "error", "-show_entries", "stream=codec_type,codec_name,r_frame_rate,channels", "-of", "json", input],
       { timeout: 60000 }, (e, out) => {
         let st = []; try { st = JSON.parse(out).streams || []; } catch (z) {}
         const v = st.find((x) => x.codec_type === "video"), a = st.find((x) => x.codec_type === "audio");
         let fps = 25;
         if (v && v.r_frame_rate) { const [n, d] = v.r_frame_rate.split("/").map(Number); if (n && d) fps = n / d; }
         if (!(fps >= 10 && fps <= 61)) fps = 25;
-        ok({ fps: Math.round(fps * 1000) / 1000, audio: !!a, canali: a ? (a.channels || 2) : 0 });
+        // L'AAC A 8 CANALI dei file "BCK" (registratore di scorta) non lo decodifica nessuno:
+        // ffmpeg si rifiuta di aprire il file. Si fa senza: il montato esce muto, come sulla VM
+        const illeggibile = !!a && a.codec_name === "aac" && (a.channels || 2) > 6;
+        ok({ fps: Math.round(fps * 1000) / 1000, audio: !!a && !illeggibile, canali: a ? (a.channels || 2) : 0, illeggibile });
       });
   });
 }
@@ -196,11 +200,34 @@ async function comando(R, L, tmp) {
     if (!loc && !permesso(z.sorg.url)) throw new Error("indirizzo non ammesso");
     return { z, input: loc || z.sorg.url, locale: !!loc };
   });
+  // I PEZZETTI GIA' TAGLIATI DALLA VM (radice "casa" o "video": pochi mega) si
+  // scaricano tutti prima, quattro alla volta: cosi' la linea si usa tutta e poi
+  // la codifica va alla velocita' della scheda video, senza aspettare la rete.
+  // Le partite intere (vod, frame) invece si leggono a tratti, solo i secondi che servono.
+  const daScaricare = sorgenti.filter((x) => !x.locale && (x.z.sorg.root === "casa" || x.z.sorg.root === "video"));
+  if (daScaricare.length) {
+    let fatti = 0, i0 = 0;
+    const uno = async () => {
+      while (i0 < daScaricare.length) {
+        const x = daScaricare[i0++];
+        if (L.annullato) throw new Error("annullato");
+        const dove = path.join(tmp, "p" + sorgenti.indexOf(x) + path.extname(x.z.sorg.rel || ".mp4"));
+        await scarica(x.z.sorg.url, dove);
+        x.input = dove; x.scaricato = true; fatti++;
+        L.fase = "scarico i pezzi " + fatti + " di " + daScaricare.length; L.avanza = 0.25 * fatti / daScaricare.length;
+      }
+    };
+    await Promise.all([uno(), uno(), uno(), uno()]);
+  }
   L.daNas = sorgenti.filter((x) => x.locale).length; L.daRete = sorgenti.length - L.daNas;
-  const prima = await sonda(sorgenti[0].input);
+  L.scaricati = daScaricare.length;
+  // le sonde vanno anche loro in rete: un intoppo si riprova una volta
+  const sondaDue = async (inp) => { let r = await sonda(inp); if (!r.fps && !r.audio) r = await sonda(inp); return r; };
+  const prima = await sondaDue(sorgenti[0].input);
   const FPS = Math.min(50, prima.fps || 25);
   const sondate = new Map();
-  for (const s of sorgenti) if (!sondate.has(s.input)) sondate.set(s.input, s === sorgenti[0] ? prima : await sonda(s.input));
+  for (const s of sorgenti) if (!sondate.has(s.input)) sondate.set(s.input, s === sorgenti[0] ? prima : await sondaDue(s.input));
+  L.muti = [...sondate.values()].filter((x) => x.illeggibile).length;
   let i = 0;
   for (const z of R.pezzi) {
     if (z.nero) {
@@ -297,7 +324,7 @@ let GIRA = false;
 function vista(L) {
   return { id: L.id, titolo: L.titolo, formato: L.formato, stato: L.stato, fase: L.fase, avanza: Math.round((L.avanza || 0) * 1000) / 1000,
            errore: L.errore || "", locale: L.locale || "", creato: L.creato, finito: L.finito || 0, secondi: L.secondi || 0,
-           codificatore: L.codificatore || "", daNas: L.daNas || 0, daRete: L.daRete || 0, invio: L.invio || "" };
+           codificatore: L.codificatore || "", daNas: L.daNas || 0, daRete: L.daRete || 0, scaricati: L.scaricati || 0, invio: L.invio || "" };
 }
 async function lavora() {
   if (GIRA) return; GIRA = true;
@@ -310,8 +337,9 @@ async function lavora() {
         const c = await comando(L.ricetta, L, tmp);
         if (L.annullato) throw new Error("annullato");
         L.fase = "monto e codifico"; L.codificatore = CODIFICATORE;
+        if (L.muti) log("export \"" + L.titolo + "\": audio illeggibile (AAC a 8 canali) in " + L.muti + " file: quei pezzi escono muti");
         log("export \"" + L.titolo + "\" " + L.formato + " con " + CODIFICATORE + " (" + L.daNas + " pezzi dalla NAS, " + L.daRete + " dalla rete)");
-        await new Promise((ok, no) => {
+        const codifica = () => new Promise((ok, no) => {
           const pr = cp.spawn(FFMPEG, c.args, { stdio: ["ignore", "pipe", "pipe"] });
           L.ferma = () => { try { pr.kill(WIN ? undefined : "SIGKILL"); } catch (e) {} };
           let err = "", buf = "";
@@ -319,11 +347,19 @@ async function lavora() {
           pr.stdout.on("data", (d) => {
             buf += d; const righe = buf.split("\n"); buf = righe.pop();
             for (const r of righe) { const m = /^out_time_us=(\d+)/.exec(r);
-              if (m) { const s = +m[1] / 1e6; L.avanza = Math.min(0.88, 0.02 + 0.86 * s / Math.max(1, c.durata)); L.fase = "monto e codifico " + Math.round(Math.min(1, s / Math.max(1, c.durata)) * 100) + "%"; } }
+              if (m) { const s = +m[1] / 1e6; L.avanza = Math.min(0.88, 0.25 + 0.63 * s / Math.max(1, c.durata)); L.fase = "monto e codifico " + Math.round(Math.min(1, s / Math.max(1, c.durata)) * 100) + "%"; } }
           });
           pr.on("error", no);
           pr.on("close", (code) => code === 0 ? ok() : no(new Error(L.annullato ? "annullato" : (err.trim().split("\n").pop() || "ffmpeg " + code).slice(0, 300))));
         });
+        try { await codifica(); }
+        catch (e) {
+          // un intoppo di rete leggendo dal MAM (Input/output error, connessione chiusa): si riprova una volta
+          if (L.annullato || !/Input\/output error|Connection|timed out|End of file|Server returned 5/i.test(e.message)) throw e;
+          log("export \"" + L.titolo + "\": intoppo di rete (" + e.message + "), riprovo"); L.fase = "riprovo";
+          await new Promise((r) => setTimeout(r, 3000));
+          await codifica();
+        }
         if (L.annullato) throw new Error("annullato");
         // una copia per chi monta, nei Download
         try {
@@ -398,6 +434,35 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { return rispondi(req, res, 400, { ok: false, errore: e.message }); }
 });
 
+// ── L'AGGIORNAMENTO DA SOLO (01/10/2026) ───────────────────────────────
+//  Le correzioni arrivano senza reinstallare: all'avvio e ogni sei ore si guarda
+//  la versione pubblicata sul MAM; se e' piu' nuova e non c'e' un lavoro in corso,
+//  la si scarica, si controlla che sia JavaScript valido, si sostituisce questo
+//  file e si riparte (sul Mac lo rilancia launchd, su Windows ci si rilancia da se').
+function piuNuova(a, b) {
+  const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+  for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); }
+  return false;
+}
+function aggiorna() {
+  if (LAVORI.some((x) => x.stato === "lavora" || x.stato === "in coda")) return;
+  const url = CONF.aggiorna || ((CONF.origini[0] || "https://projects-cloud.it") + "/como-tv/aiutante/pacchetto/aiutante.js");
+  if (!permesso(url)) return;
+  const nuovo = path.join(__dirname, "aiutante.nuovo.js");
+  scarica(url, nuovo).then(() => {
+    const testo = fs.readFileSync(nuovo, "utf8"), m = /const VERSIONE = "([^"]+)"/.exec(testo);
+    if (!m || !piuNuova(m[1], VERSIONE)) { fs.unlinkSync(nuovo); return; }
+    const ck = cp.spawnSync(process.execPath, ["--check", nuovo]);
+    if (ck.status !== 0) { fs.unlinkSync(nuovo); log("aggiornamento " + m[1] + " scartato: il file non e' valido"); return; }
+    if (LAVORI.some((x) => x.stato === "lavora" || x.stato === "in coda")) { fs.unlinkSync(nuovo); return; }
+    fs.renameSync(nuovo, __filename);
+    log("aggiornato da " + VERSIONE + " a " + m[1] + ": riparto");
+    server.close();
+    if (WIN) cp.spawn(process.execPath, [__filename], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+    setTimeout(() => process.exit(0), 500);
+  }).catch((e) => { try { fs.unlinkSync(nuovo); } catch (z) {} if (!/404/.test(e.message)) log("aggiornamento non riuscito: " + e.message); });
+}
+
 function prova() {
   console.log("Aiutante MAM Como TV " + VERSIONE + " su " + os.hostname() + " (" + process.platform + ")");
   console.log("configurazione: " + CONF_FILE);
@@ -408,6 +473,7 @@ function prova() {
 CODIFICATORE = scegliCodificatore();
 if (process.argv.indexOf("--prova") >= 0) { prova(); process.exit(0); }
 server.on("error", (e) => { log("non riesco ad ascoltare sulla porta " + CONF.porta + ": " + e.message); process.exit(1); });
+if (CONF.aggiornaDaSolo !== false) { setTimeout(aggiorna, 30000); setInterval(aggiorna, 6 * 3600000); }
 server.listen(CONF.porta, "127.0.0.1", () => {
   log("Aiutante MAM Como TV " + VERSIONE + " in ascolto su 127.0.0.1:" + CONF.porta + " · codificatore " + CODIFICATORE +
       " · NAS " + JSON.stringify(RADICI) + (FFMPEG ? "" : " · MANCA FFMPEG"));

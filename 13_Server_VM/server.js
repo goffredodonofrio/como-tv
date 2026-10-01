@@ -3057,6 +3057,12 @@ carica();
 if (CLIP) CLIP.avvio({
   dir: process.env.COMOTV_CLIP_DIR || path.join(path.dirname(CONFIG.STATO), "clip")
 });
+// IL MONTATO DALL'AIUTANTE (01/10/2026): da casa, con un upload lento, il
+// caricamento di qualche centinaio di mega dura piu' di cinque minuti, e Node
+// chiude di suo ogni richiesta oltre i 300 s (requestTimeout). Si alza a un'ora;
+// le intestazioni restano a un minuto, che e' la guardia contro chi apre e tace.
+server.requestTimeout = 3600000;
+server.headersTimeout = 60000;
 server.listen(CONFIG.PORTA, () => {
   console.log("Ponte Como TV in ascolto sulla porta " + CONFIG.PORTA);
   console.log("  pagine da:  " + CONFIG.SITO);

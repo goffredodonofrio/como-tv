@@ -5103,6 +5103,40 @@ function segnaPezziLocali(q) {
   return quanti;
 }
 
+// ── I PEZZI IN CASA MENTRE SI MONTA (01/10/2026) ────────────────────
+//  L'export (sulla VM o sul computer con l'aiutante) comincia portando in
+//  casa i pezzi: un taglio in copia dalla NAS, senza ricodifica. Farlo mentre
+//  si monta toglie quell'attesa: quando si preme Esporta (o Invia in regia) i
+//  pezzi sono gia' qui, e all'aiutante arrivano pochi mega per pezzo. Le
+//  sequenze toccate nelle ultime tre ore, una alla volta, a priorita' bassa,
+//  mai durante una diretta.
+let PEZZI_PRESTO = false;
+async function giroPezziPresto() {
+  if (PEZZI_PRESTO || registrandoDavvero() || laDirettaGira()) return;
+  PEZZI_PRESTO = true;
+  try {
+    const ora = Date.now();
+    const seqs = Object.keys(R.seq).map((k) => R.seq[k])
+      .filter((q) => q && q.mano && ora - q.mano < 3 * 3600000 && (q.pezzi || []).length &&
+                     !(q.casa && q.casa.stato === "lavora") && !(q.export && q.export.stato === "lavora"))
+      .sort((a, b) => b.mano - a.mano);
+    for (const q of seqs) {
+      let manca = 0; try { manca = pezziDaScaricare(q).length; } catch (e) { continue; }
+      if (!manca) continue;
+      if (registrandoDavvero() || laDirettaGira()) break;
+      q.casa = { stato: "lavora", fatti: 0, quanti: manca, presto: true };
+      try {
+        const e = await SFONDO.run(true, () => costruisciPezzi(q, (f, n) => { q.casa = { stato: "lavora", fatti: f, quanti: n, presto: true }; }));
+        segnaPezziLocali(q);
+        q.casa = { stato: "pronto", fatti: e.fatti, quanti: e.quanti, quando: Date.now() };
+        if (e.fatti) console.log("[clip] in casa mentre si monta: " + e.fatti + " pezzi di \"" + (q.titolo || q.id) + "\"");
+      } catch (err) { q.casa = { stato: "errore", errore: err.message }; }
+      scrivi(); annuncia(0, "clip");
+    }
+  } finally { PEZZI_PRESTO = false; }
+}
+setInterval(() => { giroPezziPresto().catch(() => {}); }, 45000);
+
 async function hlInCasa(p) {
   const q = seqDi(p);
   if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
@@ -6312,7 +6346,11 @@ async function ricettaAiutante(q, formato, origine, p2) {
     orologio = Math.max(orologio, (x.t0 || 0) + (x.fuori - x.dentro));
     let sorg = null, da = 0, canali = 2;
     const mio = mediaVia(x);
+    const kc = mio ? null : chiaveCasa(q, x), fc = kc ? filePezzo(kc) : null;
     if (mio) { sorg = radiceAiutante(mio); da = x.dentro || 0; }
+    // IL PEZZO GIA' TAGLIATO IN CASA (vedi giroPezziPresto): al computer
+    // arrivano pochi mega invece di leggere la partita intera attraverso la VM
+    else if (fc && fs.existsSync(fc)) { sorg = radiceAiutante(fc); da = scartoPezzo(kc); const rC = regDi(q, x); canali = rC ? quantiCanali(rC) : 2; }
     else {
       const r = regDi(q, x);
       if (!r || !r.arch) throw new Error("\"" + (x.titolo || "un pezzo") + "\" non viene dall'archivio: questo export si fa sulla VM");
@@ -6362,6 +6400,60 @@ async function hlRicetta(p) {
     console.log("[clip] ricetta per l'aiutante non fatta: " + e.message + "\n" + String(e.stack || "").split("\n").slice(1, 4).join("\n"));
     return { ok: true, supportata: false, motivo: e.message };
   }
+}
+// L'INVIO DIRETTO IN REGIA SUL COMPUTER (01/10/2026, Goffredo: "anche l'invio
+// diretto in regia deve passare dall'aiutante, non solo gli export"): le azioni
+// scelte (8 s prima, 10 dopo) o le clip del 1907 diventano una ricetta; il
+// computer le monta e le carica su /aiutante/carica-regia, e da li' l'invio va in
+// scaletta da se', come quelli della VM.
+async function raccoltaRicetta(p) {
+  const origine = String(p.origine || "").replace(/\/+$/, "");
+  if (!/^https?:\/\/[^\s]+$/.test(origine)) throw new Error("manca l'indirizzo della pagina");
+  const { pezzi, saltate } = await pezziRaccolta(p);
+  if (!pezzi.length) throw new Error("non trovo il file di " + (saltate.length === 1 ? "questa azione" : "nessuna di queste azioni"));
+  const fino = Math.floor(Date.now() / 1000) + 6 * 3600;
+  const rp = [];
+  for (const x of pezzi) {
+    const sg = radiceAiutante(x.file);
+    if (!sg) return { ok: true, supportata: false, motivo: "un file non sta sulla NAS" };
+    rp.push({ titolo: "", sorg: { root: sg.root, rel: sg.rel, url: urlFileAiutante(origine, sg, fino) },
+              da: Math.round(Math.max(0, x.da) * 1000) / 1000, dur: Math.round(x.dur * 1000) / 1000, vel: 1, vf: "", coppia: 0, canale: "" });
+  }
+  const inv = nuovoInvio(Object.assign({}, p, { titolo: String(p.titolo || "Raccolta") }), "azioni");
+  inv.attesaFile = true; inv.pezzi = pezzi.length; inv.fase = "sul computer di chi monta";
+  const cosa = "caricaregia|" + inv.id;
+  return { ok: true, supportata: true, saltate, invio: vistaInvio(inv),
+           ricetta: { versione: 1, titolo: inv.titolo, formato: "16:9", tela: TELA_FORMATO["16:9"], conStacchi: false, nome: inv.titolo.replace(/[^\w\- ]+/g, "_").slice(0, 60) + ".mp4",
+                      pezzi: rp, grafiche: [], oltre: 0,
+                      carica: origine + "/aiutante/carica-regia?inv=" + encodeURIComponent(inv.id) + "&fino=" + fino + "&f=" + firmaAiutante(cosa, fino) } };
+}
+function caricaRegiaAiutante(req, res, u) {
+  const id = u.searchParams.get("inv") || "", fino = parseInt(u.searchParams.get("fino") || "0", 10);
+  const fine = (code, j) => { if (!res.headersSent) res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(j)); };
+  if (req.method !== "PUT" && req.method !== "POST") return fine(405, { ok: false, errore: "si carica con PUT" });
+  if (!fino || fino < Date.now() / 1000 || u.searchParams.get("f") !== firmaAiutante("caricaregia|" + id, fino)) return fine(403, { ok: false, errore: "indirizzo scaduto" });
+  const inv = invioDi(id);
+  if (!inv || inv.stato !== "lavora" || inv.annullato) return fine(409, { ok: false, errore: "l'invio non aspetta piu' questo file" });
+  const cart = path.join(DIR, CARTELLA_CLIP); assicura(cart);
+  const finale = path.join(cart, inv.id + ".mp4"), tmp = finale + ".arriva";
+  const out = fs.createWriteStream(tmp);
+  let peso = 0, rotto = false;
+  req.on("data", (d) => { peso += d.length; if (peso > 8e9) { rotto = true; req.destroy(); } });
+  req.on("aborted", () => { rotto = true; });
+  req.pipe(out);
+  out.on("error", (e) => { rotto = true; fine(500, { ok: false, errore: e.message }); });
+  out.on("finish", async () => {
+    if (rotto || peso < 1000) { try { fs.unlinkSync(tmp); } catch (e) {} return fine(400, { ok: false, errore: "file incompleto" }); }
+    try {
+      const d = await probe(tmp);
+      if (!d || !d.durata) throw new Error("il file arrivato non si legge");
+      fs.renameSync(tmp, finale);
+      const file = "/clip/" + CARTELLA_CLIP + "/" + inv.id + ".mp4";
+      console.log("[clip] invio dal computer: \"" + inv.titolo + "\" " + Math.round(peso / 1e6) + " MB");
+      invioPronto(inv.id, file, Math.round(d.durata * 10) / 10);
+      fine(200, { ok: true, file, durata: d.durata });
+    } catch (e) { try { fs.unlinkSync(tmp); } catch (z) {} fine(500, { ok: false, errore: e.message }); }
+  });
 }
 // /aiutante/file: un file della NAS (o di casa) per chi ha la firma
 function serviFileAiutante(req, res, u) {
@@ -13374,6 +13466,41 @@ async function lavoroRegia(L, pezzi) {
     tmp.forEach((f) => { try { fs.unlinkSync(f); } catch (e) {} });
   }
 }
+// I PEZZI DI UN INVIO DIRETTO IN REGIA (azioni scelte, raccolte, clip del 1907):
+// la stessa scelta per la VM (clip-raccolta-regia) e per l'aiutante (clip-raccolta-ricetta)
+async function pezziRaccolta(p) {
+    const prima = num(p.prima, 2, 30, 8), dopo = num(p.dopo, 2, 40, 10);
+    const pezzi = [], saltate = [];
+    // LE CLIP DEL COMO 1907 (28/09/2026): entrano intere, fino a 90 secondi. Sono
+    // originali di camera (ProRes, 4K, spesso senza audio): si ricodificano al taglio
+    const in1907 = {};
+    for (const x of (Array.isArray(p.pezzi) ? p.pezzi : []).slice(0, 40)) {
+      if (!x || !x.v1907) continue;
+      try { const { rel, pieno } = via1907(x.v1907); const info = await prova1907(pieno); if (info.video && info.durata) in1907[x.v1907] = { rel, pieno, info }; } catch (e) {}
+    }
+    (Array.isArray(p.pezzi) ? p.pezzi : []).slice(0, 40).forEach((x) => {
+      if (x && x.v1907) {
+        const c = in1907[x.v1907];
+        if (!c) { saltate.push(String(x.titolo || path.basename(String(x.v1907))).slice(0, 80)); return; }
+        pezzi.push({ file: c.pieno, da: 0, dur: Math.min(90, Math.max(1, c.info.durata)), ricodifica: true, muto: !c.info.canali });
+        return;
+      }
+      if (x && x.montato) {
+        const f = path.join(DIR, String(x.file || "").replace(/^\/clip\//, ""));
+        if (!f.startsWith(DIR + path.sep) || !fs.existsSync(f)) { saltate.push(String(x.titolo || "montato").slice(0, 80)); return; }
+        pezzi.push({ file: f, da: 0, dur: Math.max(1, +x.durata || 0), montato: String(x.file) });
+        return;
+      }
+      // IL FILE, DOVUNQUE STIA (29/09/2026): la copia di S3 sulla NAS, oppure la
+      // cartella della QNAP (magazzino "qnap100": Genoa-Como ENG, Como-Lipsia,
+      // Udinese-Como). Qui si guardava solo la prima: il MAM le apriva, la regia
+      // diceva "non ancora sulla NAS" (Manolo, 28/09 sera)
+      const file = fileDiAzione(x);
+      if (!file || typeof x.secFile !== "number") { saltate.push(String((x && (x.partita || x.titolo)) || "?").slice(0, 80)); return; }
+      pezzi.push({ file, da: x.secFile - prima, dur: prima + dopo });
+    });
+  return { pezzi, saltate };
+}
 // ── GLI INVII IN REGIA (01/10/2026) ───────────────────────────────────
 //  Goffredo: "anche l'invio in regia deve essere multiplo, con avanzamenti e
 //  annullamenti". Prima la pagina preparava il filmato e lo mandava lei, uno
@@ -13448,7 +13575,7 @@ function invioDaSequenza(p) {
 }
 function vistaInvio(inv) {
   // aspettava il computer di chi monta e da tre ore non e' arrivato niente
-  if (inv.attesaAiutante && inv.stato === "lavora" && Date.now() - inv.creato > 3 * 3600000) invioFallito(inv.id, new Error("dal computer non e' arrivato niente"));
+  if ((inv.attesaAiutante || inv.attesaFile) && inv.stato === "lavora" && Date.now() - inv.creato > 3 * 3600000) invioFallito(inv.id, new Error("dal computer non e' arrivato niente"));
   const v = Object.assign({}, inv);
   if (inv.esp) {
     const i = CODA_ESP.findIndex((x) => x.id === inv.esp), l = CODA_ESP[i], q = R.seq[inv.seq];
@@ -13464,7 +13591,7 @@ function annullaInvio(p) {
   const inv = invioDi(String(p.id || "")); if (!inv) throw new Error("invio sconosciuto");
   if (inv.stato !== "lavora") throw new Error(inv.stato === "invio" ? "sta gia' andando in scaletta" : "e' gia' finito");
   inv.annullato = true;
-  if (inv.attesaAiutante) invioFallito(inv.id, null);
+  if (inv.attesaAiutante || inv.attesaFile) invioFallito(inv.id, null);
   if (inv.esp) {
     const l = CODA_ESP.find((x) => x.id === inv.esp);
     if (l) {
@@ -13498,7 +13625,7 @@ function fileDiAzione(x) {
 function puliziaRegia() {
   try {
     const cart = path.join(DIR, CARTELLA_CLIP), vecchio = Date.now() - 7 * 86400000;
-    fs.readdirSync(cart).filter((n) => /^rr[A-Za-z0-9]+(-\d+)?\.(mp4|jpg|txt)$/.test(n)).forEach((n) => {
+    fs.readdirSync(cart).filter((n) => /^(rr|ir)[A-Za-z0-9]+(-\d+)?\.(mp4|jpg|txt)$/.test(n)).forEach((n) => {
       const f = path.join(cart, n); try { if (fs.statSync(f).mtimeMs < vecchio) fs.unlinkSync(f); } catch (e) {}
     });
   } catch (e) {}
@@ -14526,10 +14653,12 @@ function serviHttp(req, res, u) {
   if (ATTIVO && u.pathname.startsWith("/magazzino/")) { serviMagazzino(req, res, u); return true; }
   if (ATTIVO && u.pathname === "/aiutante/file") { serviFileAiutante(req, res, u); return true; }
   if (ATTIVO && u.pathname === "/aiutante/carica") { caricaAiutante(req, res, u); return true; }
+  if (ATTIVO && u.pathname === "/aiutante/carica-regia") { caricaRegiaAiutante(req, res, u); return true; }
   // il pacchetto da installare (codice, nessun segreto): DIR/_aiutante
   if (ATTIVO && /^\/aiutante\/pacchetto\/[A-Za-z0-9._-]+$/.test(u.pathname)) {
     const f = path.join(DIR, "_aiutante", path.basename(u.pathname));
-    return serviFileLocale(req, res, f, { "Content-Disposition": "attachment; filename=\"" + path.basename(f) + "\"" }), true;
+    return serviFileLocale(req, res, f, { "Content-Type": ({ ".zip": "application/zip", ".sh": "text/plain; charset=utf-8", ".js": "text/plain; charset=utf-8", ".ps1": "text/plain; charset=utf-8" })[path.extname(f).toLowerCase()] || "application/octet-stream",
+                                     "Cache-Control": "no-cache", "Content-Disposition": (/\.(zip|pkg|exe)$/i.test(f) ? "attachment" : "inline") + "; filename=\"" + path.basename(f) + "\"" }), true;
   }
   if (ATTIVO && u.pathname.startsWith("/qnap/")) { serviQnap(req, res, u); return true; }
   if (!ATTIVO || !u.pathname.startsWith("/clip/")) return false;
@@ -17464,36 +17593,7 @@ const AZIONI = {
   },
   // la raccolta (o le azioni scelte) come UN filmato grezzo per la regia
   "clip-raccolta-regia": async (p) => {
-    const prima = num(p.prima, 2, 30, 8), dopo = num(p.dopo, 2, 40, 10);
-    const pezzi = [], saltate = [];
-    // LE CLIP DEL COMO 1907 (28/09/2026): entrano intere, fino a 90 secondi. Sono
-    // originali di camera (ProRes, 4K, spesso senza audio): si ricodificano al taglio
-    const in1907 = {};
-    for (const x of (Array.isArray(p.pezzi) ? p.pezzi : []).slice(0, 40)) {
-      if (!x || !x.v1907) continue;
-      try { const { rel, pieno } = via1907(x.v1907); const info = await prova1907(pieno); if (info.video && info.durata) in1907[x.v1907] = { rel, pieno, info }; } catch (e) {}
-    }
-    (Array.isArray(p.pezzi) ? p.pezzi : []).slice(0, 40).forEach((x) => {
-      if (x && x.v1907) {
-        const c = in1907[x.v1907];
-        if (!c) { saltate.push(String(x.titolo || path.basename(String(x.v1907))).slice(0, 80)); return; }
-        pezzi.push({ file: c.pieno, da: 0, dur: Math.min(90, Math.max(1, c.info.durata)), ricodifica: true, muto: !c.info.canali });
-        return;
-      }
-      if (x && x.montato) {
-        const f = path.join(DIR, String(x.file || "").replace(/^\/clip\//, ""));
-        if (!f.startsWith(DIR + path.sep) || !fs.existsSync(f)) { saltate.push(String(x.titolo || "montato").slice(0, 80)); return; }
-        pezzi.push({ file: f, da: 0, dur: Math.max(1, +x.durata || 0), montato: String(x.file) });
-        return;
-      }
-      // IL FILE, DOVUNQUE STIA (29/09/2026): la copia di S3 sulla NAS, oppure la
-      // cartella della QNAP (magazzino "qnap100": Genoa-Como ENG, Como-Lipsia,
-      // Udinese-Como). Qui si guardava solo la prima: il MAM le apriva, la regia
-      // diceva "non ancora sulla NAS" (Manolo, 28/09 sera)
-      const file = fileDiAzione(x);
-      if (!file || typeof x.secFile !== "number") { saltate.push(String((x && (x.partita || x.titolo)) || "?").slice(0, 80)); return; }
-      pezzi.push({ file, da: x.secFile - prima, dur: prima + dopo });
-    });
+    const { pezzi, saltate } = await pezziRaccolta(p);
     if (!pezzi.length) throw new Error("non trovo il file di " + (saltate.length === 1 ? "questa azione" : "nessuna di queste azioni") + (saltate.length ? " (" + saltate.slice(0, 3).join(", ") + (saltate.length > 3 ? "…" : "") + ")" : ""));
     const L = { id: nuovoId("rr"), titolo: String(p.titolo || "Raccolta").slice(0, 80), stato: "lavora", fase: "taglio", fatti: 0, tot: pezzi.length, saltate, creato: Date.now() };
     // con la destinazione l'invio lo porta in fondo il ponte (vedi GLI INVII IN REGIA)
@@ -17513,6 +17613,7 @@ const AZIONI = {
   },
   "clip-regia-invia": invioDaSequenza,
   "clip-hl-ricetta": hlRicetta,
+  "clip-raccolta-ricetta": raccoltaRicetta,
   // l'aiutante non ce l'ha fatta: l'invio che lo aspettava si chiude
   "clip-regia-fallito": (p) => { const inv = invioDi(String(p.id || "")); if (inv && inv.stato === "lavora") invioFallito(inv.id, new Error(String(p.errore || "non riuscito sul computer").slice(0, 160))); return { ok: true }; },
   "clip-regia-invii": () => ({ ok: true, invii: INVII_REGIA.map(vistaInvio) }),
