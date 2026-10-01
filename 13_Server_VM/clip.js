@@ -38,12 +38,22 @@ const { execFileSync } = cp;
 // priorita' normale (il contesto lo porta avanti AsyncLocalStorage, anche
 // attraverso await e callback).
 const SFONDO = new (require("async_hooks").AsyncLocalStorage)();
+// L'EXPORT IN CORSO (01/10/2026): quello che parte dentro ESPORTO.run(lavoro)
+// si annota nel lavoro, cosi' "Annulla" chiude i suoi ffmpeg e solo quelli
+// (non i tagli, le anteprime o la regia di chi lavora accanto)
+const ESPORTO = new (require("async_hooks").AsyncLocalStorage)();
 function conNice(cmd, args) {
   if (!SFONDO.getStore() || cmd === "nice") return [cmd, args || []];
   return ["nice", ["-n", "15", cmd].concat(args || [])];
 }
-function spawn(cmd, args, ...resto) { const x = conNice(cmd, args); return cp.spawn(x[0], x[1], ...resto); }
-function execFile(cmd, args, ...resto) { const x = conNice(cmd, args); return cp.execFile(x[0], x[1], ...resto); }
+function annotaEsp(pr) {
+  const l = ESPORTO.getStore(); if (!l || !pr) return pr;
+  if (l.annullato) { try { pr.kill("SIGKILL"); } catch (e) {} return pr; }
+  l.procs.add(pr); try { pr.on("exit", () => l.procs.delete(pr)); } catch (e) {}
+  return pr;
+}
+function spawn(cmd, args, ...resto) { const x = conNice(cmd, args); return annotaEsp(cp.spawn(x[0], x[1], ...resto)); }
+function execFile(cmd, args, ...resto) { const x = conNice(cmd, args); return annotaEsp(cp.execFile(x[0], x[1], ...resto)); }
 const os = require("os");
 const dgram = require("dgram");
 const crypto = require("crypto");
@@ -354,7 +364,8 @@ function leggi() {
     let fermi = 0;
     Object.keys(R.seq).forEach((k) => {
       const q = R.seq[k];
-      if (q.export && q.export.stato === "lavora") {
+      // (anche "in coda": la coda degli export vive in memoria, 01/10/2026)
+      if (q.export && (q.export.stato === "lavora" || q.export.stato === "in coda")) {
         q.export = { stato: "errore", formato: q.export.formato || "",
                      errore: "l'esportazione si e' fermata a un riavvio del ponte: rilanciala" };
         fermi++;
@@ -6135,17 +6146,94 @@ async function hlEsporta(p) {
   if (String(p.come) === "premiere") {
     return { ok: true, premiere: await hlEsportaPremiere(q, p.percorso, p.volume) };
   }
-  if (q.export && q.export.stato === "lavora") return { ok: true, export: q.export };
   const elenco = Array.isArray(p.formati) ? p.formati.filter((f) => FORMATI[f]) : [];
   const formati = elenco.length ? elenco
                 : [FORMATI[p.formato] ? String(p.formato) : "16:9"];
+  // lo stesso export gia' in coda (o in corso) non si mette due volte
+  const firma = q.id + "|" + formati.join(",");
+  const gia = CODA_ESP.find((l) => l.firma === firma && !l.annullato);
+  if (gia) return { ok: true, export: q.export, formati: formati, lavoro: gia.id, coda: vociCoda() };
+  const l = { id: nuovoId("e"), seq: q.id, titolo: q.titolo || "", formati, firma, p: Object.assign({}, p),
+              chi: String(p.__chi || "").slice(0, 40), messo: Date.now(), stato: "in coda", procs: new Set() };
+  CODA_ESP.push(l);
+  postiCodaEsp();
   // non si aspetta l'export per rispondere: la pagina guarda lo stato
-  hlEsportaTutti(q, formati, p).catch((e) => {
-    console.log("[clip] export della sequenza \"" + (q.titolo || q.id) + "\" fallito: " + e.message + "\n" + String(e.stack || "").split("\n").slice(1, 5).join("\n"));
-    q.export = { stato: "errore", errore: e.message };
-    scrivi(); annuncia(0, "clip");
+  giraCodaEsp();
+  return { ok: true, export: q.export, formati: formati, lavoro: l.id, coda: vociCoda() };
+}
+
+// ── LA CODA DEGLI EXPORT, COME MEDIA ENCODER (01/10/2026) ─────────────
+//  Goffredo: "dammi la possibilita' di annullare export e di farne altri".
+//  Prima un export per sequenza, e uno nuovo mentre l'altro lavorava veniva
+//  ignorato; e non si fermava niente. Ora gli export vanno in UNA coda per
+//  tutto il MAM, uno alla volta (su due core due insieme vanno entrambi a
+//  meta' velocita'), e ognuno si toglie dalla coda o si ferma a meta'.
+const CODA_ESP = [];
+let ESP_GIRA = false;
+function vociCoda() {
+  return CODA_ESP.map((l, i) => {
+    const q = R.seq[l.seq];
+    return { id: l.id, seq: l.seq, reg: q ? q.reg : "", titolo: (q && q.titolo) || l.titolo, formati: l.formati, stato: l.stato,
+             posto: i, chi: l.chi, messo: l.messo, annullato: !!l.annullato,
+             export: l.stato === "lavora" && q && q.export && q.export.stato === "lavora" ? q.export : null };
   });
-  return { ok: true, export: q.export, formati: formati };
+}
+function postiCodaEsp() {
+  CODA_ESP.forEach((l, i) => {
+    if (l.stato === "lavora") return;
+    const q = R.seq[l.seq];
+    if (q && !(q.export && q.export.stato === "lavora")) q.export = { stato: "in coda", posto: i, formati: l.formati, lavoro: l.id };
+  });
+  scrivi(); annuncia(0, "clip");
+}
+async function giraCodaEsp() {
+  if (ESP_GIRA) return;
+  ESP_GIRA = true;
+  try {
+    while (CODA_ESP.length) {
+      const l = CODA_ESP[0], q = R.seq[l.seq];
+      if (!q || !q.pezzi.length) { CODA_ESP.shift(); continue; }
+      l.stato = "lavora"; l.partito = Date.now();
+      try {
+        await ESPORTO.run(l, () => hlEsportaTutti(q, l.formati, l.p));
+        if (l.annullato) throw new Error("annullato");
+      } catch (e) {
+        delete q.exportGiro;
+        if (l.annullato) {
+          // il file che si stava scrivendo e' a meta': via, e via dalle uscite
+          const f = q.export && q.export.formato;
+          const k = f && q.esportati && q.esportati[f];
+          const fin = k && k.file ? path.join(DIR, String(k.file).replace(/^\/clip\//, "")) : null;
+          try { if (fin && fs.statSync(fin).mtimeMs >= l.partito - 1000) { fs.unlinkSync(fin); delete q.esportati[f]; } } catch (z) {}
+          q.export = { stato: "annullato", formati: l.formati, quando: Date.now() };
+          console.log("[clip] export di \"" + (q.titolo || q.id) + "\" annullato");
+        } else {
+          console.log("[clip] export della sequenza \"" + (q.titolo || q.id) + "\" fallito: " + e.message + "\n" + String(e.stack || "").split("\n").slice(1, 5).join("\n"));
+          q.export = { stato: "errore", errore: e.message };
+        }
+        scrivi(); annuncia(0, "clip");
+      }
+      CODA_ESP.shift();
+      postiCodaEsp();
+    }
+  } finally { ESP_GIRA = false; }
+}
+function annullaEsp(p) {
+  const id = String(p.lavoro || ""), seq = String(p.seq || "");
+  const l = (id && CODA_ESP.find((x) => x.id === id)) ||
+            (seq && (CODA_ESP.find((x) => x.seq === seq && x.stato === "lavora") || CODA_ESP.find((x) => x.seq === seq)));
+  if (!l) throw new Error("questo export non e' piu' in coda");
+  if (l.stato === "lavora") {
+    l.annullato = true;
+    for (const pr of l.procs) { try { pr.kill("SIGKILL"); } catch (e) {} }
+    const q = R.seq[l.seq]; if (q && q.export && q.export.stato === "lavora") q.export.fase = "annullo…";
+  } else {
+    CODA_ESP.splice(CODA_ESP.indexOf(l), 1);
+    const q = R.seq[l.seq];
+    if (q && q.export && q.export.stato === "in coda" && !CODA_ESP.some((x) => x.seq === l.seq)) q.export = { stato: "annullato", formati: l.formati, quando: Date.now() };
+    postiCodaEsp();
+  }
+  return { ok: true, coda: vociCoda() };
 }
 
 
@@ -6507,8 +6595,13 @@ function rifinitura(k) {
 // gli stessi cronometri della produzione sulla stessa NAS, meta' macchina per
 // niente. COMOTV_CODE_SPENTE=1 spegne il giro della casa e quello dei cronometri
 const CODE_SPENTE = process.env.COMOTV_CODE_SPENTE === "1";
+// IL GIRO DELLA CASA IN PAUSA (01/10/2026, Goffredo: "prima i volti, poi il
+// puntamento"): clip-casa-basta lo ferma, con riaccendi riparte. Come la pausa
+// delle trascrizioni vive in memoria: un riavvio del ponte lo riaccende.
+let CASA_FERMA = false;
+function fermaCasa(riaccendi) { CASA_FERMA = !riaccendi; return { ok: true, ferma: CASA_FERMA, inCorso: [...CASA.attive.values()].map((x) => x.partita) }; }
 async function giroCasa() {
-  if (CODE_SPENTE) return;
+  if (CODE_SPENTE || CASA_FERMA) return;
   const quante = qualcunoLavora() ? 1 : 2;
   if (CASA.attive.size >= quante) return;
   if (registrandoDavvero() || laDirettaGira() || magazzinoOccupato() || voceAlLavoro || whisperGira() ||
@@ -16404,6 +16497,7 @@ const AZIONI = {
   "clip-trascrivi": trascriviChiedi,
   "clip-parlato-locale": (p) => ({ ok: true, inCoda: parlatoLocaleInCoda(num(p.quante, 1, 20, 3)), coda: CODA_VOCE.length, alLavoro: voceAlLavoro ? voceAlLavoro.reg : "" }),
   "clip-parlato-basta": (p) => fermaParlato(!!p.riaccendi),
+  "clip-casa-basta": (p) => fermaCasa(!!p.riaccendi),
   "clip-vocabolario": async (p) => {
     if (p.rifai) costruisciVocabolario();
     if (p.correggi) {
@@ -18176,6 +18270,8 @@ const AZIONI = {
   "clip-hl-ordina": hlOrdina,
   "clip-hl-taratura": hlTaratura,
   "clip-hl-esporta": hlEsporta,
+  "clip-hl-esporta-coda": () => ({ ok: true, coda: vociCoda() }),
+  "clip-hl-esporta-annulla": annullaEsp,
   // l'srt della sequenza da solo: chi porta l'XML in Premiere lo mette a fianco
   "clip-hl-srt": async (p) => { const q = seqDi(p); if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
                           await scriviSrtSequenza(q, vuoleSotto({ sottoLingua: p.lingua }), false); return { ok: true, sottotitoli: q.sottotitoli }; },
