@@ -6346,6 +6346,73 @@ function hlNeri(p) {
     .then(() => { NERI.gira = null; });
   return { ok: true, neri: q.neri };
 }
+// I NERI DEI CONTRIBUTI (02/10/2026, Caria: "non e' meglio in Controllo
+// redazione? lo lancio una volta e mi controlla tutti i contributi, invece che
+// sequenza per sequenza"). La pagina manda i video della scaletta (src, da, a);
+// qui si guarda il tratto che va in onda di ogni file e si torna il timecode
+// DEL FILE, come Shutter Encoder. Uno alla volta per tutto il MAM, mai sopra una
+// diretta; un file gia' guardato (stesso peso, stessa data, stesso tratto) non
+// si riguarda.
+const NERI_FILE = new Map(), NERI_LAVORI = new Map();
+let NERI_FILE_GIRA = false;
+function fileDelContributo(src) {
+  let pth = "";
+  try { pth = decodeURIComponent(new URL(String(src || ""), "http://x").pathname); } catch (e) { return null; }
+  pth = pth.replace(/^\/como-tv(-dev)?\//, "/");
+  let m = /^\/clip\/(.+)$/.exec(pth);
+  if (m) { const f = path.join(DIR, m[1]); return f.indexOf(DIR + path.sep) === 0 && !/\.\./.test(m[1]) ? f : null; }
+  m = /^\/video\/([^/]+\.mp4)$/i.exec(pth);
+  if (m && !m[1].startsWith(".")) return path.join(process.env.COMOTV_VIDEO || path.join(path.dirname(DIR), "video"), m[1]);
+  return null;
+}
+async function giraNeriFile() {
+  if (NERI_FILE_GIRA) return;
+  NERI_FILE_GIRA = true;
+  try {
+    for (;;) {
+      const L = [...NERI_LAVORI.values()].find((l) => l.stato === "lavora"); if (!L) break;
+      for (const v of L.voci) {
+        if (v.stato !== "in coda") continue;
+        if (laDirettaGira() || registrandoDavvero()) { v.stato = "saltato"; v.errore = "c'e' una diretta"; continue; }
+        const f = fileDelContributo(v.src);
+        let st = null; try { st = f ? fs.statSync(f) : null; } catch (e) { st = null; }
+        if (!st) { v.stato = "saltato"; v.errore = f ? "il file non c'e' piu'" : "non e' un file del MAM"; continue; }
+        v.stato = "lavora";
+        try {
+          const d = await probe(f), dur = (d && d.durata) || 0;
+          const da = Math.max(0, Math.min(+v.da || 0, dur)), a = +v.a > da ? Math.min(+v.a, dur || +v.a) : dur;
+          const k = f + "|" + st.size + "|" + st.mtimeMs + "|" + da + "|" + a;
+          let neri = NERI_FILE.get(k);
+          if (!neri) {
+            neri = (await neriDelFile(f, da, Math.max(0.1, a - da))).map((z) => ({ da: Math.round((da + z.a) * 1000) / 1000, a: Math.round((da + z.b) * 1000) / 1000 }));
+            neri.forEach((z) => { z.dur = Math.round((z.a - z.da) * 1000) / 1000; });
+            NERI_FILE.set(k, neri);
+            if (NERI_FILE.size > 500) NERI_FILE.delete(NERI_FILE.keys().next().value);
+          }
+          v.neri = neri; v.durata = Math.round((a - da) * 10) / 10; v.stato = "pronto";
+        } catch (e) { v.stato = "errore"; v.errore = String(e.message || e).slice(0, 120); }
+      }
+      L.stato = "pronto"; L.finito = Date.now();
+      console.log("[clip] neri dei contributi: " + L.voci.length + " file, " + L.voci.reduce((n, v) => n + (v.neri || []).length, 0) + " neri");
+    }
+  } finally { NERI_FILE_GIRA = false; }
+}
+function neriContributi(p) {
+  // i lavori finiti da piu' di un'ora se ne vanno
+  for (const [id, l] of NERI_LAVORI) if (l.finito && Date.now() - l.finito > 3600000) NERI_LAVORI.delete(id);
+  if (p.lavoro) {
+    const l = NERI_LAVORI.get(String(p.lavoro));
+    if (!l) throw new Error("ricerca dei neri scaduta: rilanciala");
+    return { ok: true, lavoro: l.id, stato: l.stato, voci: l.voci.map((v) => ({ id: v.id, stato: v.stato, neri: v.neri, durata: v.durata, errore: v.errore })) };
+  }
+  const voci = (Array.isArray(p.voci) ? p.voci : []).slice(0, 200)
+    .filter((v) => v && v.id && v.src).map((v) => ({ id: String(v.id), src: String(v.src), da: +v.da || 0, a: +v.a || 0, stato: "in coda" }));
+  if (!voci.length) throw new Error("in questa scaletta non ci sono video");
+  const l = { id: nuovoId("n"), voci, stato: "lavora", messo: Date.now() };
+  NERI_LAVORI.set(l.id, l);
+  giraNeriFile().catch((e) => console.log("[clip] neri dei contributi: " + e.message));
+  return { ok: true, lavoro: l.id, stato: l.stato, voci: voci.map((v) => ({ id: v.id, stato: v.stato })) };
+}
 async function hlEsporta(p) {
   const q = seqDi(p);
   if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
@@ -17922,6 +17989,7 @@ const AZIONI = {
   "clip-regia-invia": invioDaSequenza,
   "clip-hl-ricetta": hlRicetta,
   "clip-hl-neri": hlNeri,
+  "clip-neri-contributi": neriContributi,
   "clip-raccolta-ricetta": raccoltaRicetta,
   // l'aiutante non ce l'ha fatta: l'invio che lo aspettava si chiude
   "clip-regia-fallito": (p) => { const inv = invioDi(String(p.id || "")); if (inv && inv.stato === "lavora") invioFallito(inv.id, new Error(String(p.errore || "non riuscito sul computer").slice(0, 160))); return { ok: true }; },

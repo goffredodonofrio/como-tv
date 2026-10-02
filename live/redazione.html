@@ -106,6 +106,12 @@
   /* i video in scaletta: un lettore vero, col play, la barra e l'audio */
   #prevVideo{position:absolute;inset:0;width:100%;height:100%;background:#000;object-fit:contain;}
   .voce .t small i{font-style:normal;color:var(--gold-bright);}
+  .voce .t small b.nero{color:#FF8A8C;} .voce .t small span.pulito{color:#7fd6a0;text-transform:none;letter-spacing:0;}
+  #neriSel{margin-top:10px;display:flex;flex-direction:column;gap:5px;}
+  #neriSel .ntit{font-size:12px;color:var(--fg-3);}
+  #neriSel button{display:flex;gap:12px;align-items:baseline;text-align:left;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:6px 10px;color:var(--ivory);cursor:pointer;font:inherit;font-size:13px;}
+  #neriSel button:hover,#neriSel button:focus-visible{border-color:var(--gold-bright);outline:none;}
+  #neriSel button span{font:12px ui-monospace,Menlo,monospace;color:var(--gold-bright);font-variant-numeric:tabular-nums;}
   #prevcap{font-size:11.5px;color:var(--fg-3);margin-top:6px;min-height:16px;}
   .tasti{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px;}
   .tasti .spazio{flex:1;}
@@ -219,6 +225,10 @@
         <label>&nbsp;</label>
         <button type="button" id="btnRicarica" title="Ricarica la scaletta">&#8635;</button>
       </div>
+      <div class="stretta">
+        <label>&nbsp;</label>
+        <button type="button" id="btnNeri" title="Controlla tutti i video della scaletta e dice dove ci sono dei neri, a che timecode (come Shutter Encoder)">&#9673; Rileva neri</button>
+      </div>
     </div>
   </div>
 
@@ -235,6 +245,7 @@
       <div id="prevbox"><iframe id="prev" scrolling="no"></iframe>
         <video id="prevVideo" controls playsinline preload="metadata" hidden></video></div>
       <div id="prevcap"></div>
+      <div id="neriSel" hidden></div>
       <div class="tasti">
         <button type="button" id="btnEditor" class="primary">&#9998; Apri l'editor completo</button>
         <span class="spazio"></span>
@@ -564,6 +575,7 @@
       var sotto = (v.tipo === "video" ? "<i>&#9654;</i> video" : esc(v.tipo)) + (v.dest ? " · " + (v.dest === "partita" ? "LIVE MATCH" : "LIVE STUDIO") : "") +
                   (v.ts ? " · " + quando(v.ts) : "");
       if (v.mod && v.mod.chi) sotto += ' · <b>corretta da ' + esc(v.mod.chi) + ' alle ' + quando(v.mod.ts) + '</b>';
+      if (v.tipo === "video" && NERI[v.id]) sotto += " · " + neriBadge(NERI[v.id]);
       h += '<div class="voce' + (sel && sel.id === v.id ? " sel" : "") + (onair[v.id] ? " onair" : "") +
            '" data-id="' + esc(v.id) + '">' +
            '<span class="n">' + (i + 1) + '</span>' +
@@ -574,6 +586,72 @@
     });
     el("voci").innerHTML = h;
   }
+  // RILEVA NERI (02/10/2026, Caria: "non e' meglio in Controllo redazione? lo
+  // lancio una volta e mi controlla tutti i contributi"). Il tasto manda al MAM
+  // tutti i video della scaletta aperta; il MAM guarda il tratto che va in onda
+  // di ognuno (blackdetect, come Shutter Encoder) e su ogni riga compare quanti
+  // neri ha. Aprendo il contributo, i timecode del file: un clic e il lettore ci va.
+  var NERI = {}, NERI_LAV = null, NERI_GIRO = 0;
+  function tcNero(s) {
+    s = Math.max(0, +s || 0);
+    var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(h) + ":" + p(m) + ":" + (x < 10 ? "0" : "") + x.toFixed(2).replace(".", ",");
+  }
+  function neriBadge(r) {
+    if (r.stato === "in coda") return "neri: in coda";
+    if (r.stato === "lavora") return "cerco i neri\u2026";
+    if (r.stato === "saltato" || r.stato === "errore") return "neri non controllati (" + esc(r.errore || "") + ")";
+    var n = (r.neri || []).length;
+    return n ? '<b class="nero">' + n + (n === 1 ? " nero" : " neri") + "</b>" : '<span class="pulito">nessun nero</span>';
+  }
+  function disegnaNeriSel() {
+    var box = el("neriSel");
+    var r = sel && sel.tipo === "video" ? NERI[sel.id] : null;
+    if (!r || r.stato !== "pronto") { box.hidden = true; box.innerHTML = ""; return; }
+    var L = r.neri || [];
+    box.innerHTML = '<div class="ntit">' + (L.length ? L.length + (L.length === 1 ? " nero" : " neri") + " nel tratto che va in onda \u00b7 timecode del file, clic per andarci" : "Nessun nero nel tratto che va in onda.") + "</div>" +
+      L.map(function (z) { return '<button type="button" data-t="' + z.da + '"><span>' + tcNero(z.da) + " \u2192 " + tcNero(z.a) + "</span>" + (z.dur || 0).toFixed(2).replace(".", ",") + " s</button>"; }).join("");
+    box.hidden = false;
+  }
+  el("neriSel").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("button[data-t]") : null; if (!b) return;
+    if (lettore.hidden) return;
+    lettore.pause();
+    try { lettore.currentTime = Math.max(0, +b.dataset.t - 0.5); } catch (er) {}
+  });
+  function guardaNeri() {
+    clearTimeout(NERI_GIRO);
+    if (!NERI_LAV) return;
+    post({ tipo: "clip-neri-contributi", lavoro: NERI_LAV }).then(function (j) {
+      if (!j || j.ok === false) throw new Error((j && j.errore) || "nessuna risposta");
+      (j.voci || []).forEach(function (v) { NERI[v.id] = v; });
+      disegnaVoci(); disegnaNeriSel();
+      if (j.stato === "lavora") { NERI_GIRO = setTimeout(guardaNeri, 1500); return; }
+      NERI_LAV = null; el("btnNeri").disabled = false;
+      var conNeri = (j.voci || []).filter(function (v) { return (v.neri || []).length; }).length;
+      var saltati = (j.voci || []).filter(function (v) { return v.stato !== "pronto"; }).length;
+      dimmi("Neri controllati: " + (conNeri ? conNeri + (conNeri === 1 ? " video li ha" : " video li hanno") : "nessun video ne ha") + (saltati ? ", " + saltati + " non controllati" : "") + ".", conNeri ? "err" : "ok");
+    }).catch(function (er) { NERI_LAV = null; el("btnNeri").disabled = false; dimmi("Neri: " + er.message, "err"); });
+  }
+  el("btnNeri").addEventListener("click", function () {
+    var video = voci.filter(function (v) { return v.tipo === "video"; });
+    if (!video.length) { dimmi("In questa scaletta non ci sono video da controllare.", "err"); return; }
+    el("btnNeri").disabled = true;
+    dimmi("Controllo " + video.length + (video.length === 1 ? " video" : " video") + ": su ogni riga compare l\u2019esito.");
+    Promise.all(video.map(function (v) {
+      return leggiDati(v.id).then(function (d) { return d && d.src ? { id: v.id, src: d.src, da: d.da || 0, a: d.a || 0 } : null; }).catch(function () { return null; });
+    })).then(function (l) {
+      l = l.filter(Boolean);
+      if (!l.length) throw new Error("non riesco a leggere i video della scaletta");
+      return post({ tipo: "clip-neri-contributi", voci: l });
+    }).then(function (j) {
+      if (!j || j.ok === false) throw new Error((j && j.errore) || "nessuna risposta");
+      NERI_LAV = j.lavoro;
+      (j.voci || []).forEach(function (v) { NERI[v.id] = v; });
+      disegnaVoci(); guardaNeri();
+    }).catch(function (er) { el("btnNeri").disabled = false; dimmi("Neri: " + er.message, "err"); });
+  });
   // TOGLIERE UN CONTRIBUTO O UNA GRAFICA (01/10/2026): dalla scaletta del progetto
   // o del vMix. Si toglie la voce, non il file: il video resta sul MAM. In onda non si tocca.
   function togli(id) {
@@ -636,6 +714,7 @@
   var lettore = el("prevVideo"), pezzo = { da: 0, a: 0 };
   function eVideo(d) { return !!(d && d.k === "video" && d.src); }
   function fermaVideo() {
+    el("neriSel").hidden = true;
     lettore.pause(); lettore.hidden = true;
     lettore.removeAttribute("src"); lettore.load();
     el("prev").style.visibility = "";
@@ -663,6 +742,7 @@
     else try { lettore.currentTime = pezzo.da; } catch (e) {}
     if (parti) { var p = lettore.play(); if (p && p.catch) p.catch(function () {}); }
     var lungo = pezzo.a > pezzo.da ? pezzo.a - pezzo.da : (parseFloat(d.dur) || 0);
+    setTimeout(disegnaNeriSel, 0);
     el("prevcap").textContent = "Video in scaletta" + (lungo ? " · " + durataTxt(lungo) : "") +
       (pezzo.da || pezzo.a ? " · dal punto scelto in regia" : "") +
       (d.mute ? " · in onda va MUTO" : " · con l'audio") + ". Premi play per guardarlo.";
