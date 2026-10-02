@@ -7096,11 +7096,13 @@ function giroNas() {
   const base = path.join(QNAP_RADICE, SPECCHIO_DIR);
   nasInCorso = (async () => {
     const finiti = new Map(), parziali = [], daPesare = [];
+    let rotta = null;
     // prima le cartelle (poche domande), poi i pesi SEDICI ALLA VOLTA: con la
     // copia che scrive, la NAS mette ~0,2 s a domanda, e 337 domande in fila
     // erano 66 secondi (25/09/2026)
     const giro = async (dir, rel, prof) => {
-      let voci; try { voci = await NFS(() => fs.promises.readdir(dir, { withFileTypes: true })); } catch (e) { return; }
+      let voci; try { voci = await NFS(() => fs.promises.readdir(dir, { withFileTypes: true })); }
+      catch (e) { if (e.code !== "ENOENT") rotta = rotta || (rel + ": " + (e.code || e.message)); return; }
       await Promise.all(voci.map(async (v) => {
         if (v.name.startsWith(".") || v.name === "_script") return;
         const p = path.join(dir, v.name), r = rel ? rel + "/" + v.name : v.name;
@@ -7113,7 +7115,6 @@ function giroNas() {
     for (let i = 0; i < daPesare.length; i += 16) {
       await Promise.all(daPesare.slice(i, i + 16).map(([r, p]) => NFS(() => fs.promises.stat(p)).then((st) => { finiti.set(r, st.size); }, () => {})));
     }
-    NAS_FILE = finiti; NAS_PARZIALI = parziali;
     // lo specchio: una partita e' in casa se c'e' TUTTA, al byte
     const nuovo = new Map(); let partite = 0;
     Object.keys(ARCHIVIO).forEach((rec) => {
@@ -7122,6 +7123,20 @@ function giroNas() {
       if (!pz.length || !pz.every((z) => finiti.has(z.chiave) && (!z.peso || finiti.get(z.chiave) === z.peso))) return;
       pz.forEach((z) => nuovo.set(z.chiave, path.join(base, z.chiave))); partite++;
     });
+    // UNA NAS CHE NON RISPONDE NON E' UNA NAS VUOTA (02/10/2026). Alle 10:48,
+    // con la macchina carica e i download di Frame.io sulla stessa rete, una
+    // lettura della cartella e' fallita in silenzio: il giro ha contato zero
+    // file, ha svuotato lo specchio (anche su disco) e tutte le partite sono
+    // diventate "in arrivo sulla NAS" (Caria: "me lo dice di tutte, anche del
+    // Como"). Una lettura rotta, o una che perde piu' di meta' delle partite,
+    // non si prende: resta lo specchio di prima e si riprova fra cinque minuti
+    if (rotta || (SPECCHIO.size > 100 && nuovo.size < SPECCHIO.size / 2)) {
+      console.log("[clip] archivio NAS: lettura non presa (" + (rotta || nuovo.size + " file contro " + SPECCHIO.size) + "), resta lo specchio di prima");
+      COPIA_PESO.quando = Date.now() - 25 * 60000;
+      setTimeout(() => { giroNas(); }, 5 * 60000);
+      return { partite: -1, saltato: true };
+    }
+    NAS_FILE = finiti; NAS_PARZIALI = parziali;
     const cambiato = nuovo.size !== SPECCHIO.size;
     SPECCHIO = nuovo; SPECCHIO_QUANDO = Date.now();
     // si tiene su disco: al riavvio lo specchio c'e' subito, senza aspettare la NAS
@@ -14740,7 +14755,30 @@ async function serviMagazzino(req, res, u) {
   }
 }
 
+// CHI USA LA NAS ADESSO (02/10/2026). Lo scarico Frame -> NAS del 1907 gira sulla
+// stessa VM e sulla stessa NAS: con 5 file alla volta la lettura scendeva da 87 a
+// 15 MB/s e un export di 1:35 sul computer di Caria chiedeva un minuto. Goffredo:
+// "si ferma quando si monta". Lo scaricatore chiede clip-occupato ogni 5 s e si
+// mette in pausa mentre si esporta, si porta in casa, si invia in regia o un
+// aiutante legge o carica (e per un minuto dopo l'ultima richiesta).
+let AIUT_ULTIMO = 0, AIUT_IN_CORSO = 0;
+function segnaAiutante(res) {
+  AIUT_ULTIMO = Date.now(); AIUT_IN_CORSO++;
+  res.on("close", () => { AIUT_IN_CORSO = Math.max(0, AIUT_IN_CORSO - 1); AIUT_ULTIMO = Date.now(); });
+}
+function clipOccupato() {
+  const perche = [];
+  if (AIUT_IN_CORSO > 0 || Date.now() - AIUT_ULTIMO < 60000) perche.push("aiutante");
+  for (const k in R.seq) {
+    const q = R.seq[k];
+    if (q && ((q.export && q.export.stato === "lavora") || (q.casa && q.casa.stato === "lavora"))) { perche.push("export"); break; }
+  }
+  if (INVII_REGIA.some((v) => v.stato === "lavora")) perche.push("regia");
+  return { ok: true, occupato: perche.length > 0, perche };
+}
+
 function serviHttp(req, res, u) {
+  if (ATTIVO && /^\/aiutante\/(file|carica|carica-regia)$/.test(u.pathname)) segnaAiutante(res);
   if (ATTIVO && u.pathname.startsWith("/magazzino/")) { serviMagazzino(req, res, u); return true; }
   if (ATTIVO && u.pathname === "/aiutante/file") { serviFileAiutante(req, res, u); return true; }
   if (ATTIVO && u.pathname === "/aiutante/carica") { caricaAiutante(req, res, u); return true; }
@@ -16946,6 +16984,7 @@ const AZIONI = {
   "clip-ferma": clipFerma,
   "clip-rinomina": clipRinomina,
   "clip-stato": clipStato,
+  "clip-occupato": clipOccupato,
   "clip-taglia": clipTaglia,
   "clip-marker": clipMarker,
   "clip-kickoff": clipKickoff,

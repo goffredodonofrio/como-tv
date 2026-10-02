@@ -15,7 +15,11 @@ attraverso frame-ponte-1907.py (link.json). Qui si scarica, nell'ordine del pian
     del file rotto (sostituisci) o il suo nome (nuovo). Un file diverso con lo
     stesso nome non si tocca mai: il nuovo prende un nome distinto;
   - durante una diretta si ferma (clip-stato "registra"), e si ferma del tutto se
-    sulla NAS restano meno di MIN_LIBERI byte.
+    sulla NAS restano meno di MIN_LIBERI byte;
+  - si mette in pausa anche mentre si monta (02/10/2026, Goffredo: "si ferma quando
+    si monta"): il ponte risponde a clip-occupato quando qualcuno esporta, invia in
+    regia o un aiutante legge o carica. Gli scaricamenti in corso si interrompono
+    (la copia nascosta resta) e riprendono da dove erano 30 s dopo che e' tutto libero.
 Stato in stato.json (id -> fatto/errore), registro in scarico.log.
 
 Uso: frame-scarico-1907.py [--solo N] [--insieme K]
@@ -29,6 +33,8 @@ PIANO, LINK, STATO, LOG = (os.path.join(CASA, x) for x in ("piano.tsv", "link.js
 MIN_LIBERI = 3 * 10**12            # sotto i 3 TB liberi sulla NAS ci si ferma
 LOCK = threading.Lock()
 FERMO = threading.Event()
+PAUSA = threading.Event()          # si monta: niente scaricamenti
+CURL = set()                       # gli scaricamenti in corso, da interrompere alla pausa
 
 def log(t):
     r = time.strftime("%F %T") + " " + t
@@ -52,6 +58,32 @@ def in_diretta():
     except Exception:
         return False
 
+def occupato():
+    try:
+        r = urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8080/api", data=b'{"tipo":"clip-occupato"}',
+                                   headers={"Content-Type": "application/json"}), timeout=10).read().decode()
+        j = json.loads(r); return ",".join(j.get("perche") or []) if j.get("occupato") else ""
+    except Exception:
+        return ""
+
+def sentinella():
+    """Ogni 5 s: se si monta, pausa e via gli scaricamenti in corso; libero da 30 s, si riparte."""
+    libero_da = 0
+    while not FERMO.is_set():
+        perche = occupato()
+        if perche:
+            libero_da = 0
+            if not PAUSA.is_set():
+                PAUSA.set(); log("si monta (%s): pausa" % perche)
+            with LOCK: attivi = list(CURL)
+            for pr in attivi:
+                try: pr.terminate()
+                except Exception: pass
+        elif PAUSA.is_set():
+            libero_da = libero_da or time.time()
+            if time.time() - libero_da >= 30: PAUSA.clear(); log("libero: riprendo")
+        time.sleep(5)
+
 def liberi():
     s = os.statvfs(RADICE); return s.f_bavail * s.f_frsize
 
@@ -71,6 +103,7 @@ def uno(x):
     pr, i, byte, azione, rel = x["prio"], x["id"], x["byte"], x["azione"], x["dest"]
     dest = os.path.join(RADICE, rel)
     while not FERMO.is_set():
+        if PAUSA.is_set(): time.sleep(5); continue
         if in_diretta(): log("diretta in corso: aspetto"); time.sleep(120); continue
         if liberi() < MIN_LIBERI: log("NAS quasi piena: mi fermo"); FERMO.set(); return
         u = link_di(i)
@@ -84,11 +117,23 @@ def uno(x):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = os.path.join(os.path.dirname(dest), ".frame-" + i + ".part")
     t0 = time.time(); prima = os.path.getsize(tmp) if os.path.exists(tmp) else 0
-    p = subprocess.run(["curl", "-sS", "--fail", "-L", "--retry", "3", "--retry-delay", "10", "-C", "-",
-                        "--speed-limit", "100000", "--speed-time", "120", "-o", tmp, u], capture_output=True, text=True)
+    while True:
+        while PAUSA.is_set() and not FERMO.is_set(): time.sleep(5)
+        if FERMO.is_set(): return
+        p = subprocess.Popen(["curl", "-sS", "--fail", "-L", "--retry", "3", "--retry-delay", "10", "-C", "-",
+                              "--speed-limit", "100000", "--speed-time", "120", "-o", tmp, u],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        with LOCK: CURL.add(p)
+        _, errore = p.communicate()
+        with LOCK: CURL.discard(p)
+        p.stderr_testo = errore or ""
+        if PAUSA.is_set() and p.returncode != 0: continue      # interrotto per la pausa: riprende da dove era
+        break
     ora = os.path.getsize(tmp) if os.path.exists(tmp) else 0
-    if p.returncode != 0 or ora != byte:
-        err = (p.stderr.strip().splitlines() or ["peso " + str(ora) + " invece di " + str(byte)])[-1][:200]
+    # una copia gia' intera (interrotta tra l'ultimo byte e il cambio di nome) alla
+    # ripresa fa rispondere "416" a Frame: conta il peso, non il codice di curl
+    if ora != byte:
+        err = (p.stderr_testo.strip().splitlines() or ["peso " + str(ora) + " invece di " + str(byte)])[-1][:200]
         if ora > byte: os.remove(tmp)                    # piu' grande del vero: si ricomincia da capo
         segna(i, {"stato": "errore", "errore": err}); log("ERRORE " + rel + ": " + err); return
     if azione == "sostituisci" and os.path.exists(dest) and os.path.getsize(dest) > byte:
@@ -115,6 +160,7 @@ def main():
             voci.append({"prio": t[0], "id": t[1], "byte": int(t[2]), "azione": t[3], "dest": t[4]})
     if solo: voci = voci[:solo]
     log("parto: %d file da fare, %.2f TB, %d insieme" % (len(voci), sum(v["byte"] for v in voci) / 1e12, insieme))
+    threading.Thread(target=sentinella, daemon=True).start()
     with ThreadPoolExecutor(insieme) as ex: list(ex.map(uno, voci))
     log("fine giro")
 
