@@ -60,7 +60,8 @@ def scadenza(u):
 
 def link_di(i):
     v = leggi(LINK, {}).get(i)
-    return v["url"] if v and scadenza(v["url"]) > time.time() + 900 else None
+    if v and v.get("senza"): return "SENZA:" + v["senza"]          # Frame non lo da': si salta
+    return v["url"] if v and v.get("url") and scadenza(v["url"]) > time.time() + 900 else None
 
 def nome_libero(dest, i):
     if not os.path.exists(dest): return dest
@@ -76,6 +77,8 @@ def uno(x):
         if u: break
         time.sleep(30)                                   # il link arriva dalla scheda di Frame
     if FERMO.is_set(): return
+    if u.startswith("SENZA:"):
+        segna(i, {"stato": "errore", "errore": "Frame non da' il link: " + u[6:]}); log("SENZA LINK " + rel + ": " + u[6:]); return
     if azione == "nuovo" and os.path.exists(dest) and os.path.getsize(dest) == byte:
         segna(i, {"stato": "fatto", "nota": "c'era gia'"}); return
     os.makedirs(os.path.dirname(dest), exist_ok=True)

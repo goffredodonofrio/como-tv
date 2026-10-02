@@ -50,7 +50,9 @@ class H(BaseHTTPRequestHandler):
                 i = r.split("\t")[1]
                 if i in fatti: continue
                 resto += 1
-                v = d.get(i); m = re.search(r"[?&]Expires=(\d+)", v["url"]) if v else None
+                v = d.get(i)
+                if v and v.get("senza"): continue
+                m = re.search(r"[?&]Expires=(\d+)", v["url"]) if v and v.get("url") else None
                 if m and int(m.group(1)) > ora + 7200: continue
                 if len(ids) < n and resto <= 600: ids.append(i)   # solo i prossimi: i link scadono in ~16 ore
             self.rispondi(200, {"ok": True, "ids": ids, "da_fare": resto})
@@ -69,6 +71,7 @@ class H(BaseHTTPRequestHandler):
                 for v in voci:
                     i, u = str(v.get("id", "")), str(v.get("url", ""))
                     if len(i) == 36 and u.startswith("https://assets.frame.io/"): d[i] = {"url": u, "ts": ora}; messi += 1
+                    elif len(i) == 36 and v.get("senza"): d[i] = {"senza": str(v.get("senza"))[:200], "ts": ora}; messi += 1   # Frame non da' il link
                 json.dump(d, open(LINK + ".tmp", "w")); os.replace(LINK + ".tmp", LINK)
             self.rispondi(200, {"ok": True, "messi": messi, "tot": len(d)})
         except Exception as e:
