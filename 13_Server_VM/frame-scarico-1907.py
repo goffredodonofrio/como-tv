@@ -88,8 +88,11 @@ def uno(x):
         err = (p.stderr.strip().splitlines() or ["peso " + str(ora) + " invece di " + str(byte)])[-1][:200]
         if ora > byte: os.remove(tmp)                    # piu' grande del vero: si ricomincia da capo
         segna(i, {"stato": "errore", "errore": err}); log("ERRORE " + rel + ": " + err); return
+    if azione == "sostituisci" and os.path.exists(dest) and os.path.getsize(dest) > byte:
+        # sulla NAS c'e' un file piu' grande di quello di Frame: non e' quello rotto, non si tocca
+        os.remove(tmp); segna(i, {"stato": "errore", "errore": "sulla NAS e' piu' grande: lasciato"}); log("LASCIATO " + rel + ": sulla NAS e' piu' grande"); return
     if azione == "sostituisci":
-        # vuoto, incompleto o rovinato (anche col peso giusto): si sostituisce sempre
+        # vuoto, incompleto o rovinato (anche col peso giusto), nello stesso percorso che ha su Frame
         os.replace(tmp, dest)                            # il file vuoto o rotto lascia il posto a quello intero
     else:
         dest = nome_libero(dest, i); os.replace(tmp, dest)
