@@ -6824,10 +6824,19 @@ async function statoCopia() {
 //  In casa costa zero. Mai sopra una registrazione, una diretta, una
 //  trascrizione o un'altra lettura: la macchina ha due core.
 const CASA = { attive: new Map(), fatte: 0, fallite: 0, dal: Date.now() };
+// FUORI DAL PUNTAMENTO (02/10/2026, Goffredo: "Kings League e Zeta, escludile
+// pure"): tempi da 20', grafica diversa, cronometro quasi mai leggibile. Le 12
+// partite della Zeta Como restano nell'archivio e si cercano; il giro della
+// casa non ci spende piu' letture
+const FUORI_PUNTAMENTO = /kings league|\bzeta como\b/i;
+function fuoriPuntamento(a) {
+  return !!a && (FUORI_PUNTAMENTO.test(a.competizione || "") || FUORI_PUNTAMENTO.test(a.partita || ""));
+}
 function passoCasa(rec, a) {
   // lo studio (pre, intervallo, post) non ha ne' risultato ne' fischio suo:
   // sta nel file della partita, e la partita la legge lei
   if (senzaPartita(a)) return null;
+  if (fuoriPuntamento(a)) return null;
   if (!ESPN[rec]) return "espn";
   if (!a.orologio && !a.orologioFallito) return "cronometro";
   if (a.orologio && !a.tabellone && !a.tabelloneFallito) return "tabellone";
@@ -6985,7 +6994,7 @@ const NOMI = { attive: new Set(), fatte: 0, verificate: 0, fallite: 0, dal: 0 };
 function daVerificare() {
   return Object.keys(ARCHIVIO).filter((rec) => {
     const a = ARCHIVIO[rec];
-    return a && a.partita && magazzinoInventario(a.bucket) && inCasa(a) && !nomeSicuro(a) &&
+    return a && a.partita && magazzinoInventario(a.bucket) && inCasa(a) && !nomeSicuro(a) && !fuoriPuntamento(a) &&
            !a.tabellone && !a.tabelloneFallito && !NOMI.attive.has(rec);
   }).sort((x, y) => {
     const a = ARCHIVIO[x], b = ARCHIVIO[y];
@@ -12100,7 +12109,7 @@ function orologiInCoda(ripasso) {
   candidate.forEach((rec) => {
     const a = ARCHIVIO[rec];
     if (a && senzaCodeDi(a)) return;                       // S3 contato: il cronometro si legge a richiesta
-    if (!a || a.orologio || gia.has(rec) || senzaPartita(a)) return;
+    if (!a || a.orologio || gia.has(rec) || senzaPartita(a) || fuoriPuntamento(a)) return;
     if (a.orologioFallito && (!ripasso || a.orologioFallito.riprovato)) return;   // gia' provata: al giro finale, e una volta sola
     CODA_OROLOGI.push(rec);
   });
