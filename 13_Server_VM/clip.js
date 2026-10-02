@@ -5051,11 +5051,12 @@ async function costruisciPezzi(q, avanti) {
         code === 0 ? si() : no(new Error(ultimaRiga(coda) || ("ffmpeg " + code)));
       });
     });
+    // lo scarto si tiene accanto al file: dice di quanto il pezzo comincia
+    // prima, e serve sia a riprodurlo esatto sia a esportarlo esatto. Si scrive
+    // PRIMA del file: chi vede il pezzo (la ricetta dell'aiutante) trova gia' lo scarto
+    try { fs.writeFileSync(fuoriFile + ".json", JSON.stringify({ off: Math.round(scarto * 1000) / 1000 })); } catch (e) {}
     try { fs.renameSync(parziale, fuoriFile); }
     catch (e) { console.log("[clip] in casa: non riesco a rinominare " + parziale + ": " + e.message); throw e; }
-    // lo scarto si tiene accanto al file: dice di quanto il pezzo comincia
-    // prima, e serve sia a riprodurlo esatto sia a esportarlo esatto
-    try { fs.writeFileSync(fuoriFile + ".json", JSON.stringify({ off: Math.round(scarto * 1000) / 1000 })); } catch (e) {}
     const st = (function () { try { return fs.statSync(fuoriFile).size; } catch (e) { return 0; } })();
     console.log("[clip] in casa: " + path.basename(fuoriFile) + " " + Math.round(st / 1e6) + " MB, comincia " +
                 scarto.toFixed(2) + "s prima");
@@ -5121,6 +5122,7 @@ async function giroPezziPresto() {
                      !(q.casa && q.casa.stato === "lavora") && !(q.export && q.export.stato === "lavora"))
       .sort((a, b) => b.mano - a.mano);
     for (const q of seqs) {
+      if (q.casa && q.casa.stato === "lavora") continue;   // la sta tagliando la ricetta (pezziSubito)
       let manca = 0; try { manca = pezziDaScaricare(q).length; } catch (e) { continue; }
       if (!manca) continue;
       if (registrandoDavvero() || laDirettaGira()) break;
@@ -6383,6 +6385,39 @@ async function ricettaAiutante(q, formato, origine, p2) {
            nome: nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4"), pezzi, grafiche, oltre: Math.round(oltre * 1000) / 1000,
            carica: origine + "/aiutante/carica?seq=" + encodeURIComponent(q.id) + "&formato=" + encodeURIComponent(formato) + "&fino=" + fino + "&f=" + firmaAiutante(cosaCarica, fino) };
 }
+// I PEZZI CHE MANCANO, SUBITO (02/10/2026). Al primo export di una sequenza
+// appena montata il pezzo non era ancora in casa (il giro "presto" passa ogni
+// 45 s): il computer di chi monta leggeva la partita a tratti attraverso la VM,
+// al passo della codifica, e 1:35 di highlights chiedeva un minuto (Caria, VMIX-11)
+// contro i 12 s di quando il pezzo c'era. Tagliarlo qui in copia dalla NAS costa
+// pochi secondi: si aspetta al massimo 15 s, e quello che non e' pronto si legge
+// come prima. Se mancano piu' di 3 minuti di pezzi (una partita intera, o la NAS
+// occupata da altri) non si aspetta: il taglio parte lo stesso e serve all'export
+// dopo. Mai durante una diretta.
+const PEZZI_SUBITO = {};
+async function pezziSubito(q) {
+  if (registrandoDavvero() || laDirettaGira()) return;
+  const t0 = Date.now(), limite = 15000;
+  const conta = () => { const l = pezziDaScaricare(q); return { manca: l.length, secondi: l.reduce((t, x) => t + Math.max(0, fuoriCasa(x) - x.dentro), 0) }; };
+  let c; try { c = conta(); } catch (e) { return; }
+  // il giro "presto" ci sta gia' lavorando: si aspetta lui, se i pezzi sono corti
+  if (c.secondi > 180 && q.casa && q.casa.stato === "lavora") return;
+  while (q.casa && q.casa.stato === "lavora" && !PEZZI_SUBITO[q.id] && Date.now() - t0 < limite) await new Promise((r) => setTimeout(r, 500));
+  if (q.casa && q.casa.stato === "lavora" && !PEZZI_SUBITO[q.id]) return;   // il giro non ha finito: due tagli dello stesso pezzo si pesterebbero
+  try { c = conta(); } catch (e) { return; }
+  const manca = c.manca, secondi = c.secondi;
+  if (!manca && !PEZZI_SUBITO[q.id]) return;
+  if (!PEZZI_SUBITO[q.id]) {
+    q.casa = { stato: "lavora", fatti: 0, quanti: manca };
+    PEZZI_SUBITO[q.id] = costruisciPezzi(q, (f, n) => { q.casa = { stato: "lavora", fatti: f, quanti: n }; })
+      .then((e) => { segnaPezziLocali(q); q.casa = { stato: "pronto", fatti: e.fatti, quanti: e.quanti, quando: Date.now() };
+                     console.log("[clip] in casa per l'aiutante: " + e.fatti + " pezzi di \"" + (q.titolo || q.id) + "\" in " + ((Date.now() - t0) / 1000).toFixed(1) + " s"); })
+      .catch((err) => { q.casa = { stato: "errore", errore: err.message }; console.log("[clip] in casa per l'aiutante: " + err.message); })
+      .then(() => { delete PEZZI_SUBITO[q.id]; scrivi(); annuncia(0, "clip"); });
+  }
+  if (secondi > 180) return;
+  await Promise.race([PEZZI_SUBITO[q.id] || Promise.resolve(), new Promise((r) => setTimeout(r, Math.max(0, limite - (Date.now() - t0))))]);
+}
 async function hlRicetta(p) {
   const q = seqDi(p);
   if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
@@ -6392,6 +6427,7 @@ async function hlRicetta(p) {
   if (motivo) return { ok: true, supportata: false, motivo };
   const elenco = Array.isArray(p.formati) ? p.formati.filter((f) => FORMATI[f]) : [];
   const formati = elenco.length ? elenco : [FORMATI[p.formato] ? String(p.formato) : "16:9"];
+  try { await pezziSubito(q); } catch (e) {}
   try {
     const ricette = [];
     for (const f of formati) ricette.push(await ricettaAiutante(q, f, origine, p));
