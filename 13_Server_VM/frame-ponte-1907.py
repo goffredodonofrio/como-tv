@@ -52,7 +52,7 @@ class H(BaseHTTPRequestHandler):
                 resto += 1
                 v = d.get(i); m = re.search(r"[?&]Expires=(\d+)", v["url"]) if v else None
                 if m and int(m.group(1)) > ora + 7200: continue
-                if len(ids) < n: ids.append(i)
+                if len(ids) < n and resto <= 600: ids.append(i)   # solo i prossimi: i link scadono in ~16 ore
             self.rispondi(200, {"ok": True, "ids": ids, "da_fare": resto})
         except Exception as e:
             self.rispondi(400, {"ok": False, "errore": str(e)[:200]})
