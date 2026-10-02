@@ -5395,7 +5395,7 @@
         haT[n] = '<div class="ed-buco' + (bSel ? " sel" : "") + '" style="left:' + xa + 'px;width:' + Math.max(2, xb - xa) + 'px" title="spazio vuoto su ' + n + ' di ' + tc(z.b - z.a) + (bSel ? ": Canc lo chiude" : ": clic per sceglierlo, poi Canc lo chiude") + '"></div>' + (haT[n] || "");
       });
     });
-    if (AGGANCIO !== null && TRASC) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
+    if (AGGANCIO !== null && (TRASC || RIG)) hv += '<div class="ed-magnete" style="left:' + X(AGGANCIO) + 'px"></div>';
     cv.innerHTML = hv || '<div class="ed-vuoto">Sequenza vuota.</div>'; cv2.innerHTML = hv2; cst.innerHTML = hs; cg.innerHTML = hg;
     corsie.forEach(function(n){
       var c = el("pista").querySelector('.ed-corsia.a[data-tr="' + n + '"]');
@@ -5728,6 +5728,7 @@
       bt("Aggiungi modifica (taglierino)", "cmd K", "eTaglia"),
       bt("Chiudi gli spazi vuoti", "", "eAttacca"),
       bt("Magnetismo", "S", "eMagnete"),
+      { e: "Aggancia la testina col magnete", nome: function(){ return (AGGANCIA_T ? "\u2713 " : "") + "Aggancia la testina col magnete"; }, t: "", f: function(){ cambiaAgganciaTestina(); } },
       bt("Selezione collegata", "", "eCollega"),
       { riga: 1 },
       { capo: "Nuovo elemento" },
@@ -6415,8 +6416,10 @@
   // piu' dove sono), le grafiche e anche gli audio, tranne quello che si
   // sta trascinando. Una copia fatta con Alt invece attacca proprio al suo
   // originale: e' li' che la si vuole, sotto di lui e sotto il video.
-  function puntiDiAggancio(saltaPezzo){
-    var p = [0, durSeq(), tSeq()];
+  function puntiDiAggancio(saltaPezzo, perTestina){
+    // la testina non si attacca a se stessa; in compenso trova anche i marcatori
+    var p = perTestina ? [0, durSeq()] : [0, durSeq(), tSeq()];
+    if (perTestina && typeof marcatoriDellaSeq === "function") marcatoriDellaSeq().dentro.forEach(function(z){ p.push(z.t); });
     PZ.forEach(function(x, i){
       if (i === saltaPezzo) return;
       var a = x.t0 || 0; p.push(a); p.push(a + (x.fuori - x.dentro));
@@ -6450,6 +6453,26 @@
     });
     if (buono === null) return t;
     AGGANCIO = buono; return buono;
+  }
+  // LA TESTINA COL MAGNETE (02/10/2026, Caria, come in Premiere: "Aggancia
+  // testina di riproduzione nella timeline quando Effetto calamita e' attivato").
+  // Trascinata sul righello, la testina si attacca ai tagli, all'inizio e alla
+  // fine di clip, audio e grafiche, all'entrata e all'uscita e ai marcatori.
+  // Alt la lascia libera; Shift la aggancia anche col magnete spento.
+  var AGGANCIA_T = true;
+  try { AGGANCIA_T = localStorage.getItem("mam2-aggancia-testina") !== "0"; } catch (e) {}
+  function agganciaTestina(t, forza){
+    AGGANCIO = null;
+    if (ALT_GIU || !(forza || (MAGNETE && AGGANCIA_T))) return t;
+    var span = Math.max(0.001, LENTE.b - LENTE.a), w = el("pista").clientWidth || 800;
+    var buono = null, vicino = 9 / w * span;
+    puntiDiAggancio(-1, true).forEach(function(q){ var d = Math.abs(q - t); if (d < vicino) { vicino = d; buono = q; } });
+    if (buono === null) return t;
+    AGGANCIO = buono; return buono;
+  }
+  function cambiaAgganciaTestina(){
+    AGGANCIA_T = !AGGANCIA_T; try { localStorage.setItem("mam2-aggancia-testina", AGGANCIA_T ? "1" : "0"); } catch (e) {}
+    avviso("ok", AGGANCIA_T ? "La testina si aggancia col magnete (Alt per lasciarla libera)." : "La testina scorre libera (Shift per agganciarla).");
   }
   // LA SELEZIONE COLLEGATA (30/09/2026, come in Premiere). Accesa: audio e
   // video di una clip vanno insieme. Spenta: trascinando l'audio si sposta
@@ -6768,9 +6791,10 @@
     // IL RIGHELLO, come in Premiere: clic o trascinamento portano la testina, ovunque
     if (e.target.closest("#cRig") && !e.target.closest(".mk")) {
       var rR = el("pista").getBoundingClientRect();
-      RIG = { eraInPlay: VE && !VE.paused, left: rR.left, ultimo: 0 };
+      RIG = { eraInPlay: VE && !VE.paused, left: rR.left, ultimo: 0, agg: null };
       if (VE) VE.pause();
-      vaiTempo(tDiX(e.clientX - rR.left), false);
+      vaiTempo(agganciaTestina(tDiX(e.clientX - rR.left), e.shiftKey), false);
+      if (AGGANCIO !== null) { RIG.agg = AGGANCIO; disegnaTl(); }
       e.preventDefault(); return;
     }
     var sy = e.target.closest(".ed-sync");
@@ -6869,7 +6893,7 @@
   });
   var RIG = null;
   document.addEventListener("mousemove", function(e){
-    if (RIG) { if (Date.now() - RIG.ultimo > 40) { RIG.ultimo = Date.now(); vaiTempo(tDiX(e.clientX - RIG.left), false); } return; }
+    if (RIG) { if (Date.now() - RIG.ultimo > 40) { RIG.ultimo = Date.now(); vaiTempo(agganciaTestina(tDiX(e.clientX - RIG.left), e.shiftKey), false); if (AGGANCIO !== RIG.agg) { RIG.agg = AGGANCIO; disegnaTl(); } } return; }
     if (RETE) {
       var r0 = el("pista").getBoundingClientRect();
       RETE.x1 = Math.max(r0.left, Math.min(r0.right, e.clientX));
@@ -6967,7 +6991,7 @@
     disegnaTl();
   });
   document.addEventListener("mouseup", function(e){
-    if (RIG) { var rg = RIG; RIG = null; vaiTempo(tDiX(e.clientX - rg.left), false); if (rg.eraInPlay && VE) VE.play().catch(function(){}); return; }
+    if (RIG) { var rg = RIG; RIG = null; vaiTempo(agganciaTestina(tDiX(e.clientX - rg.left), e.shiftKey), false); var avevaAgg = rg.agg !== null || AGGANCIO !== null; AGGANCIO = null; if (avevaAgg) disegnaTl(); if (rg.eraInPlay && VE) VE.play().catch(function(){}); return; }
     if (RETE) {
       var re = RETE; RETE = null;
       if (el("reteBox")) el("reteBox").hidden = true;
