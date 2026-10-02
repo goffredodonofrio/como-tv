@@ -30,7 +30,7 @@
 const http = require("http"), https = require("https"), fs = require("fs"), path = require("path");
 const os = require("os"), cp = require("child_process");
 
-const VERSIONE = "0.3.2";
+const VERSIONE = "0.3.3";
 const WIN = process.platform === "win32", MAC = process.platform === "darwin";
 
 // Il ffmpeg del pacchetto Mac ha OpenSSL dentro e non sa dove stanno i certificati
@@ -46,8 +46,10 @@ const PREDEF = {
   porta: 47800,
   ffmpeg: "", ffprobe: "",            // vuoti: li cerca da solo
   // dove si vede la NAS su questo computer (si cambia qui se e' montata altrove)
-  radici: MAC ? { vod: "/Volumes/COMOTV - VOD", frame: "/Volumes/COMOTV - FRAME" }
-       : WIN ? { vod: "\\\\QNAP100\\COMOTV - VOD", frame: "\\\\QNAP100\\COMOTV - FRAME" }
+  // 02/10/2026: le cartelle della QNAP si chiamano COMO TV (era COMOTV - VOD) e
+  // COMO1907 (era COMOTV - FRAME); chi le ha ancora col nome vecchio va bene lo stesso
+  radici: MAC ? { vod: "/Volumes/COMO TV", frame: "/Volumes/COMO1907" }
+       : WIN ? { vod: "\\\\QNAP100\\COMO TV", frame: "\\\\QNAP100\\COMO1907" }
              : { vod: "/mnt/qnap100", frame: "/mnt/qnap100-frame" },
   cartella: path.join(os.homedir(), "Downloads", "MAM Export"),
   // le pagine che possono chiedere lavoro, e i ponti da cui si scarica e su cui si carica
@@ -115,13 +117,21 @@ function scegliCodificatore() {
 }
 
 // ── la NAS: si vede? ──
+// il nome nuovo o quello vecchio della cartella, quello che su questo computer c'e'
+const NOMI = [["COMO TV", "COMOTV - VOD"], ["COMO1907", "COMOTV - FRAME"]];
+function radice(k) {
+  const r = CONF.radici[k]; if (!r) return r;
+  const alt = NOMI.reduce((x, [n, v]) => x.endsWith(n) ? x.slice(0, -n.length) + v : x.endsWith(v) ? x.slice(0, -v.length) + n : x, r);
+  try { if (!fs.existsSync(r) && alt !== r && fs.existsSync(alt)) return alt; } catch (e) {}
+  return r;
+}
 function radiciViste() {
   const o = {};
-  for (const [k, r] of Object.entries(CONF.radici)) { try { o[k] = fs.existsSync(r) && fs.readdirSync(r).length > 0; } catch (e) { o[k] = false; } }
+  for (const k of Object.keys(CONF.radici)) { const r = radice(k); try { o[k] = fs.existsSync(r) && fs.readdirSync(r).length > 0; } catch (e) { o[k] = false; } }
   return o;
 }
 function fileLocale(sorg) {
-  const r = CONF.radici[sorg.root];
+  const r = radice(sorg.root);
   if (!r) return null;
   const f = path.join.apply(path, [r].concat(String(sorg.rel).split("/")));
   try { return fs.existsSync(f) ? f : null; } catch (e) { return null; }
@@ -480,7 +490,7 @@ function prova() {
   console.log("configurazione: " + CONF_FILE);
   console.log("ffmpeg: " + (FFMPEG || "NON TROVATO") + " · ffprobe: " + (FFPROBE || "NON TROVATO"));
   console.log("codificatore: " + CODIFICATORE);
-  console.log("NAS: " + Object.entries(radiciViste()).map(([k, v]) => k + " " + (v ? "si vede" : "NON si vede") + " (" + CONF.radici[k] + ")").join(" · "));
+  console.log("NAS: " + Object.entries(radiciViste()).map(([k, v]) => k + " " + (v ? "si vede" : "NON si vede") + " (" + radice(k) + ")").join(" · "));
 }
 CODIFICATORE = scegliCodificatore();
 if (process.argv.indexOf("--prova") >= 0) { prova(); process.exit(0); }

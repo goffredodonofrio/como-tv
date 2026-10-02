@@ -198,7 +198,7 @@ def scheda_file(pieno):
 
 
 def xml_premiere(nome, vie, radice):
-    radice = (radice or "/Volumes/COMOTV - FRAME").rstrip("/")
+    radice = (radice or "/Volumes/COMO1907").rstrip("/")
     ok = []
     for v in vie:
         v2, pieno = dentro(v)
@@ -911,7 +911,7 @@ def info(via):
     via = _rel(via); p = os.path.join(RW, via) if via else RW
     if via and not _dentro_frame(p) or not os.path.exists(p): return 404, {"ok": False, "errore": "Non c'e' piu'."}
     st = os.stat(p); out = {"ok": True, "via": via, "nome": os.path.basename(via) or "Como 1907", "cartella": os.path.isdir(p),
-                            "modificato": int(st.st_mtime), "creato": int(getattr(st, "st_birthtime", st.st_ctime)), "percorsoMac": "/Volumes/COMOTV - FRAME/" + via}
+                            "modificato": int(st.st_mtime), "creato": int(getattr(st, "st_birthtime", st.st_ctime)), "percorsoMac": "/Volumes/COMO1907/" + via}
     if os.path.isdir(p):
         peso, n = _peso_di(p, limite=20); out.update(peso=peso, file=abs(n), parziale=n < 0)
         try: out["elementi"] = len([x for x in os.listdir(p) if not x.startswith((".", "@"))])

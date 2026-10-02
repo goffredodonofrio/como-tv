@@ -5779,7 +5779,7 @@ function xmlEsc(t) {
 // dichiarava il nome e basta: Premiere apriva la sequenza con tutte le
 // clip OFFLINE e il montatore doveva ricollegarne una a mano. Ma il
 // magazzino il montatore ce l'ha montato sul suo Mac — la QNAP e'
-// "COMOTV - VOD" — e allora basta dirgli dove: si scrive il percorso
+// "COMO TV" (fino al 02/10/2026 "COMOTV - VOD") — e allora basta dirgli dove: si scrive il percorso
 // vero e la sequenza si apre gia' attaccata al materiale. Per le partite
 // che stanno sulla NAS si scrive la chiave intera (le cartelle sono
 // quelle); per le altre il nome del file, che il montatore ha scaricato.
@@ -6105,11 +6105,11 @@ async function hlEsportaPremiere(q, percorso, volume) {
 
   // L'AUDIO IN UN'ALTRA LINGUA (30/09/2026): la clip punta al file ENG o INT,
   // al secondo allineato. Sul Mac: l'archivio sta nel volume della QNAP, il
-  // materiale del club in quello del FRAME (COMOTV - FRAME)
+  // materiale del club in quello del Como 1907 (COMO1907, era COMOTV - FRAME)
   const fileLingua = (lx) => {
     const f = lx.file, frameR = "/mnt/qnap100-frame/";
     let via;
-    if (f.indexOf(frameR) === 0) via = (vol ? vol.replace(/COMOTV - VOD$/i, "COMOTV - FRAME") : "/Volumes/COMOTV - FRAME") + "/" + f.slice(frameR.length);
+    if (f.indexOf(frameR) === 0) via = (vol ? vol.replace(/COMOTV - VOD$/i, "COMOTV - FRAME").replace(/COMO TV$/i, "COMO1907") : "/Volumes/COMO1907") + "/" + f.slice(frameR.length);
     else if (f.indexOf(radiceNas) === 0) via = (vol ? vol + "/" : "") + f.slice(radiceNas.length);
     else via = f;
     const id = "lingua-" + lx.rec + "-" + path.basename(f).replace(/[^A-Za-z0-9]/g, "-").slice(-40);
