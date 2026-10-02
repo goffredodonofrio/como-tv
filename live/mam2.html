@@ -1237,6 +1237,12 @@
   #aiutDialogo .aiut-cmd{display:flex;gap:8px;align-items:center;background:rgba(0,0,0,.35);border:1px solid var(--riga);border-radius:8px;padding:8px 10px;margin:10px 0;}
   #aiutDialogo .aiut-cmd code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font:12px ui-monospace,Menlo,monospace;color:#E3C271;}
   #aiutDialogo details{margin-top:8px;} #aiutDialogo summary{cursor:pointer;}
+  #aiutDialogo .spie{display:grid;gap:6px;margin:4px 0 2px;}
+  #aiutDialogo .spia{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--riga);border-radius:8px;background:rgba(0,0,0,.22);}
+  #aiutDialogo .spia i{width:10px;height:10px;border-radius:50%;flex:none;background:var(--c);box-shadow:0 0 0 3px rgba(255,255,255,.04),0 0 9px var(--c);}
+  #aiutDialogo .spia i.off{box-shadow:none;}
+  #aiutDialogo .spia b{font-weight:600;} #aiutDialogo .spia small{margin-left:auto;color:var(--fumo);font-size:12px;text-align:right;}
+  #aiutDialogo .spia .b{margin-left:8px;}
   #aiutDialogo .nota{color:var(--fumo);font-size:12px;} #aiutDialogo .aiut-fondo{display:flex;justify-content:flex-end;margin-top:12px;}
   .aiut-inst{font-size:11.5px;color:var(--fumo);text-decoration:underline;white-space:nowrap;} .aiut-inst:hover{color:var(--oro);}
   .aiut-sw{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--oro);cursor:pointer;white-space:nowrap;} .aiut-sw .aiut-eti small{color:var(--fumo);font-weight:400;}
@@ -5921,17 +5927,29 @@
     // la pagina lo cerca piu' spesso per qualche minuto, finche' non compare
     var giri = 0, t = setInterval(function(){ cercaAiutante().then(function(){ if (AIUT || ++giri > 45) { clearInterval(t); if (AIUT) { avviso("ok", "Aiutante trovato su " + esc(AIUT.computer || "questo computer") + " (" + esc(AIUT.codificatore || "") + "): da ora export e invii in regia li fa lui."); giroAiut(true); var d = el("aiutDialogo"); if (d) d.hidden = true; } } }); }, 8000);
   }
+  // lo stato a spie: una luce e una parola per riga (02/10/2026: "meno scritte, piu' semplice")
+  function spiaAiut(col, testo, nota, extra){
+    return '<div class="spia"><i class="' + (col === "fumo" ? "off" : "") + '" style="--c:var(--' + col + ')"></i><b>' + testo + '</b>' + (nota ? '<small>' + nota + '</small>' : '') + (extra || '') + '</div>';
+  }
   function statoAiut(){
     cercaAiutante().then(function(){
-      if (!AIUT && AIUT_PERM === "denied") return dialogoAiut("Aiutante: bloccato dal browser", permessoNegatoHtml());
-      if (!AIUT) return dialogoAiut("Aiutante: non trovato", '<p>Su questo computer l\u2019aiutante non risponde. Installalo da <b>Aiutante \u203a Installa per Mac</b> o <b>per Windows</b>: gli export e gli invii in regia diventano molto pi\u00f9 veloci.</p>');
-      dialogoAiut("Aiutante: acceso", '<p><b>' + esc(AIUT.computer || "") + '</b> \u00b7 ' + esc(AIUT.sistema || "") + ' \u00b7 versione ' + esc(AIUT.versione || "") + '</p>' +
-        '<p>Codifica: <b>' + esc(AIUT.codificatore || "") + '</b>' + (/libx264/.test(AIUT.codificatore || "") ? " (senza scheda video: pi\u00f9 lento, ma pi\u00f9 veloce del MAM)" : " (scheda video)") + '</p>' +
-        '<p>NAS: ' + (AIUT.nas && AIUT.nas.vod ? "montata, la usa" : "non montata: i pezzi li manda il MAM (va bene cos\u00ec)") + '</p>' +
-        '<p>Export e invii in regia: <b>' + (aiutVuole() ? "li fa questo computer" : "spento, li fa il MAM") + '</b> (Aiutante \u203a Usa l\u2019aiutante).</p>' +
-        '<p class="nota">Lavori in corso: ' + (AIUT.lavori || 0) + '. Per aggiornarlo basta rifare Installa.</p>');
+      if (!AIUT && AIUT_PERM === "denied") return dialogoAiut("Aiutante", '<div class="spie">' + spiaAiut("rosso", "Bloccato dal browser") + '</div><details><summary class="nota">Come sbloccarlo</summary>' + permessoNegatoHtml() + '</details>');
+      if (!AIUT) return dialogoAiut("Aiutante", '<div class="spie">' + spiaAiut("rosso", "Non trovato", "Aiutante \u203a Installa") + '</div>');
+      var hw = !/libx264/.test(AIUT.codificatore || ""), nas = AIUT.nas && (AMBITO ? AIUT.nas.frame : AIUT.nas.vod), usa = aiutVuole(), lav = +AIUT.lavori || 0;
+      dialogoAiut("Aiutante", '<div class="spie">' +
+        spiaAiut("ok", "Acceso", esc(String(AIUT.computer || "").replace(/\.local$/, "")) + " \u00b7 v" + esc(AIUT.versione || "")) +
+        spiaAiut(usa ? "ok" : "rosso", usa ? "In uso" : "Spento", usa ? "export e regia" : "li fa il MAM", '<button type="button" class="b mini" data-aiutusa="' + (usa ? "0" : "1") + '">' + (usa ? "Spegni" : "Accendi") + '</button>') +
+        spiaAiut(hw ? "ok" : "giallo", hw ? "Scheda video" : "Processore", esc(String(AIUT.codificatore || "").replace(/^h264_/, ""))) +
+        spiaAiut(nas ? "ok" : "fumo", "NAS", nas ? "montata" : "via MAM") +
+        (lav ? spiaAiut("blu", "Lavori", String(lav)) : "") +
+        '</div>');
     });
   }
+  document.addEventListener("click", function(e){
+    var b = e.target.closest && e.target.closest("[data-aiutusa]"); if (!b) return;
+    try { localStorage.setItem("mam2-aiutante-usa", b.dataset.aiutusa); } catch (z) {}
+    disegnaAiut(); statoAiut();
+  });
   function disinstallaAiut(){
     dialogoAiut("Togliere l\u2019aiutante", '<p>Gli export e gli invii in regia tornano al MAM.</p><ul><li><b>Windows</b>: Impostazioni \u203a App \u203a <i>Aiutante MAM Como TV</i> \u203a Disinstalla.</li><li><b>Mac</b>: nel pacchetto zip (Aiutante \u203a Scarica il pacchetto) c\u2019\u00e8 <b>Disinstalla (Mac).command</b>.</li></ul><p class="nota">Per tenerlo installato ma non usarlo: togli la spunta da <b>Aiutante \u203a Usa l\u2019aiutante</b>.</p>');
   }
