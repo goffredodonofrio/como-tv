@@ -1890,6 +1890,7 @@
             <div id="eMotore" hidden>
             <div class="riga2" id="eFormati" title="clicca per vederlo nel monitor; più formati accesi = più file in uscita"><span class="fchip on vista" data-f="16:9">16:9</span><span class="fchip" data-f="9:16">9:16</span><span class="fchip" data-f="1:1">1:1</span><span class="fchip" data-f="3:4">3:4</span></div>
             <div class="riga2 avviso2" id="eQuanti"></div>
+            <div class="riga2" id="eTrattoRiga" hidden title="come l’intervallo In/Out di Premiere: esce solo il tratto fra entrata (I) e uscita (O)"><label><input type="checkbox" id="eTratto" checked> solo fra entrata e uscita <span id="eTrattoTc" class="tc" style="color:var(--fumo)"></span></label></div>
             <div class="riga2"><label><input type="checkbox" id="eEsatto"> taglio esatto</label></div>
             <div class="riga2"><label class="aiut-sw" hidden title="l’export lo fa questo computer: legge dalla NAS dell’ufficio e codifica con la scheda video"><input type="checkbox" class="aiut-chk"> <span class="aiut-eti">Sul mio computer</span></label></div>
             <div class="riga2"><select id="eSotto"><option value="">senza sottotitoli</option><option value="srt">file SRT</option><option value="video">impressi nel video</option><option value="entrambi">impressi + SRT</option></select><select id="eSottoL"><option value="it">ITA</option><option value="en">ENG</option><option value="entrambe">ITA + ENG</option></select></div>
@@ -5263,7 +5264,24 @@
   });
   function X(t){ var p = el("pista"), w = p.clientWidth || 800; return (t - LENTE.a) / (LENTE.b - LENTE.a) * w; }
   function tDiX(px){ var p = el("pista"), w = p.clientWidth || 800; return LENTE.a + px / w * (LENTE.b - LENTE.a); }
+  // ENTRATA E USCITA NELL'EXPORT (02/10/2026, Caria: "se metto il marker out per
+  // esportare solo un pezzo, mi esporta comunque tutta la timeline"). Con I e/o O
+  // segnati l'export, l'aiutante e l'invio in regia prendono solo quel tratto;
+  // la spunta lo toglie, come "Intera sequenza" in Premiere
+  function trattoScelto(){
+    if (INS === null && OUTS === null) return null;
+    var c = el("eTratto"); if (c && !c.checked) return null;
+    var t = {}; if (INS !== null) t.dal = INS; if (OUTS !== null) t.al = OUTS;
+    return t;
+  }
+  function aggiornaTratto(){
+    var r = el("eTrattoRiga"); if (!r) return;
+    var c = INS !== null || OUTS !== null;
+    r.hidden = !c;
+    if (c) el("eTrattoTc").textContent = tc(INS !== null ? INS : 0) + " \u2192 " + (OUTS !== null ? tc(OUTS) : "fine");
+  }
   function disegnaTl(){
+    aggiornaTratto();
     if (typeof disegnaDestGrafica === "function") setTimeout(disegnaDestGrafica, 0);
     var corsie = assicuraCorsie(); assicuraDetti();
     var rig = el("cRig"), cv = el("cV"), cv2 = el("cV2"), cst = el("cSt"), cg = el("cG"), w = el("pista").clientWidth || 800;
@@ -5670,7 +5688,7 @@
       { riga: 1 },
       { capo: "Audio" },
       bt("Scollega", "cmd L", "eStacca"),
-      bt("Disattiva audio clip", "", "eMuto"),
+      { e: "Disattiva audio clip", nome: function(){ return nomeAbilita(); }, t: "⇧E", f: function(){ abilitaScelti(); } },
       vc("Commento ITA (Como TV)", "", function(){ linguaScelti("ita"); }),
       vc("Commento ENG", "", function(){ linguaScelti("eng"); }),
       vc("Suono internazionale (INT)", "", function(){ linguaScelti("int"); }),
@@ -6000,7 +6018,7 @@
       if (v.riga) return "<hr>";
       if (v.capo) return '<div class="capo2">' + esc(v.capo) + "</div>";
       if (v.sotto) return '<a data-v="' + i + '" class="ha-sotto"><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>";
-      return '<a data-v="' + i + '"' + (fnDi(v) ? "" : ' class="spento" title="non vale qui"') + '><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>";
+      return '<a data-v="' + i + '"' + (fnDi(v) ? "" : ' class="spento" title="non vale qui"') + '><span>' + esc(v.nome ? v.nome() : v.e) + "</span><i>" + esc(v.t) + "</i></a>";
     }).join("");
     t.style.left = Math.max(0, b.offsetLeft) + "px";
     t.hidden = false;
@@ -7397,6 +7415,57 @@
     });
     return out;
   }
+  // ABILITA, COME IN PREMIERE (02/10/2026, Caria: "ci sono le audio ENG e
+  // ambiente mute, ma non ho modo di accenderle"). La voce diceva sempre
+  // "Disattiva audio clip" e girava una clip sola: ora accende le clip spente
+  // fra quelle scelte (anche piu' d'una) o spegne quelle accese. Dal menu Clip,
+  // con Shift+E e col tasto destro su una clip audio.
+  function abilitaScelti(){
+    if (!SEQ) return;
+    var tutti = audiScelti(); if (!tutti.length) return avviso("err", "Scegli una o piu' clip audio.");
+    var accendi = tutti.some(function(a){ return a.muto; }), n = tutti.length;
+    var passo = Promise.resolve(), ultima = null, errori = [];
+    tutti.forEach(function(a){ passo = passo.then(function(){ return post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"muto", audio: a.id, muto: !accendi }).then(function(d){ if (d && d.seq) ultima = d.seq; }).catch(function(er){ errori.push(er.message); }); }); });
+    passo.then(function(){
+      if (ultima) ricaricaSeq(ultima);
+      if (errori.length) return avviso("err", esc(errori[0]));
+      avviso("ok", n + " clip " + (accendi ? (n === 1 ? "accesa" : "accese") : (n === 1 ? "spenta" : "spente")) + (accendi ? ": ora si sentono, in anteprima e nell'export." : "."));
+    });
+  }
+  function nomeAbilita(){ var t = audiScelti(); return t.length && t.some(function(a){ return a.muto; }) ? "Attiva audio clip" : "Disattiva audio clip"; }
+  // il tasto destro su una clip audio: le voci dell'audio, come nel menu Clip
+  function apriMenuAudio(x, y){
+    PEZZO_MENU = -1;
+    var voci = [
+      { e: nomeAbilita(), t: "⇧E", f: abilitaScelti },
+      { riga: 1 },
+      { e: "Commento ITA (Como TV)", t: "", f: function(){ linguaScelti("ita"); } },
+      { e: "Commento ENG", t: "", f: function(){ linguaScelti("eng"); } },
+      { e: "Suono internazionale (INT)", t: "", f: function(){ linguaScelti("int"); } },
+      { e: "Radiocronaca ITA (RADIO)", t: "", f: function(){ linguaScelti("radio"); } },
+      { riga: 1 },
+      { e: "Guadagno audio…", t: "G", f: chiediGain },
+      { e: "Scollega", t: "cmd L", f: function(){ el("eStacca").click(); } },
+      { e: "Elimina la traccia audio", t: "", f: function(){ el("eAudioTogli").click(); } }
+    ];
+    var t = el("tendinaPezzo");
+    t.innerHTML = voci.map(function(v, k){ return v.riga ? "<hr>" : '<a data-v="' + k + '"><span>' + esc(v.e) + "</span><i>" + esc(v.t) + "</i></a>"; }).join("");
+    t.hidden = false;
+    var w = t.offsetWidth || 250, h = t.offsetHeight || 220;
+    t.style.left = Math.min(x, window.innerWidth - w - 8) + "px";
+    t.style.top = Math.min(y, window.innerHeight - h - 8) + "px";
+    t.onclick = function(ev){
+      var a = ev.target.closest("a[data-v]"); if (!a) return;
+      chiudiMenuPezzo(); var v = voci[+a.dataset.v]; if (v && v.f) v.f();
+    };
+  }
+  document.addEventListener("contextmenu", function(e){
+    var ad = e.target.closest && e.target.closest(".ed-audio[data-a]"); if (!ad || !SEQ) return;
+    e.preventDefault();
+    var id = ad.dataset.a;
+    if (SELA !== id && SELAS.indexOf(id) < 0) { SELA = id; SELAS = []; SELG = null; disegnaTl(); }
+    apriMenuAudio(e.clientX, e.clientY);
+  });
   // LE LINGUE DELLA PARTITA (30/09/2026): sotto le clip del Como, al posto del
   // nostro commento, l'ENG o il suono internazionale del club, allineati
   function linguaScelti(l){
@@ -7428,7 +7497,7 @@
   }
   function audioScelto(){ if (SELA) return AUD.filter(function(z){ return z.id === SELA; })[0]; if (SEL) return AUD.filter(function(z){ return z.legato === SEL; })[0]; return null; }
   el("eStacca").addEventListener("click", function(){ if (!SEQ) return; if (audiScelti().length > 1 || audiScelti().some(function(a){ return !a.legato; })) return collegaScelti(); var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo con l'audio."); if (!au.legato) return avviso("err", "E' gia' staccato."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"scollega", audio: au.id }).then(function(d){ SELA = au.id; ricaricaSeq(d.seq); avviso("ok", "Audio staccato: trascinalo dove vuoi. In anteprima non si sente, nell'export si'."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
-  el("eMuto").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo o un audio."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"muto", audio: au.id }).then(function(d){ ricaricaSeq(d.seq); }).catch(function(er){ avviso("err", esc(er.message)); }); });
+  el("eMuto").addEventListener("click", function(){ abilitaScelti(); });
   el("eAudioTogli").addEventListener("click", function(){ if (!SEQ) return; var au = audioScelto(); if (!au) return avviso("err", "Scegli un pezzo o un audio."); post({ tipo:"clip-hl-audio", seq: SEQ.id, azione:"togli", audio: au.id }).then(function(d){ SELA = null; ricaricaSeq(d.seq); avviso("ok", "Audio tolto: sotto quel video c'e' silenzio."); }).catch(function(er){ avviso("err", esc(er.message)); }); });
   // ── LA TASTIERA DI PREMIERE nel montaggio, uguale in tutto ──
   var TASTI = [
@@ -7438,7 +7507,7 @@
     ["Q · W", "accorcia l'inizio / la fine del pezzo alla testina"], ["E", "allunga il pezzo scelto fino alla testina"], ["V · C", "strumento: scelta · lametta (poi clicca la clip dove tagliarla)"], ["A · Shift+A", "seleziona in avanti · indietro: clicca e trascina tutto quello che viene dopo (prima), su tutte le tracce; con Shift solo quella traccia"], ["clic sul vuoto · Canc", "chiude lo spazio vuoto: quello che viene dopo scala indietro"], ["Cmd+K", "dividi sotto la testina"], ["Alt+← →", "scivolo: cambia cosa si vede dentro la clip, che resta dov'è"], ["Alt+Shift+← →", "giunzione: la clip scorre nel montato e i vicini le fanno spazio"], ["S", "magnete: i bordi si attaccano agli stacchi e alla testina"], ["T", "scrivi un titolo sullo schermo"], ["R", "velocit\u00e0 del pezzo: 50% \u00e8 il rallentatore"], ["cmd+rotella", "lente attorno al mouse · shift+rotella: scorri"],
     ["Canc", "togli i pezzi scelti"], ["Cmd+A · Cmd+Shift+A", "scegli tutti / nessuno"], ["D", "scegli il pezzo sotto la testina"], ["Shift+clic", "aggiungi alla scelta"],
     ["Cmd+C · Cmd+X · Cmd+V", "copia · taglia · incolla dopo la testina"], ["Cmd+Z · Shift+Cmd+Z", "annulla / ripeti"],
-    ["Cmd+L", "lega / stacca l'audio del pezzo scelto"], ["G", "gain dell'audio scelto (dB)"], ["M", "marker sulla partita al punto della testina"], ["F", "match frame: apri la partita a questo secondo"],
+    ["Cmd+L", "lega / stacca l'audio del pezzo scelto"], ["G", "gain dell'audio scelto (dB)"], ["Shift+E", "attiva / disattiva le clip audio scelte (ENG, ambiente, radio entrano spente)"], ["M", "marker sulla partita al punto della testina"], ["F", "match frame: apri la partita a questo secondo"],
     ["= · − · \\", "lente: avvicina · allontana · tutta"], ["Cmd+M", "esporta"], ["Cmd+S", "salva (è già tutto salvato, sempre)"], ["?", "questo elenco"]
   ];
   function pezzoQui(){ var x = PZ[ORA.i]; return (x && SEQ) ? x : null; }
@@ -7712,6 +7781,7 @@
     else if (k === ";" || k === "'") { estrai(); }
     else if (K === "Q") { accorcia("inizio"); }
     else if (K === "W") { accorcia("fine"); }
+    else if (K === "E" && e.shiftKey) { abilitaScelti(); }
     else if (K === "E") { allungaQui(); }
     else if (K === "C") { mettiStrumento("lametta"); }
     else if (K === "V") { mettiStrumento("scelta"); }
@@ -9074,7 +9144,7 @@
 
   el("eEsporta").addEventListener("click", function(){
     if (!SEQ) return; if (!FORMATI.length) return avviso("err", "Scegli almeno un formato.");
-    var c = { tipo:"clip-hl-esporta", seq: SEQ.id, esatto: el("eEsatto").checked, sotto: el("eSotto").value, sottoLingua: el("eSottoL").value };
+    var c = Object.assign({ tipo:"clip-hl-esporta", seq: SEQ.id, esatto: el("eEsatto").checked, sotto: el("eSotto").value, sottoLingua: el("eSottoL").value }, trattoScelto() || {});
     if (ESP.aperta && el("espRac").checked) {
       var nr = (el("espRacNome").value || "").trim();
       if (!nr) { el("espRacNome").focus(); return avviso("err", "Scrivi il nome della raccolta, o togli la spunta."); }
@@ -9082,7 +9152,7 @@
     }
     if (FORMATI.length > 1) c.formati = FORMATI; else c.formato = FORMATI[0];
     if (aiutUsabile() && !c.raccolta) {
-      return esportaSulComputer(SEQ.id, FORMATI.slice(), { esatto: c.esatto, sotto: c.sotto, sottoLingua: c.sottoLingua }).then(function(lav){
+      return esportaSulComputer(SEQ.id, FORMATI.slice(), Object.assign({ esatto: c.esatto, sotto: c.sotto, sottoLingua: c.sottoLingua }, trattoScelto() || {})).then(function(lav){
         if (lav) { avviso("ok", "Export sul tuo computer: " + lav.length + (lav.length === 1 ? " file" : " file") + ". Lo segui qui a destra."); giroUscite(); return; }
         return post(c).then(function(){ avviso("ok", "Export in coda sul MAM: lo segui qui a destra."); giroUscite(); });
       }).catch(function(er){ avviso("err", "Sul computer non è partito (" + esc(er.message) + "): lo faccio sul MAM."); return post(c).then(function(){ giroUscite(); }); });
@@ -9583,8 +9653,9 @@
     var p = pannelloRegiaEsp(); p.dataset.modo = "editor";
     var dest = el("lCanale"), opz = dest ? [].filter.call(dest.options, function(o){ return o.value && o.value.indexOf("__") !== 0 && !o.disabled; }) : [];
     var sceltoDove = doveRegia(opz, dest);
+    var trR = trattoScelto();
     var nota = q.grafiche ? "ci sono grafiche: serve un export 16:9, qualche minuto" : "solo tagli: esce in pochi secondi se i pezzi sono in casa";
-    p.innerHTML = '<div class="pr-testa"><b>&#128225; In regia</b><span>' + esc(q.titolo || "sequenza") + ' · 16:9 · ' + tc(q.dur || 0) + ' · ' + esc(nota) + '</span></div>' +
+    p.innerHTML = '<div class="pr-testa"><b>&#128225; In regia</b><span>' + esc(q.titolo || "sequenza") + ' · 16:9 · ' + (trR ? "solo fra entrata e uscita, " + tc(Math.max(0, (trR.al !== undefined ? trR.al : (q.dur || 0)) - (trR.dal || 0))) : tc(q.dur || 0)) + ' · ' + esc(nota) + '</span></div>' +
       '<div class="riga-r"><div class="campo-r"><label for="regiaEspTitolo">Nome in scaletta</label><input id="regiaEspTitolo" type="text" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" maxlength="60" value="' + esc(String(q.titolo || "MONTATO").replace(/^BOZZA\s*·\s*/i, "").toUpperCase()) + '"></div>' +
       '<div class="campo-r"><label for="regiaEspDove">Seleziona vMix o progetto</label><select id="regiaEspDove">' + opzioniRegia(sceltoDove) + '</select></div>' +
       '<label class="spunta" title="il montato esce con il suo audio"><input type="checkbox" id="regiaEspAudio" checked> Con l’audio del montato</label>' +
@@ -9606,12 +9677,13 @@
     ricordaDoveRegia(dove);
     if (el("lCanale") && dove) { el("lCanale").value = dove; try { el("lCanale").dispatchEvent(new Event("change")); } catch (e) {} }
     var btn = p.querySelector("[data-fa=mandaEd]"); if (btn) btn.disabled = true;
-    var sulMam = function(){ return post({ tipo:"clip-regia-invia", seq: REGIA_SEQ.id, titolo: titolo, dest: Destinazione.corrente(), muto: !audio, origine: location.origin + BASE,
-           esatto: el("eEsatto").checked, sottoLingua: el("eSottoL").value }); };
+    var tratto = trattoScelto() || {};
+    var sulMam = function(){ return post(Object.assign({ tipo:"clip-regia-invia", seq: REGIA_SEQ.id, titolo: titolo, dest: Destinazione.corrente(), muto: !audio, origine: location.origin + BASE,
+           esatto: el("eEsatto").checked, sottoLingua: el("eSottoL").value }, tratto)); };
     if (aiutUsabile()) {
       var seqR = REGIA_SEQ.id;
       // prima si guarda se il computer lo sa fare; poi l'invio che lo aspetta; poi il lavoro
-      post({ tipo:"clip-hl-ricetta", seq: seqR, formato: "16:9", origine: location.origin + BASE, esatto: el("eEsatto").checked }).then(function(d){
+      post(Object.assign({ tipo:"clip-hl-ricetta", seq: seqR, formato: "16:9", origine: location.origin + BASE, esatto: el("eEsatto").checked }, tratto)).then(function(d){
         if (!d.supportata) { avviso("warn", "Lo prepara il MAM: " + esc(d.motivo || "") + "."); return sulMam(); }
         return post({ tipo:"clip-regia-invia", seq: seqR, titolo: titolo, dest: Destinazione.corrente(), muto: !audio, origine: location.origin + BASE, aiutante: true }).then(function(r){
           return aiutChiedi("/esporta", { ricetta: d.ricette[0], invio: r.invio.id }).then(function(){ giroAiut(true); return r; })
@@ -9621,8 +9693,7 @@
         .catch(function(er){ if (btn) btn.disabled = false; avviso("err", "Non è partito: " + esc(er.message)); });
       return;
     }
-    post({ tipo:"clip-regia-invia", seq: REGIA_SEQ.id, titolo: titolo, dest: Destinazione.corrente(), muto: !audio, origine: location.origin + BASE,
-           esatto: el("eEsatto").checked, sottoLingua: el("eSottoL").value })
+    sulMam()
       .then(function(d){ p.hidden = true; avviso("ok", "“" + esc(titolo) + "” in preparazione per " + esc(d.invio.dove) + ": lo segui in Invii in regia, qui in basso."); giroInvii(true); })
       .catch(function(er){ if (btn) btn.disabled = false; avviso("err", "Non è partito: " + esc(er.message)); });
   }

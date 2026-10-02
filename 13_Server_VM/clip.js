@@ -5506,7 +5506,7 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   }
 
   const suffisso = "_" + String(formato).replace(":", "x");
-  const finale = path.join(DIR, CARTELLA_HL, q.id + suffisso + ".mp4");
+  const finale = path.join(DIR, CARTELLA_HL, (q.idFile || q.id) + suffisso + ".mp4");
   const grafiche = grafiche0;
 
   // SECONDO: si incolla. Un 16:9 senza grafiche non ha niente da
@@ -5747,14 +5747,14 @@ async function hlEsportaVideo(q, formato, dentroUnGiro, p2) {
   if (adattate.length) console.log("[clip] export " + formato + ": grafiche senza la loro versione, adattate: " + adattate.join(", "));
   q.esportati[formato] = {
     adattate: adattate.slice(0, 20),
-    file: "/clip/" + CARTELLA_HL + "/" + q.id + suffisso + ".mp4",
-    durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0,
+    file: "/clip/" + CARTELLA_HL + "/" + (q.idFile || q.id) + suffisso + ".mp4",
+    durata: d.durata ? Math.round(d.durata * 10) / 10 : 0, peso: d.peso || 0, tratto: q.tratto || undefined,
     // l'istante serve alla pagina per accorgersi che questa e' un'uscita
     // NUOVA: rifacendo lo stesso formato il nome del file non cambia, e
     // senza un istante l'avviso "pronto" non scattava piu'
     quando: Date.now(), copiato: soloIncollare, veloce: veloce, sottoImpressi: brucia
   };
-  q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4");
+  q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, q.tratto ? "_IN-OUT.mp4" : ".mp4");
   q.export = { stato: "pronto", formato: formato, fatti: q.pezzi.length, quanti: q.pezzi.length,
                fase: "pronto", file: q.esportati[formato].file,
                durata: q.esportati[formato].durata, peso: q.esportati[formato].peso };
@@ -6176,6 +6176,90 @@ async function hlEsportaPremiere(q, percorso, volume) {
   return q.premiere;
 }
 
+// ── ENTRATA E USCITA: SI ESPORTA SOLO QUEL TRATTO (02/10/2026) ──────────
+//  Caria: "se metto il marker out nella timeline per esportare solo un pezzo,
+//  non lo legge, mi esporta comunque tutta la timeline". Come in Premiere: con
+//  l'entrata e/o l'uscita della sequenza segnate, l'export (sul MAM o sul
+//  computer con l'aiutante) e l'invio in regia prendono solo il tratto fra le
+//  due. La sequenza non si tocca: se ne fa una copia ritagliata che vive il
+//  tempo dell'export, e il file ha un nome suo ("-io"), cosi' l'export intero
+//  della stessa sequenza resta com'era.
+function intervalloDi(q, p) {
+  if (!p) return null;
+  const vuoto = (v) => v === undefined || v === null || v === "";
+  if (vuoto(p.dal) && vuoto(p.al)) return null;
+  const fine = fineSequenza(q);
+  const a = Math.max(0, vuoto(p.dal) ? 0 : +p.dal), b = Math.min(fine, vuoto(p.al) ? fine : +p.al);
+  if (!isFinite(a) || !isFinite(b)) return null;
+  if (a <= 0.02 && b >= fine - 0.02) return null;            // e' tutta: niente da ritagliare
+  if (b - a < 0.2) throw new Error("fra entrata e uscita non c'e' niente da esportare");
+  return { dal: Math.round(a * 1000) / 1000, al: Math.round(b * 1000) / 1000 };
+}
+function seqNelTratto(q, iv) {
+  if (!iv) return q;
+  normalizzaSeq(q);
+  const dal = iv.dal, al = iv.al, r3 = (n) => Math.round(n * 1000) / 1000;
+  const t = Object.assign({}, q);
+  // lo stato dell'export e le uscite restano della sequenza vera: la pagina guarda quelli
+  ["export", "esportati", "exportGiro", "mini"].forEach((k) => Object.defineProperty(t, k, {
+    get: () => q[k], set: (v) => { q[k] = v; }, enumerable: true, configurable: true }));
+  t.idFile = q.id + "-io"; t.tratto = iv;
+  const testaDi = {}, tenuti = {};
+  t.pezzi = [];
+  (q.pezzi || []).forEach((x) => {
+    const a = x.t0 || 0, L = Math.max(0, x.fuori - x.dentro);
+    const da = Math.max(a, dal), fino = Math.min(a + L, al);
+    if (fino - da < 0.04) return;
+    const testa = da - a, v = +x.velocita || 1;
+    const y = Object.assign({}, x, { t0: r3(da - dal), dentro: r3(x.dentro + testa * v) });
+    y.fuori = r3(y.dentro + (fino - da));
+    // il pezzo intero, per ritrovare quello gia' tagliato in casa (l'aiutante)
+    Object.defineProperty(y, "__intero", { value: x, enumerable: false });
+    if (testa > 0.001) {
+      delete y.transizione;
+      // l'inquadratura dei verticali conta dall'inizio del pezzo: si sposta con lui
+      if (x.inquadra) {
+        y.inquadra = {};
+        Object.keys(x.inquadra).forEach((f) => {
+          const iq = x.inquadra[f];
+          if (!iq || !Array.isArray(iq.punti) || !iq.punti.length) { y.inquadra[f] = iq; return; }
+          const pp = iq.punti.map((k) => Object.assign({}, k, { t: r3(k.t - testa) }));
+          const prima = pp.filter((k) => k.t <= 0).pop(), dopo = pp.filter((k) => k.t > 0);
+          y.inquadra[f] = Object.assign({}, iq, { punti: (prima ? [Object.assign({}, prima, { t: 0 })] : []).concat(dopo) });
+        });
+      }
+    }
+    testaDi[x.id] = testa; tenuti[x.id] = 1;
+    t.pezzi.push(y);
+  });
+  if (!t.pezzi.some((x) => (x.traccia || "V1") !== "V2")) throw new Error("fra entrata e uscita non c'e' video");
+  t.audio = [];
+  (q.audio || []).forEach((a0) => {
+    // l'audio legato segue il suo pezzo (normalizzaSeq): qui solo il volume disegnato
+    if (a0.legato) {
+      if (!tenuti[a0.legato]) return;
+      const y = Object.assign({}, a0), testa = testaDi[a0.legato] || 0, pz = t.pezzi.find((x) => x.id === a0.legato);
+      if (testa > 0.001) y.entra = 0;
+      if (pz && (a0.t0 || 0) + (a0.fuori - a0.dentro) > al + 0.001) y.esce = 0;
+      if ((a0.volumi || []).length && pz) { const vv = ritagliaVolumi(a0.volumi, testa, testa + (pz.fuori - pz.dentro)); if (vv.length) y.volumi = vv; else delete y.volumi; }
+      t.audio.push(y); return;
+    }
+    const a = a0.t0 || 0, L = Math.max(0, a0.fuori - a0.dentro);
+    const da = Math.max(a, dal), fino = Math.min(a + L, al);
+    if (fino - da < 0.04) return;
+    const testa = da - a;
+    const y = Object.assign({}, a0, { t0: r3(da - dal), dentro: r3(a0.dentro + testa) });
+    y.fuori = r3(y.dentro + (fino - da));
+    if (testa > 0.001) y.entra = 0;
+    if (fino < a + L - 0.001) y.esce = 0;
+    if ((a0.volumi || []).length) { const vv = ritagliaVolumi(a0.volumi, testa, testa + (fino - da)); if (vv.length) y.volumi = vv; else delete y.volumi; }
+    t.audio.push(y);
+  });
+  t.grafiche = (q.grafiche || []).filter((g) => Math.min(g.fuori, al) - Math.max(g.dentro, dal) >= 0.04)
+    .map((g) => Object.assign({}, g, { dentro: r3(Math.max(g.dentro, dal) - dal), fuori: r3(Math.min(g.fuori, al) - dal) }));
+  normalizzaSeq(t);
+  return t;
+}
 async function hlEsporta(p) {
   const q = seqDi(p);
   if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
@@ -6186,7 +6270,8 @@ async function hlEsporta(p) {
   const formati = elenco.length ? elenco
                 : [FORMATI[p.formato] ? String(p.formato) : "16:9"];
   // lo stesso export gia' in coda (o in corso) non si mette due volte
-  const firma = q.id + "|" + formati.join(",");
+  const iv = intervalloDi(q, p);
+  const firma = q.id + "|" + formati.join(",") + (iv ? "|" + iv.dal + "-" + iv.al : "");
   const gia = CODA_ESP.find((l) => l.firma === firma && !l.annullato);
   if (gia) return { ok: true, export: q.export, formati: formati, lavoro: gia.id, coda: vociCoda() };
   const l = { id: nuovoId("e"), seq: q.id, titolo: q.titolo || "", formati, firma, p: Object.assign({}, p),
@@ -6231,7 +6316,8 @@ async function giraCodaEsp() {
       if (!q || !q.pezzi.length) { CODA_ESP.shift(); continue; }
       l.stato = "lavora"; l.partito = Date.now();
       try {
-        await ESPORTO.run(l, () => hlEsportaTutti(q, l.formati, l.p));
+        const qq = seqNelTratto(q, intervalloDi(q, l.p));
+        await ESPORTO.run(l, () => hlEsportaTutti(qq, l.formati, l.p));
         if (l.annullato) throw new Error("annullato");
         // gli invii in regia appesi a questo export: il 16:9 e' pronto
         (l.dopo || []).forEach((id) => {
@@ -6348,11 +6434,13 @@ async function ricettaAiutante(q, formato, origine, p2) {
     orologio = Math.max(orologio, (x.t0 || 0) + (x.fuori - x.dentro));
     let sorg = null, da = 0, canali = 2;
     const mio = mediaVia(x);
-    const kc = mio ? null : chiaveCasa(q, x), fc = kc ? filePezzo(kc) : null;
+    // (col tratto fra entrata e uscita il pezzo e' ritagliato: in casa c'e' l'intero)
+    const xi = x.__intero || x;
+    const kc = mio ? null : chiaveCasa(q, xi), fc = kc ? filePezzo(kc) : null;
     if (mio) { sorg = radiceAiutante(mio); da = x.dentro || 0; }
     // IL PEZZO GIA' TAGLIATO IN CASA (vedi giroPezziPresto): al computer
     // arrivano pochi mega invece di leggere la partita intera attraverso la VM
-    else if (fc && fs.existsSync(fc)) { sorg = radiceAiutante(fc); da = scartoPezzo(kc); const rC = regDi(q, x); canali = rC ? quantiCanali(rC) : 2; }
+    else if (fc && fs.existsSync(fc)) { sorg = radiceAiutante(fc); da = scartoPezzo(kc) + Math.max(0, x.dentro - xi.dentro); const rC = regDi(q, x); canali = rC ? quantiCanali(rC) : 2; }
     else {
       const r = regDi(q, x);
       if (!r || !r.arch) throw new Error("\"" + (x.titolo || "un pezzo") + "\" non viene dall'archivio: questo export si fa sulla VM");
@@ -6380,10 +6468,11 @@ async function ricettaAiutante(q, formato, origine, p2) {
   }
   const fineV = (q.pezzi || []).reduce((m, x) => Math.max(m, (x.t0 || 0) + Math.max(0, x.fuori - x.dentro)), 0);
   const oltre = Math.max(0, fineSequenza(q) - fineV);
-  const cosaCarica = "carica|" + q.id + "|" + formato;
+  const io = q.tratto ? "|io" : "";
+  const cosaCarica = "carica|" + q.id + "|" + formato + io;
   return { versione: 1, seq: q.id, titolo: q.titolo || "", formato, tela, conStacchi: !buchi.length,
-           nome: nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4"), pezzi, grafiche, oltre: Math.round(oltre * 1000) / 1000,
-           carica: origine + "/aiutante/carica?seq=" + encodeURIComponent(q.id) + "&formato=" + encodeURIComponent(formato) + "&fino=" + fino + "&f=" + firmaAiutante(cosaCarica, fino) };
+           nome: nomeScaricoSeq(q, R.reg[q.reg], formato, q.tratto ? "_IN-OUT.mp4" : ".mp4"), pezzi, grafiche, oltre: Math.round(oltre * 1000) / 1000,
+           carica: origine + "/aiutante/carica?seq=" + encodeURIComponent(q.id) + "&formato=" + encodeURIComponent(formato) + (io ? "&io=1" : "") + "&fino=" + fino + "&f=" + firmaAiutante(cosaCarica, fino) };
 }
 // I PEZZI CHE MANCANO, SUBITO (02/10/2026). Al primo export di una sequenza
 // appena montata il pezzo non era ancora in casa (il giro "presto" passa ogni
@@ -6419,15 +6508,16 @@ async function pezziSubito(q) {
   await Promise.race([PEZZI_SUBITO[q.id] || Promise.resolve(), new Promise((r) => setTimeout(r, Math.max(0, limite - (Date.now() - t0))))]);
 }
 async function hlRicetta(p) {
-  const q = seqDi(p);
-  if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
+  const q0 = seqDi(p);
+  if (!q0.pezzi.length) throw new Error("la sequenza e' vuota");
+  const q = seqNelTratto(q0, intervalloDi(q0, p));
   const origine = String(p.origine || "").replace(/\/+$/, "");
   if (!/^https?:\/\/[^\s]+$/.test(origine)) throw new Error("manca l'indirizzo della pagina");
   const motivo = nonDaAiutante(q, p);
   if (motivo) return { ok: true, supportata: false, motivo };
   const elenco = Array.isArray(p.formati) ? p.formati.filter((f) => FORMATI[f]) : [];
   const formati = elenco.length ? elenco : [FORMATI[p.formato] ? String(p.formato) : "16:9"];
-  try { await pezziSubito(q); } catch (e) {}
+  try { await pezziSubito(q0); } catch (e) {}
   try {
     const ricette = [];
     for (const f of formati) ricette.push(await ricettaAiutante(q, f, origine, p));
@@ -6506,11 +6596,12 @@ function caricaAiutante(req, res, u) {
   const seq = u.searchParams.get("seq") || "", formato = u.searchParams.get("formato") || "", fino = parseInt(u.searchParams.get("fino") || "0", 10);
   const fine = (code, j) => { if (!res.headersSent) res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(j)); };
   if (req.method !== "PUT" && req.method !== "POST") return fine(405, { ok: false, errore: "si carica con PUT" });
-  if (!fino || fino < Date.now() / 1000 || u.searchParams.get("f") !== firmaAiutante("carica|" + seq + "|" + formato, fino)) return fine(403, { ok: false, errore: "indirizzo scaduto" });
+  const io = u.searchParams.get("io") === "1";
+  if (!fino || fino < Date.now() / 1000 || u.searchParams.get("f") !== firmaAiutante("carica|" + seq + "|" + formato + (io ? "|io" : ""), fino)) return fine(403, { ok: false, errore: "indirizzo scaduto" });
   const q = R.seq[seq];
   if (!q || !FORMATI[formato]) return fine(404, { ok: false, errore: "sequenza sconosciuta" });
-  const suffisso = "_" + String(formato).replace(":", "x");
-  const finale = path.join(DIR, CARTELLA_HL, q.id + suffisso + ".mp4"), tmp = finale + ".arriva";
+  const suffisso = "_" + String(formato).replace(":", "x"), idFile = q.id + (io ? "-io" : "");
+  const finale = path.join(DIR, CARTELLA_HL, idFile + suffisso + ".mp4"), tmp = finale + ".arriva";
   const out = fs.createWriteStream(tmp);
   let peso = 0, rotto = false;
   req.on("data", (d) => { peso += d.length; if (peso > 8e9) { rotto = true; req.destroy(); } });
@@ -6525,9 +6616,9 @@ function caricaAiutante(req, res, u) {
       fs.renameSync(tmp, finale);
       if (!q.mini) { const mini = await miniatura(finale, path.join(DIR, CARTELLA_HL, q.id + ".jpg"), (d.durata || 6) / 3); q.mini = mini ? "/clip/" + CARTELLA_HL + "/" + q.id + ".jpg" : ""; }
       q.esportati = q.esportati || {};
-      q.esportati[formato] = { adattate: [], file: "/clip/" + CARTELLA_HL + "/" + q.id + suffisso + ".mp4", durata: Math.round(d.durata * 10) / 10,
-                               peso: d.peso || peso, quando: Date.now(), aiutante: true, chi: String(req.headers["x-aiutante"] || "").slice(0, 60) };
-      q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, ".mp4");
+      q.esportati[formato] = { adattate: [], file: "/clip/" + CARTELLA_HL + "/" + idFile + suffisso + ".mp4", durata: Math.round(d.durata * 10) / 10,
+                               peso: d.peso || peso, quando: Date.now(), aiutante: true, chi: String(req.headers["x-aiutante"] || "").slice(0, 60), tratto: io || undefined };
+      q.esportati[formato].nome = nomeScaricoSeq(q, R.reg[q.reg], formato, io ? "_IN-OUT.mp4" : ".mp4");
       if (!(q.export && q.export.stato === "lavora")) q.export = { stato: "pronto", formato, file: q.esportati[formato].file, durata: q.esportati[formato].durata, peso: q.esportati[formato].peso, aiutante: true };
       scrivi(); annuncia(0, "clip");
       console.log("[clip] dall'aiutante: \"" + (q.titolo || q.id) + "\" " + formato + ", " + Math.round(peso / 1e6) + " MB");
@@ -13665,11 +13756,12 @@ function invioDaSequenza(p) {
   inv.seq = q.id; inv.sequenza = q.titolo || "";
   // il 16:9 lo fa l'aiutante sul computer di chi monta: si aspetta che lo carichi
   if (p.aiutante) { inv.attesaAiutante = q.id; inv.fase = "sul computer di chi monta"; return { ok: true, invio: vistaInvio(inv) }; }
-  const firma = q.id + "|16:9";
+  const iv = intervalloDi(q, p);
+  const firma = q.id + "|16:9" + (iv ? "|" + iv.dal + "-" + iv.al : "");
   let l = CODA_ESP.find((x) => x.firma === firma && !x.annullato);
   if (!l) {
     l = { id: nuovoId("e"), seq: q.id, titolo: q.titolo || "", formati: ["16:9"], firma, perRegia: true,
-          p: { formato: "16:9", esatto: !!p.esatto, sotto: "", sottoLingua: String(p.sottoLingua || "") },
+          p: { formato: "16:9", esatto: !!p.esatto, sotto: "", sottoLingua: String(p.sottoLingua || ""), dal: iv ? iv.dal : undefined, al: iv ? iv.al : undefined },
           chi: inv.chi, messo: Date.now(), stato: "in coda", procs: new Set() };
     CODA_ESP.push(l);
     postiCodaEsp();
