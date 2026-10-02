@@ -6260,6 +6260,92 @@ function seqNelTratto(q, iv) {
   normalizzaSeq(t);
   return t;
 }
+// ── RILEVA NERI (02/10/2026) ────────────────────────────────────────────
+//  Goffredo: "uso Shutter Encoder: gli carico i contributi, lui li analizza e
+//  mi dice dove percepisce dei neri e a che timecode; accorcia un sacco di
+//  tempo" -> una voce nell'Editing. Si guarda ogni pezzo della sequenza (V1)
+//  con il blackdetect di ffmpeg, lo stesso filtro di Shutter Encoder, e i neri
+//  tornano col timecode della SEQUENZA; i buchi della timeline (che
+//  nell'export diventano nero) si aggiungono. Uno alla volta per tutto il MAM,
+//  mai sopra una diretta; il risultato resta sulla sequenza finche' non cambia.
+const NERI = { gira: null };
+function sorgentePezzo(q, x) {
+  const m = mediaVia(x);
+  if (m) return { via: m, da: x.dentro || 0 };
+  const k = chiaveCasa(q, x), fc = filePezzo(k);
+  if (fs.existsSync(fc)) return { via: fc, da: scartoPezzo(k) };
+  const r = regDi(q, x);
+  if (!r) return null;
+  if (r.arch) { const f = fonteAl(r, x.dentro); return f && f.via ? { via: f.via, da: f.dentro } : null; }
+  const integrale = path.join(cartellaReg(r.id), "integrale.mp4");
+  return fs.existsSync(integrale) ? { via: integrale, da: x.dentro } : null;
+}
+function neriDelFile(via, da, durata) {
+  return new Promise((ok) => {
+    const args = ["-n", "15", FFMPEG, "-hide_banner", "-nostdin", "-ss", String(Math.max(0, da)), "-i", via, "-t", String(durata),
+                  "-an", "-sn", "-vf", "scale=320:-2,blackdetect=d=0.08:pic_th=0.98:pix_th=0.10", "-f", "null", "-"];
+    const pr = spawn("nice", args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    pr.stderr.on("data", (d) => { err += d; if (err.length > 2e6) err = err.slice(-1e6); });
+    const via2 = setTimeout(() => { try { pr.kill("SIGKILL"); } catch (e) {} }, Math.max(120000, durata * 4000));
+    pr.on("close", () => {
+      clearTimeout(via2);
+      const out = [], re = /black_start:([\d.]+)\s+black_end:([\d.]+)/g; let m;
+      while ((m = re.exec(err))) out.push({ a: +m[1], b: +m[2] });
+      // un nero fino alla fine del pezzo blackdetect non lo chiude: lo si chiude qui
+      const aperto = /black_start:([\d.]+)(?![\s\S]*black_end)/.exec(err.slice(err.lastIndexOf("black_start")));
+      if (aperto && !out.some((z) => Math.abs(z.a - +aperto[1]) < 0.01)) out.push({ a: +aperto[1], b: durata });
+      ok(out);
+    });
+    pr.on("error", () => { clearTimeout(via2); ok([]); });
+  });
+}
+async function giraNeri(q) {
+  normalizzaSeq(q);
+  const base = (q.pezzi || []).filter((x) => (x.traccia || "V1") === "V1");
+  const r3 = (n) => Math.round(n * 1000) / 1000;
+  const trovati = [], saltati = [];
+  q.neri = { stato: "lavora", fatti: 0, quanti: base.length, mano: q.mano || 0, inizio: Date.now() };
+  annuncia(0, "clip");
+  for (let i = 0; i < base.length; i++) {
+    if (laDirettaGira()) throw new Error("e' partita una diretta: riprova dopo");
+    const x = base[i], L = Math.max(0, x.fuori - x.dentro), v = +x.velocita || 1;
+    const sg = L > 0.04 ? sorgentePezzo(q, x) : null;
+    if (!sg) { saltati.push(x.titolo || ("pezzo " + (i + 1))); }
+    else {
+      const neri = await neriDelFile(sg.via, sg.da, L * v);
+      neri.forEach((z) => trovati.push({ da: r3((x.t0 || 0) + z.a / v), a: r3((x.t0 || 0) + Math.min(L * v, z.b) / v), pezzo: x.id, titolo: x.titolo || "", tipo: "nero" }));
+    }
+    q.neri.fatti = i + 1; annuncia(0, "clip");
+  }
+  buchiDi(q).forEach((b) => trovati.push({ da: r3(b.da), a: r3(b.a), tipo: "buco", titolo: "spazio vuoto nella timeline" }));
+  // neri di fila su due pezzi (la fine di uno e l'inizio dell'altro) sono uno solo
+  trovati.sort((u, w) => u.da - w.da);
+  const uniti = [];
+  trovati.forEach((z) => {
+    const u = uniti[uniti.length - 1];
+    if (u && z.da <= u.a + 0.06) { u.a = Math.max(u.a, z.a); if (z.tipo !== u.tipo) u.tipo = "nero"; return; }
+    uniti.push(Object.assign({}, z));
+  });
+  uniti.forEach((z) => { z.dur = r3(z.a - z.da); });
+  q.neri = { stato: "pronto", neri: uniti, saltati, quanti: base.length, mano: q.mano || 0, quando: Date.now() };
+  scrivi(); annuncia(0, "clip");
+  console.log("[clip] neri in \"" + (q.titolo || q.id) + "\": " + uniti.length + (saltati.length ? " (" + saltati.length + " pezzi non letti)" : ""));
+}
+function hlNeri(p) {
+  const q = seqDi(p);
+  if (p.stato) return { ok: true, neri: q.neri || null, vecchio: !!(q.neri && q.neri.stato === "pronto" && (q.neri.mano || 0) !== (q.mano || 0)) };
+  if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
+  if (NERI.gira) {
+    if (NERI.gira === q.id) return { ok: true, neri: q.neri };
+    throw new Error("sto gia' cercando i neri di un'altra sequenza: un minuto");
+  }
+  if (registrandoDavvero() || laDirettaGira()) throw new Error("c'e' una diretta: i neri si cercano dopo");
+  NERI.gira = q.id;
+  giraNeri(q).catch((e) => { q.neri = { stato: "errore", errore: e.message, quando: Date.now() }; scrivi(); annuncia(0, "clip"); console.log("[clip] neri: " + e.message); })
+    .then(() => { NERI.gira = null; });
+  return { ok: true, neri: q.neri };
+}
 async function hlEsporta(p) {
   const q = seqDi(p);
   if (!q.pezzi.length) throw new Error("la sequenza e' vuota");
@@ -17835,6 +17921,7 @@ const AZIONI = {
   },
   "clip-regia-invia": invioDaSequenza,
   "clip-hl-ricetta": hlRicetta,
+  "clip-hl-neri": hlNeri,
   "clip-raccolta-ricetta": raccoltaRicetta,
   // l'aiutante non ce l'ha fatta: l'invio che lo aspettava si chiude
   "clip-regia-fallito": (p) => { const inv = invioDi(String(p.id || "")); if (inv && inv.stato === "lavora") invioFallito(inv.id, new Error(String(p.errore || "non riuscito sul computer").slice(0, 160))); return { ok: true }; },

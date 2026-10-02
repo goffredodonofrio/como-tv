@@ -1231,6 +1231,19 @@
   #espUscite .uscita b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
   #aiutDialogo{position:fixed;inset:0;z-index:90;background:rgba(5,9,20,.6);display:flex;align-items:center;justify-content:center;padding:16px;}
   #aiutDialogo[hidden]{display:none;}
+  #neriDialogo{position:fixed;inset:0;z-index:90;background:rgba(5,9,20,.6);display:flex;align-items:center;justify-content:center;padding:16px;}
+  #neriDialogo[hidden]{display:none;}
+  #neriDialogo .nb{background:var(--navy2);border:1px solid var(--oro);border-radius:12px;max-width:620px;width:100%;max-height:80vh;display:flex;flex-direction:column;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.5);font-size:13.5px;line-height:1.5;}
+  #neriDialogo h3{margin:0 0 6px;color:var(--oro);font-size:16px;} #neriDialogo .nst{color:var(--fumo);font-size:12.5px;margin-bottom:10px;}
+  #neriDialogo .nel{overflow-y:auto;display:flex;flex-direction:column;gap:4px;min-height:0;}
+  #neriDialogo .nr{display:grid;grid-template-columns:auto auto 1fr;gap:12px;align-items:baseline;text-align:left;background:rgba(0,0,0,.25);border:1px solid var(--riga);border-radius:7px;padding:7px 10px;color:var(--ivory2);cursor:pointer;font:inherit;}
+  #neriDialogo .nr:hover,#neriDialogo .nr:focus-visible{border-color:var(--oro);outline:none;}
+  #neriDialogo .nr .tc{font:12px ui-monospace,Menlo,monospace;color:#E3C271;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  #neriDialogo .nr .du{font:12px ui-monospace,Menlo,monospace;color:var(--fumo);white-space:nowrap;} #neriDialogo .nr .ti{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #neriDialogo .nr.buco .ti{color:#E8A0A0;}
+  #neriDialogo .nbar{height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin:4px 0 10px;} #neriDialogo .nbar i{display:block;height:100%;background:var(--oro);}
+  #neriDialogo .npie{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap;}
+  .rnero{position:absolute;top:0;bottom:0;background:rgba(214,64,64,.6);min-width:2px;pointer-events:auto;cursor:pointer;}
   #aiutDialogo .aiut-box{background:var(--navy2);border:1px solid var(--oro);border-radius:12px;max-width:560px;width:100%;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.5);font-size:13.5px;line-height:1.5;}
   #aiutDialogo h3{margin:0 0 10px;color:var(--oro);font-size:16px;} #aiutDialogo ol{padding-left:20px;margin:8px 0;} #aiutDialogo li{margin:4px 0;}
   #aiutDialogo kbd{font:11px ui-monospace,Menlo,monospace;border:1px solid var(--riga2);border-radius:4px;padding:1px 5px;}
@@ -5296,6 +5309,10 @@
       if (z.t < LENTE.a || z.t > LENTE.b) return;
       h += '<span class="mk" style="left:' + X(z.t) + 'px" data-mkt="' + z.t.toFixed(3) + '" title="' + esc(tcf(z.t) + " \u00b7 " + (z.m.testo || "marcatore")) + '"></span>';
     });
+    neriValidi().forEach(function(z){
+      if (z.a < LENTE.a || z.da > LENTE.b) return;
+      h += '<span class="rnero" data-nero="' + z.da.toFixed(3) + '" style="left:' + X(z.da) + 'px;width:' + Math.max(2, X(z.a) - X(z.da)) + 'px" title="' + esc((z.tipo === "buco" ? "spazio vuoto " : "nero ") + tcf(z.da) + " \u2192 " + tcf(z.a)) + '"></span>';
+    });
     rig.innerHTML = h;
     var hv = "", hv2 = "", haT = {}, hs = "";
     corsie.forEach(function(n){ haT[n] = ""; });
@@ -5722,6 +5739,9 @@
       { capo: "Sottotitoli" },
       bt("Attiva / disattiva i sottotitoli", "", "eSottoOn"),
       bt("Lingua dei sottotitoli", "", "eSottoLingua"),
+      { riga: 1 },
+      { capo: "Controlla" },
+      vc("Rileva neri…", "", function(){ rilevaNeri(false); }),
       { riga: 1 },
       { capo: "Vai a" },
       vc("Entrata della sequenza", "⇧I", function(){ if (INS !== null) vaiTempo(INS, false); }),
@@ -7415,6 +7435,77 @@
     });
     return out;
   }
+  // RILEVA NERI (02/10/2026, Goffredo: "uso Shutter Encoder: gli carico i
+  // contributi e mi dice dove percepisce dei neri e a che timecode"). Sequenza >
+  // Rileva neri: il MAM guarda ogni pezzo della timeline col blackdetect di
+  // ffmpeg (lo stesso filtro) e torna l'elenco col timecode della sequenza; un
+  // clic porta la testina sul nero, e i neri restano segnati in rosso sul righello
+  var NERI_GIRO = 0;
+  function neriValidi(){
+    var n = SEQ && SEQ.neri;
+    if (!n || n.stato !== "pronto" || (n.mano || 0) !== (SEQ.mano || 0)) return [];
+    return n.neri || [];
+  }
+  function neriHtml(n, vecchio){
+    var h = '<div class="nb" role="dialog" aria-modal="true" aria-labelledby="neriTit"><h3 id="neriTit">Rileva neri</h3>';
+    if (!n || n.stato === "lavora") {
+      var q = n && n.quanti ? n.fatti / n.quanti : 0;
+      h += '<div class="nst">Guardo i pezzi della timeline' + (n && n.quanti ? ": " + n.fatti + " di " + n.quanti : "") + '\u2026 Un minuto di montato chiede circa venti secondi.</div><div class="nbar"><i style="width:' + Math.max(3, q * 100).toFixed(1) + '%"></i></div>';
+    } else if (n.stato === "errore") {
+      h += '<div class="nst">Non sono riuscito a guardarla: ' + esc(n.errore || "") + '</div>';
+    } else {
+      var L = n.neri || [];
+      h += '<div class="nst">' + (L.length ? L.length + (L.length === 1 ? " nero" : " neri") + " nella sequenza" : "Nessun nero nella sequenza") +
+        (vecchio ? " \u00b7 la sequenza e' cambiata dopo: rifai la ricerca" : "") +
+        (n.saltati && n.saltati.length ? " \u00b7 non letti: " + esc(n.saltati.join(", ")) : "") + '</div>';
+      if (L.length) h += '<div class="nel">' + L.map(function(z){
+        return '<button type="button" class="nr' + (z.tipo === "buco" ? " buco" : "") + '" data-nero="' + z.da + '" title="porta la testina qui"><span class="tc">' + esc(tcf(z.da)) + ' \u2192 ' + esc(tcf(z.a)) + '</span><span class="du">' + (z.dur || 0).toFixed(2).replace(".", ",") + ' s</span><span class="ti">' + esc(z.tipo === "buco" ? "spazio vuoto nella timeline (nell'export \u00e8 nero)" : (z.titolo || "nero")) + '</span></button>';
+      }).join("") + '</div>';
+    }
+    h += '<div class="npie">' + (n && n.stato === "pronto" && (n.neri || []).length ? '<button type="button" class="mini" data-fn="copia">Copia i timecode</button>' : '') +
+      (!n || n.stato !== "lavora" ? '<button type="button" class="mini" data-fn="rifai">' + (n ? "Cerca di nuovo" : "Cerca") + '</button>' : '') +
+      '<button type="button" class="oro" data-fn="chiudi">Chiudi</button></div></div>';
+    return h;
+  }
+  function dialogoNeri(n, vecchio){
+    var d = el("neriDialogo");
+    if (!d) {
+      d = document.createElement("div"); d.id = "neriDialogo"; document.body.appendChild(d);
+      d.addEventListener("click", function(e){
+        if (e.target === d) { d.hidden = true; return; }
+        var r = e.target.closest("[data-nero]"); if (r) { d.hidden = true; VE.pause(); vaiTempo(+r.dataset.nero, false); return; }
+        var b = e.target.closest("[data-fn]"); if (!b) return;
+        if (b.dataset.fn === "chiudi") d.hidden = true;
+        else if (b.dataset.fn === "rifai") rilevaNeri(true);
+        else if (b.dataset.fn === "copia") {
+          var testo = neriValidi().map(function(z){ return tcf(z.da) + "\t" + tcf(z.a) + "\t" + (z.dur || 0).toFixed(2) + " s\t" + (z.tipo === "buco" ? "spazio vuoto" : (z.titolo || "nero")); }).join("\n");
+          (navigator.clipboard ? navigator.clipboard.writeText(testo) : Promise.reject()).then(function(){ b.textContent = "Copiati \u2713"; }).catch(function(){ b.textContent = "Non riesco a copiare"; });
+        }
+      });
+      document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !d.hidden) d.hidden = true; });
+    }
+    d.innerHTML = neriHtml(n, vecchio);
+    d.hidden = false;
+  }
+  function rilevaNeri(rifai){
+    if (!SEQ) return avviso("err", "Apri una sequenza.");
+    var seqId = SEQ.id;
+    var guarda = function(){
+      clearTimeout(NERI_GIRO);
+      post({ tipo:"clip-hl-neri", seq: seqId, stato: true }).then(function(d){
+        if (!SEQ || SEQ.id !== seqId) return;
+        SEQ.neri = d.neri;
+        var dlg = el("neriDialogo"); if (dlg && !dlg.hidden) dialogoNeri(d.neri, d.vecchio);
+        if (d.neri && d.neri.stato === "lavora") NERI_GIRO = setTimeout(guarda, 1500);
+        else disegnaTl();
+      }).catch(function(er){ avviso("err", esc(er.message)); });
+    };
+    var n = SEQ.neri;
+    if (!rifai && n && (n.stato === "lavora" || (n.stato === "pronto" && (n.mano || 0) === (SEQ.mano || 0)))) { dialogoNeri(n, false); if (n.stato === "lavora") guarda(); return; }
+    dialogoNeri({ stato: "lavora", fatti: 0, quanti: 0 }, false);
+    post({ tipo:"clip-hl-neri", seq: seqId }).then(function(){ guarda(); }).catch(function(er){ dialogoNeri({ stato: "errore", errore: er.message }, false); });
+  }
+  el("cRig").addEventListener("click", function(e){ var r = e.target.closest(".rnero[data-nero]"); if (!r) return; e.stopPropagation(); VE.pause(); vaiTempo(+r.dataset.nero, false); });
   // ABILITA, COME IN PREMIERE (02/10/2026, Caria: "ci sono le audio ENG e
   // ambiente mute, ma non ho modo di accenderle"). La voce diceva sempre
   // "Disattiva audio clip" e girava una clip sola: ora accende le clip spente
