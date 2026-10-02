@@ -30,7 +30,7 @@
 const http = require("http"), https = require("https"), fs = require("fs"), path = require("path");
 const os = require("os"), cp = require("child_process");
 
-const VERSIONE = "0.3.3";
+const VERSIONE = "0.3.4";
 const WIN = process.platform === "win32", MAC = process.platform === "darwin";
 
 // Il ffmpeg del pacchetto Mac ha OpenSSL dentro e non sa dove stanno i certificati
@@ -46,10 +46,10 @@ const PREDEF = {
   porta: 47800,
   ffmpeg: "", ffprobe: "",            // vuoti: li cerca da solo
   // dove si vede la NAS su questo computer (si cambia qui se e' montata altrove)
-  // 02/10/2026: le cartelle della QNAP si chiamano COMO TV (era COMOTV - VOD) e
-  // COMO1907 (era COMOTV - FRAME); chi le ha ancora col nome vecchio va bene lo stesso
-  radici: MAC ? { vod: "/Volumes/COMO TV", frame: "/Volumes/COMO1907" }
-       : WIN ? { vod: "\\\\QNAP100\\COMO TV", frame: "\\\\QNAP100\\COMO1907" }
+  // 02/10/2026: la cartella del club sulla QNAP si chiama COMO1907 (era COMOTV - FRAME);
+  // chi la ha ancora col nome vecchio va bene lo stesso. COMOTV - VOD resta com'e'
+  radici: MAC ? { vod: "/Volumes/COMOTV - VOD", frame: "/Volumes/COMO1907" }
+       : WIN ? { vod: "\\\\QNAP100\\COMOTV - VOD", frame: "\\\\QNAP100\\COMO1907" }
              : { vod: "/mnt/qnap100", frame: "/mnt/qnap100-frame" },
   cartella: path.join(os.homedir(), "Downloads", "MAM Export"),
   // le pagine che possono chiedere lavoro, e i ponti da cui si scarica e su cui si carica
@@ -118,7 +118,7 @@ function scegliCodificatore() {
 
 // ── la NAS: si vede? ──
 // il nome nuovo o quello vecchio della cartella, quello che su questo computer c'e'
-const NOMI = [["COMO TV", "COMOTV - VOD"], ["COMO1907", "COMOTV - FRAME"]];
+const NOMI = [["COMO1907", "COMOTV - FRAME"]];
 function radice(k) {
   const r = CONF.radici[k]; if (!r) return r;
   const alt = NOMI.reduce((x, [n, v]) => x.endsWith(n) ? x.slice(0, -n.length) + v : x.endsWith(v) ? x.slice(0, -v.length) + n : x, r);

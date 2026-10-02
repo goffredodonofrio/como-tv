@@ -39,4 +39,4 @@ if curl -s http://127.0.0.1:47800/salute | grep -q '"ok":true'; then
 else
   echo "L'aiutante non risponde: guarda ~/Library/Logs/ComoTV-Aiutante.log"
 fi
-echo "La NAS non serve: i pezzi li manda il MAM. (Se e' montata come 'COMO TV' la usa e va ancora piu' veloce.)"
+echo "La NAS non serve: i pezzi li manda il MAM. (Se e' montata come 'COMOTV - VOD' la usa e va ancora piu' veloce.)"
